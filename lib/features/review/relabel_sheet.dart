@@ -59,7 +59,7 @@ class _RelabelSheetState extends State<RelabelSheet> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _selectedCategoryId,
+            initialValue: _selectedCategoryId,
             decoration: const InputDecoration(
               labelText: 'Category',
               border: OutlineInputBorder(),

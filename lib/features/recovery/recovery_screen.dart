@@ -190,7 +190,7 @@ class _StatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       color: highlight
-          ? Theme.of(context).colorScheme.errorContainer.withOpacity(0.3)
+          ? Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3)
           : null,
       child: ListTile(
         title: Text(label),
