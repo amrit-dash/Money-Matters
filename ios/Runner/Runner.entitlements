@@ -2,9 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.application-groups</key>
-	<array>
-		<string>group.com.moneymatters.shared</string>
-	</array>
+	<!-- App Attest entitlement removed: free Personal Team cannot provision it.
+	     Use Firebase App Check Debug provider until paid program or GitHub CI build.
+	     See docs/APP-CHECK-FREE-APPLE-ACCOUNT.md -->
 </dict>
 </plist>
