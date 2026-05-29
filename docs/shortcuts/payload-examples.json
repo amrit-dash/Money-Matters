@@ -1,0 +1,99 @@
+{
+  "description": "Sample POST bodies for ingestSms Cloud Function. Replace placeholders with values from app onboarding.",
+  "endpoint": "POST https://REGION-PROJECT.cloudfunctions.net/ingestSms",
+  "headers": {
+    "Authorization": "Bearer YOUR_DEVICE_INGEST_TOKEN",
+    "Content-Type": "application/json"
+  },
+  "examples": [
+    {
+      "name": "HDFC debit — automation",
+      "body": {
+        "body": "Rs.899.00 debited from A/c **4567 at ZUDIO on 29-05-26. Avl Bal Rs.12,345.67. Not you? Call 1800-XXX",
+        "sender": "VK-HDFCBK",
+        "receivedAt": "2026-05-29T14:32:00+05:30",
+        "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+        "source": "shortcuts-automation-v1",
+        "batchHint": null
+      },
+      "expectedResponse": {
+        "status": 201,
+        "body": {
+          "ok": true,
+          "duplicate": false,
+          "id": "<sha256 idempotency key>"
+        }
+      }
+    },
+    {
+      "name": "ICICI credit card spend",
+      "body": {
+        "body": "INR 2,500.00 spent on ICICI Bank Credit Card XX1234 at SWIGGY on 29-MAY-26.",
+        "sender": "AD-ICICIB",
+        "receivedAt": "2026-05-29T19:15:00+05:30",
+        "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+        "source": "shortcuts-automation-v1",
+        "batchHint": null
+      },
+      "expectedResponse": {
+        "status": 201,
+        "body": {
+          "ok": true,
+          "duplicate": false,
+          "id": "<sha256 idempotency key>"
+        }
+      }
+    },
+    {
+      "name": "Health check — app Test POST",
+      "body": {
+        "body": "Rs.1.00 debited from A/c **0000 at HEALTH CHECK on 2026-05-29T10:00:00+05:30",
+        "sender": "MM-HEALTH",
+        "receivedAt": "2026-05-29T10:00:00+05:30",
+        "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+        "source": "shortcuts-automation-v1",
+        "batchHint": null
+      },
+      "expectedResponse": {
+        "status": 201,
+        "body": {
+          "ok": true,
+          "duplicate": false,
+          "id": "<sha256 idempotency key>"
+        }
+      }
+    },
+    {
+      "name": "Manual paste recovery",
+      "body": {
+        "body": "Rs.500.00 debited from A/c **1234 via UPI to MERCHANT@paytm on 28-05-26",
+        "sender": "manual-paste",
+        "receivedAt": "2026-05-28T22:00:00+05:30",
+        "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+        "source": "manual-paste",
+        "batchHint": null
+      },
+      "notes": "Recovery screen creates ingest with source manual-paste; same idempotency rules apply."
+    },
+    {
+      "name": "Duplicate retry (same minute)",
+      "body": {
+        "body": "Rs.899.00 debited from A/c **4567 at ZUDIO on 29-05-26",
+        "sender": "VK-HDFCBK",
+        "receivedAt": "2026-05-29T14:32:00+05:30",
+        "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+        "source": "shortcuts-automation-v1",
+        "batchHint": null
+      },
+      "expectedResponse": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "duplicate": true,
+          "id": "<same idempotency key>"
+        }
+      }
+    }
+  ],
+  "curlTemplate": "curl -X POST \"$INGEST_URL\" -H \"Authorization: Bearer $INGEST_TOKEN\" -H \"Content-Type: application/json\" -d @payload.json"
+}
