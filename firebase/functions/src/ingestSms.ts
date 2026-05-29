@@ -88,7 +88,7 @@ function jsonResponse(
 // App Check is intentionally NOT enforced here: iOS Shortcuts POST JSON via
 // "Get Contents of URL" and cannot attach Firebase App Check tokens. Protection
 // is device Bearer token + idempotency + Firestore rules. The Flutter app uses
-// App Check for Auth/Firestore SDK traffic (see lib/core/app_check/).
+// App Check not used in Flutter MVP; Shortcuts path uses device Bearer tokens.
 export const ingestSms = onRequest(
   {
     region: "asia-south1",
