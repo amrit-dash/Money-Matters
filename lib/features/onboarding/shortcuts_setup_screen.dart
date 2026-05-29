@@ -11,10 +11,12 @@ class ShortcutsSetupScreen extends StatefulWidget {
     super.key,
     required this.state,
     required this.onComplete,
+    this.showFinishOnboarding = true,
   });
 
   final OnboardingState state;
   final VoidCallback onComplete;
+  final bool showFinishOnboarding;
 
   @override
   State<ShortcutsSetupScreen> createState() => _ShortcutsSetupScreenState();
@@ -26,11 +28,11 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
   String? _testResult;
 
   static const _checklistItems = [
-    'Import Automation A: Money Matters — Ingest SMS',
-    'Set trigger: Message Contains financial keywords',
-    'Enable Run Immediately on the automation',
-    'Copy Bearer token and ingest URL into Shortcuts POST step',
-    'Import Shortcut B: Sync now (opens recovery screen)',
+    'Create shortcut: Money Matters — Ingest SMS (with Get Contents of URL POST)',
+    'Paste Ingest URL, Bearer token, and deviceId into the shortcut JSON body',
+    'Create Message automation → Run Immediately → Run Shortcut (above)',
+    'Set Message Contains keywords (debited, credited, INR, etc.)',
+    'Optional: Shortcut B — Sync now (Open URL moneymatters://recovery)',
   ];
 
   final Set<int> _checkedSteps = {};
@@ -228,13 +230,21 @@ ${widget.state.deviceId}
                 child: const Text('Skip with warning'),
               ),
               const SizedBox(height: 24),
-              FilledButton(
-                onPressed: widget.state.shortcutsGateSatisfied &&
-                        widget.state.shortcutsChecklistComplete
-                    ? widget.onComplete
-                    : null,
-                child: const Text('Finish onboarding'),
-              ),
+              if (widget.showFinishOnboarding)
+                FilledButton(
+                  onPressed: widget.state.shortcutsGateSatisfied &&
+                          widget.state.shortcutsChecklistComplete
+                      ? widget.onComplete
+                      : null,
+                  child: const Text('Finish onboarding'),
+                )
+              else
+                FilledButton(
+                  onPressed: widget.state.shortcutsGateSatisfied
+                      ? widget.onComplete
+                      : null,
+                  child: const Text('Done'),
+                ),
             ],
           );
         },

@@ -3,7 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../config/firebase_options.dart';
 
-/// Thin wrapper around Firebase Auth for the single-user MVP.
+/// Thin wrapper around Firebase Auth.
 class AuthService {
   AuthService({
     FirebaseAuth? auth,

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 import 'features/dashboard/dashboard_screen.dart';
+import 'features/onboarding/connect_sms_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/recovery/recovery_screen.dart';
 import 'features/review/review_screen.dart';
 
-/// Named routes for Money Matters MVP.
+/// Named routes for Money Matters.
 class AppRoutes {
   static const onboarding = '/onboarding';
+  static const connectSms = '/connect-sms';
   static const dashboard = '/dashboard';
   static const review = '/review';
   static const recovery = '/recovery';
@@ -21,6 +23,11 @@ class AppRouter {
         return MaterialPageRoute<void>(
           settings: settings,
           builder: (_) => const OnboardingFlow(),
+        );
+      case AppRoutes.connectSms:
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (_) => const ConnectSmsScreen(),
         );
       case AppRoutes.dashboard:
         return MaterialPageRoute<void>(

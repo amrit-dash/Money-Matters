@@ -74,7 +74,12 @@ class _AuthScreenState extends State<AuthScreen> {
         );
       }
       widget.state.setCredentials(email: email, password: password);
-      widget.state.markAuthenticated();
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) {
+        _setError(StateError('Signed in but no user id'));
+        return;
+      }
+      await widget.state.markAuthenticated(uid: uid);
       if (!mounted) return;
       widget.onContinue();
     } catch (e) {
@@ -94,7 +99,12 @@ class _AuthScreenState extends State<AuthScreen> {
       final cred = await _auth.signInWithGoogle();
       final email = cred.user?.email ?? '';
       widget.state.setCredentials(email: email, password: '');
-      widget.state.markAuthenticated();
+      final uid = cred.user?.uid;
+      if (uid == null) {
+        _setError(StateError('Google sign-in succeeded but no user id'));
+        return;
+      }
+      await widget.state.markAuthenticated(uid: uid);
       if (!mounted) return;
       widget.onContinue();
     } on FirebaseAuthException catch (e) {

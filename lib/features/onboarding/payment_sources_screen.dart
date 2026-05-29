@@ -15,9 +15,6 @@ class PaymentSourcesScreen extends StatelessWidget {
   final OnboardingState state;
   final VoidCallback onContinue;
 
-  static const _maxBanks = 2;
-  static const _maxCards = 2;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -37,13 +34,21 @@ class PaymentSourcesScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   children: [
                     Text(
-                      'Register at least 2 banks and 2 cards for MVP linking.',
+                      'Add at least one bank or card that sends you debit/credit SMS. '
+                      'You can add more anytime.',
                       style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Banks and cards only — not wallet apps (e.g. MobiKwik). '
+                      'Those SMS are matched via your bank/card sender hints.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                     ),
                     const SizedBox(height: 16),
                     _SectionHeader(
-                      title: 'Banks (${banks.length}/$_maxBanks)',
-                      canAdd: banks.length < _maxBanks,
+                      title: 'Banks (${banks.length})',
                       onAdd: () => _openEditor(context, PaymentSourceType.bank),
                     ),
                     ...banks.map(
@@ -59,8 +64,7 @@ class PaymentSourcesScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
                     _SectionHeader(
-                      title: 'Cards (${cards.length}/$_maxCards)',
-                      canAdd: cards.length < _maxCards,
+                      title: 'Cards (${cards.length})',
                       onAdd: () => _openEditor(context, PaymentSourceType.card),
                     ),
                     ...cards.map(
@@ -123,12 +127,10 @@ class PaymentSourcesScreen extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
-    required this.canAdd,
     required this.onAdd,
   });
 
   final String title;
-  final bool canAdd;
   final VoidCallback onAdd;
 
   @override
@@ -138,7 +140,7 @@ class _SectionHeader extends StatelessWidget {
         Text(title, style: Theme.of(context).textTheme.titleMedium),
         const Spacer(),
         IconButton(
-          onPressed: canAdd ? onAdd : null,
+          onPressed: onAdd,
           icon: const Icon(Icons.add),
           tooltip: 'Add',
         ),

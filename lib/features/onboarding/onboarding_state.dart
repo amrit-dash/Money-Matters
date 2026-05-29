@@ -1,13 +1,23 @@
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:money_matters/core/auth/device_credentials_store.dart';
+import 'package:money_matters/core/auth/device_token_service.dart';
 import 'package:money_matters/models/payment_source.dart';
 
-/// In-memory onboarding state until coordinator wires Firebase + Keychain.
+/// Onboarding state; ingest credentials persist locally and sync to Firestore.
 class OnboardingState extends ChangeNotifier {
-  OnboardingState({Uuid? uuid}) : _uuid = uuid ?? const Uuid();
+  OnboardingState({
+    Uuid? uuid,
+    DeviceTokenService? deviceTokenService,
+    DeviceCredentialsStore? credentialsStore,
+  })  : _uuid = uuid ?? const Uuid(),
+        _deviceTokenService = deviceTokenService ?? DeviceTokenService(),
+        _credentialsStore = credentialsStore ?? DeviceCredentialsStore();
 
   final Uuid _uuid;
+  final DeviceTokenService _deviceTokenService;
+  final DeviceCredentialsStore _credentialsStore;
 
   String email = '';
   String password = '';
@@ -23,13 +33,12 @@ class OnboardingState extends ChangeNotifier {
   bool healthCheckPassed = false;
   bool healthCheckSkipped = false;
 
-  int get bankCount =>
-      paymentSources.where((s) => s.type == PaymentSourceType.bank).length;
-
-  int get cardCount =>
-      paymentSources.where((s) => s.type == PaymentSourceType.card).length;
-
-  bool get paymentSourcesComplete => bankCount >= 2 && cardCount >= 2;
+  bool get paymentSourcesComplete =>
+      paymentSources.any(
+        (s) =>
+            s.type == PaymentSourceType.bank ||
+            s.type == PaymentSourceType.card,
+      );
 
   bool get shortcutsGateSatisfied => healthCheckPassed || healthCheckSkipped;
 
@@ -42,10 +51,33 @@ class OnboardingState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void markAuthenticated() {
+  /// After Firebase Auth succeeds.
+  Future<void> markAuthenticated({required String uid}) async {
     isAuthenticated = true;
-    deviceId = _uuid.v4();
-    ingestToken = _generateStubToken();
+    await ensureIngestDeviceRegistered(uid: uid);
+  }
+
+  /// Loads or creates device credentials, persists locally, writes Firestore hash.
+  Future<void> ensureIngestDeviceRegistered({required String uid}) async {
+    final stored = await _credentialsStore.load(uid);
+    if (stored != null) {
+      deviceId = stored.deviceId;
+      ingestToken = stored.token;
+    } else {
+      deviceId = _uuid.v4();
+      ingestToken = _deviceTokenService.generateToken();
+      await _credentialsStore.save(
+        uid: uid,
+        deviceId: deviceId,
+        token: ingestToken,
+      );
+    }
+
+    await _deviceTokenService.registerDeviceToken(
+      uid: uid,
+      deviceId: deviceId,
+      rawToken: ingestToken,
+    );
     notifyListeners();
   }
 
@@ -55,12 +87,14 @@ class OnboardingState extends ChangeNotifier {
   }
 
   void addPaymentSource(PaymentSource source) {
+    if (source.type == PaymentSourceType.wallet) return;
     paymentSources.add(source);
     notifyListeners();
   }
 
   void updatePaymentSource(int index, PaymentSource source) {
     if (index < 0 || index >= paymentSources.length) return;
+    if (source.type == PaymentSourceType.wallet) return;
     paymentSources[index] = source;
     notifyListeners();
   }
@@ -86,10 +120,5 @@ class OnboardingState extends ChangeNotifier {
     healthCheckSkipped = true;
     healthCheckPassed = false;
     notifyListeners();
-  }
-
-  String _generateStubToken() {
-    final bytes = List<int>.generate(32, (i) => (i * 17 + 91) % 256);
-    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }

@@ -50,6 +50,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: const Text('Dashboard'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.sms_outlined),
+            tooltip: 'Connect SMS',
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.connectSms),
+          ),
+          IconButton(
             icon: const Icon(Icons.flag_outlined),
             tooltip: 'Review flagged',
             onPressed: () => Navigator.pushNamed(context, AppRoutes.review),
