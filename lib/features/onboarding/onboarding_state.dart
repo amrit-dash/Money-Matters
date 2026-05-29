@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import 'package:money_matters/core/auth/device_credentials_store.dart';
 import 'package:money_matters/core/auth/device_token_service.dart';
 import 'package:money_matters/models/payment_source.dart';
+import 'package:money_matters/services/payment_source_service.dart';
 
 /// Onboarding state; ingest credentials persist locally and sync to Firestore.
 class OnboardingState extends ChangeNotifier {
@@ -32,6 +33,8 @@ class OnboardingState extends ChangeNotifier {
   bool shortcutsChecklistComplete = false;
   bool healthCheckPassed = false;
   bool healthCheckSkipped = false;
+  bool deviceTokenSynced = false;
+  String? deviceTokenSyncError;
 
   bool get paymentSourcesComplete =>
       paymentSources.any(
@@ -57,28 +60,53 @@ class OnboardingState extends ChangeNotifier {
     await ensureIngestDeviceRegistered(uid: uid);
   }
 
+  /// Loads payment sources from Firestore into local state.
+  Future<void> loadPaymentSources(PaymentSourceService service) async {
+    final loaded = await service.loadAll();
+    paymentSources
+      ..clear()
+      ..addAll(loaded);
+    notifyListeners();
+  }
+
+  /// Persists current payment sources to Firestore.
+  Future<void> persistPaymentSources(PaymentSourceService service) async {
+    await service.saveAll(paymentSources);
+  }
+
   /// Loads or creates device credentials, persists locally, writes Firestore hash.
   Future<void> ensureIngestDeviceRegistered({required String uid}) async {
-    final stored = await _credentialsStore.load(uid);
-    if (stored != null) {
-      deviceId = stored.deviceId;
-      ingestToken = stored.token;
-    } else {
-      deviceId = _uuid.v4();
-      ingestToken = _deviceTokenService.generateToken();
-      await _credentialsStore.save(
+    deviceTokenSynced = false;
+    deviceTokenSyncError = null;
+    notifyListeners();
+
+    try {
+      final stored = await _credentialsStore.load(uid);
+      if (stored != null) {
+        deviceId = stored.deviceId;
+        ingestToken = stored.token;
+      } else {
+        deviceId = _uuid.v4();
+        ingestToken = _deviceTokenService.generateToken();
+        await _credentialsStore.save(
+          uid: uid,
+          deviceId: deviceId,
+          token: ingestToken,
+        );
+      }
+
+      await _deviceTokenService.registerDeviceToken(
         uid: uid,
         deviceId: deviceId,
-        token: ingestToken,
+        rawToken: ingestToken,
       );
+      deviceTokenSynced = true;
+    } catch (e) {
+      deviceTokenSyncError = e.toString();
+      rethrow;
+    } finally {
+      notifyListeners();
     }
-
-    await _deviceTokenService.registerDeviceToken(
-      uid: uid,
-      deviceId: deviceId,
-      rawToken: ingestToken,
-    );
-    notifyListeners();
   }
 
   void setIngestUrl(String url) {

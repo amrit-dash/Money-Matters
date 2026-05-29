@@ -28,11 +28,11 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
   String? _testResult;
 
   static const _checklistItems = [
-    'Create shortcut: Money Matters — Ingest SMS (with Get Contents of URL POST)',
-    'Paste Ingest URL, Bearer token, and deviceId into the shortcut JSON body',
-    'Create Message automation → Run Immediately → Run Shortcut (above)',
-    'Set Message Contains keywords (debited, credited, INR, etc.)',
-    'Optional: Shortcut B — Sync now (Open URL moneymatters://recovery)',
+    'Message automation: Run Immediately + keyword (e.g. debited)',
+    'Use Shortcut Input (triggering SMS) for body and sender — see setup guide',
+    'POST via Get Contents of URL (inline automation or library shortcut)',
+    'If Run Shortcut: set Input to Shortcut Input so the SMS is passed through',
+    'Optional: Shortcut B — Sync now (moneymatters://recovery)',
   ];
 
   final Set<int> _checkedSteps = {};
@@ -47,6 +47,13 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
   void dispose() {
     _urlController.dispose();
     super.dispose();
+  }
+
+  void _copyField(String label, String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label copied')),
+    );
   }
 
   Future<void> _runTestPost() async {
@@ -95,23 +102,6 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
     }
   }
 
-  void _copyCredentials() {
-    final text = '''
-Ingest URL:
-${_urlController.text.trim()}
-
-Authorization:
-Bearer ${widget.state.ingestToken}
-
-Device ID:
-${widget.state.deviceId}
-''';
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Credentials copied')),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -126,31 +116,52 @@ ${widget.state.deviceId}
                 'Shortcuts automations POST each financial SMS while the app is closed.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {},
-                child: const Text('Open setup guide (docs/shortcuts/setup.md)'),
-              ),
               const SizedBox(height: 16),
-              TextField(
-                controller: _urlController,
-                decoration: const InputDecoration(
-                  labelText: 'Ingest URL',
-                  border: OutlineInputBorder(),
+              if (widget.state.deviceTokenSynced)
+                Card(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  child: const ListTile(
+                    leading: Icon(Icons.check_circle_outline),
+                    title: Text('Device token synced to Firebase'),
+                    subtitle: Text(
+                      'Bearer token registered — safe to copy into Shortcuts.',
+                    ),
+                  ),
+                )
+              else if (widget.state.deviceTokenSyncError != null)
+                Card(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  child: ListTile(
+                    leading: const Icon(Icons.error_outline),
+                    title: const Text('Token sync failed'),
+                    subtitle: Text(widget.state.deviceTokenSyncError!),
+                  ),
                 ),
-                onChanged: widget.state.setIngestUrl,
+              const SizedBox(height: 16),
+              _CopyableField(
+                label: 'Ingest URL',
+                value: _urlController.text.trim(),
+                onCopy: () => _copyField('Ingest URL', _urlController.text.trim()),
+                child: TextField(
+                  controller: _urlController,
+                  decoration: const InputDecoration(
+                    labelText: 'Ingest URL',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: widget.state.setIngestUrl,
+                ),
               ),
               const SizedBox(height: 12),
-              _CredentialRow(
+              _CopyableField(
                 label: 'Bearer token',
                 value: widget.state.ingestToken,
+                onCopy: () => _copyField('Bearer token', widget.state.ingestToken),
               ),
-              _CredentialRow(label: 'Device ID', value: widget.state.deviceId),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _copyCredentials,
-                icon: const Icon(Icons.copy),
-                label: const Text('Copy for Shortcuts'),
+              const SizedBox(height: 12),
+              _CopyableField(
+                label: 'Device ID',
+                value: widget.state.deviceId,
+                onCopy: () => _copyField('Device ID', widget.state.deviceId),
               ),
               const Divider(height: 32),
               Text('Setup checklist', style: Theme.of(context).textTheme.titleMedium),
@@ -253,31 +264,45 @@ ${widget.state.deviceId}
   }
 }
 
-class _CredentialRow extends StatelessWidget {
-  const _CredentialRow({required this.label, required this.value});
+class _CopyableField extends StatelessWidget {
+  const _CopyableField({
+    required this.label,
+    required this.value,
+    required this.onCopy,
+    this.child,
+  });
 
   final String label;
   final String value;
+  final VoidCallback onCopy;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(label, style: Theme.of(context).textTheme.labelMedium),
-          ),
-          Expanded(
-            child: SelectableText(
-              value,
-              style: Theme.of(context).textTheme.bodySmall,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (child != null)
+          child!
+        else
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SelectableText(
+                value,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
           ),
-        ],
-      ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: onCopy,
+            icon: const Icon(Icons.copy, size: 18),
+            label: Text('Copy $label'),
+          ),
+        ),
+      ],
     );
   }
 }

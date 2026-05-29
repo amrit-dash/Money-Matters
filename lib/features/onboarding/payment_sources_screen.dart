@@ -4,15 +4,18 @@ import 'package:uuid/uuid.dart';
 import 'package:money_matters/models/payment_source.dart';
 
 import 'onboarding_state.dart';
+import '../../services/payment_source_service.dart';
 
 class PaymentSourcesScreen extends StatelessWidget {
   const PaymentSourcesScreen({
     super.key,
     required this.state,
+    required this.paymentSourceService,
     required this.onContinue,
   });
 
   final OnboardingState state;
+  final PaymentSourceService paymentSourceService;
   final VoidCallback onContinue;
 
   @override
@@ -84,7 +87,14 @@ class PaymentSourcesScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: FilledButton(
-                  onPressed: state.paymentSourcesComplete ? onContinue : null,
+                  onPressed: state.paymentSourcesComplete
+                      ? () async {
+                          await state.persistPaymentSources(
+                            paymentSourceService,
+                          );
+                          onContinue();
+                        }
+                      : null,
                   child: const Text('Continue'),
                 ),
               ),

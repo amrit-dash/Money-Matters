@@ -61,7 +61,16 @@ class _ConnectSmsScreenState extends State<ConnectSmsScreen> {
     if (_syncing) {
       return Scaffold(
         appBar: AppBar(title: const Text('Connect SMS')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Syncing device token to Firebase…'),
+            ],
+          ),
+        ),
       );
     }
 

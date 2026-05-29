@@ -2,46 +2,68 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../app_router.dart';
+import '../../ingest/ingest_queue_drain.dart';
 import 'dashboard_repository.dart';
-import 'mock_dashboard_repository.dart';
 
 enum _PeriodMode { weekly, monthly }
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, this.repository});
+  const DashboardScreen({
+    super.key,
+    required this.repository,
+    this.queueDrain,
+  });
 
-  final DashboardRepository? repository;
+  final DashboardRepository repository;
+  final IngestQueueDrain? queueDrain;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  late final DashboardRepository _repo;
   _PeriodMode _mode = _PeriodMode.weekly;
   PeriodSummary? _summary;
   bool _loading = true;
+  String? _syncMessage;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
 
   @override
   void initState() {
     super.initState();
-    _repo = widget.repository ?? MockDashboardRepository();
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool syncQueue = false}) async {
+    setState(() {
+      _loading = true;
+      _syncMessage = syncQueue ? 'Syncing queue…' : null;
+    });
+
+    if (syncQueue && widget.queueDrain != null) {
+      final result = await widget.queueDrain!.drainIfAuthenticated();
+      if (mounted && result != null && result.totalSynced > 0) {
+        _syncMessage = 'Synced ${result.totalSynced} item(s)';
+      }
+    }
+
     final summary = _mode == _PeriodMode.weekly
-        ? await _repo.weeklySummary()
-        : await _repo.monthlySummary();
+        ? await widget.repository.weeklySummary()
+        : await widget.repository.monthlySummary();
     if (!mounted) return;
     setState(() {
       _summary = summary;
       _loading = false;
+      if (!syncQueue) _syncMessage = null;
     });
   }
+
+  bool get _isEmpty =>
+      _summary != null &&
+      _summary!.totalSpend == 0 &&
+      _summary!.totalIncome == 0 &&
+      _summary!.breakdown.isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -69,9 +91,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _load,
+              onRefresh: () => _load(syncQueue: true),
               child: ListView(
                 padding: const EdgeInsets.all(16),
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
                   SegmentedButton<_PeriodMode>(
                     segments: const [
@@ -90,8 +113,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _load();
                     },
                   ),
+                  if (_syncMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _syncMessage!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
-                  if (_summary != null) ...[
+                  if (_summary != null && _isEmpty)
+                    _EmptyState(
+                      onConnectSms: () =>
+                          Navigator.pushNamed(context, AppRoutes.connectSms),
+                      onRecovery: () =>
+                          Navigator.pushNamed(context, AppRoutes.recovery),
+                    )
+                  else if (_summary != null) ...[
                     Text(
                       _summary!.label,
                       style: Theme.of(context).textTheme.titleLarge,
@@ -115,18 +154,75 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 12),
-                    ..._summary!.breakdown.map(
-                      (row) => _CategoryRow(
-                        name: row.category.name,
-                        amount: _currency.format(row.amount),
-                        share: row.shareOf(_summary!.totalSpend),
-                        count: row.transactionCount,
+                    if (_summary!.breakdown.isEmpty)
+                      Text(
+                        'No categorized spend in this period.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      )
+                    else
+                      ..._summary!.breakdown.map(
+                        (row) => _CategoryRow(
+                          name: row.category.name,
+                          amount: _currency.format(row.amount),
+                          share: row.shareOf(_summary!.totalSpend),
+                          count: row.transactionCount,
+                        ),
                       ),
-                    ),
                   ],
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.onConnectSms,
+    required this.onRecovery,
+  });
+
+  final VoidCallback onConnectSms;
+  final VoidCallback onRecovery;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Column(
+        children: [
+          Icon(
+            Icons.receipt_long_outlined,
+            size: 64,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No transactions yet',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Send a test SMS via Shortcuts, or paste missed messages in Recovery.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: onConnectSms,
+            icon: const Icon(Icons.sms_outlined),
+            label: const Text('Connect SMS'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: onRecovery,
+            icon: const Icon(Icons.sync),
+            label: const Text('Open Recovery'),
+          ),
+        ],
+      ),
     );
   }
 }

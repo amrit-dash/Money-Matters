@@ -1,6 +1,6 @@
 import 'package:money_matters/models/raw_ingest.dart';
 
-/// Ingest queue status for recovery screen placeholders.
+/// Ingest queue status for recovery screen.
 class IngestStatus {
   const IngestStatus({
     this.lastSyncAt,

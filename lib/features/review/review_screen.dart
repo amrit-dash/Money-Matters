@@ -3,21 +3,19 @@ import 'package:intl/intl.dart';
 
 import 'package:money_matters/models/transaction.dart';
 
-import 'mock_review_repository.dart';
 import 'relabel_sheet.dart';
 import 'review_repository.dart';
 
 class ReviewScreen extends StatefulWidget {
-  const ReviewScreen({super.key, this.repository});
+  const ReviewScreen({super.key, required this.repository});
 
-  final ReviewRepository? repository;
+  final ReviewRepository repository;
 
   @override
   State<ReviewScreen> createState() => _ReviewScreenState();
 }
 
 class _ReviewScreenState extends State<ReviewScreen> {
-  late final ReviewRepository _repo;
   List<Transaction> _items = [];
   bool _loading = true;
 
@@ -27,13 +25,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
   @override
   void initState() {
     super.initState();
-    _repo = widget.repository ?? MockReviewRepository();
     _load();
   }
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final items = await _repo.flaggedTransactions();
+    final items = await widget.repository.flaggedTransactions();
     if (!mounted) return;
     setState(() {
       _items = items;
@@ -42,7 +39,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   Future<void> _openRelabel(Transaction tx) async {
-    final categories = await _repo.availableCategories();
+    final categories = await widget.repository.availableCategories();
     if (!mounted) return;
 
     final result = await showModalBottomSheet<RelabelResult>(
@@ -52,7 +49,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
     if (result == null || tx.id == null) return;
 
-    await _repo.relabel(
+    await widget.repository.relabel(
       transactionId: tx.id!,
       categoryId: result.categoryId,
       merchantRuleHint: result.saveMerchantRule ? tx.merchant : null,

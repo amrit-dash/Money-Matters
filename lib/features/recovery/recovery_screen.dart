@@ -2,32 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../app_router.dart';
-import 'mock_recovery_repository.dart';
 import 'recovery_repository.dart';
 
 class RecoveryScreen extends StatefulWidget {
-  const RecoveryScreen({super.key, this.repository});
+  const RecoveryScreen({super.key, required this.repository});
 
-  final RecoveryRepository? repository;
+  final RecoveryRepository repository;
 
   @override
   State<RecoveryScreen> createState() => _RecoveryScreenState();
 }
 
 class _RecoveryScreenState extends State<RecoveryScreen> {
-  late final RecoveryRepository _repo;
   final _pasteController = TextEditingController();
   IngestStatus? _status;
   bool _loading = true;
   bool _submitting = false;
   String? _lastSubmitMessage;
+  String? _error;
 
   final _dateFormat = DateFormat('d MMM yyyy, h:mm a');
 
   @override
   void initState() {
     super.initState();
-    _repo = widget.repository ?? MockRecoveryRepository();
     _refresh();
   }
 
@@ -38,23 +36,42 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _loading = true);
-    final status = await _repo.status();
-    if (!mounted) return;
     setState(() {
-      _status = status;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+    try {
+      final status = await widget.repository.status();
+      if (!mounted) return;
+      setState(() {
+        _status = status;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _syncNow() async {
     setState(() => _loading = true);
-    await _repo.triggerSync();
-    await _refresh();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Queue drain triggered')),
-    );
+    try {
+      await widget.repository.triggerSync();
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Queue drained and parsed')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sync failed: $e')),
+      );
+    }
   }
 
   Future<void> _submitPaste() async {
@@ -67,14 +84,22 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
     }
 
     setState(() => _submitting = true);
-    final ingests = await _repo.submitPastedMessages(blocks);
-    if (!mounted) return;
-    setState(() {
-      _submitting = false;
-      _lastSubmitMessage = 'Queued ${ingests.length} message(s) for parsing';
-      _pasteController.clear();
-    });
-    _refresh();
+    try {
+      final ingests = await widget.repository.submitPastedMessages(blocks);
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _lastSubmitMessage = 'Queued ${ingests.length} message(s) for parsing';
+        _pasteController.clear();
+      });
+      _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Submit failed: $e')),
+      );
+    }
   }
 
   String _formatTime(DateTime? dt) {
@@ -115,10 +140,19 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                     value: _formatTime(_status?.lastIngestAt),
                   ),
                   _StatusCard(
-                    label: 'Pending queue',
-                    value: '${_status?.pendingCount ?? '—'}',
+                    label: 'Pending in queue',
+                    value: '${_status?.pendingCount ?? 0}',
                     highlight: (_status?.pendingCount ?? 0) > 0,
                   ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: _loading ? null : _syncNow,
@@ -165,8 +199,9 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                   ],
                   const SizedBox(height: 24),
                   OutlinedButton(
-                    onPressed: () {},
-                    child: const Text('Shortcuts setup guide'),
+                    onPressed: () =>
+                        Navigator.pushNamed(context, AppRoutes.connectSms),
+                    child: const Text('Connect SMS setup'),
                   ),
                 ],
               ),
