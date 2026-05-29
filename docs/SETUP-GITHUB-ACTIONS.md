@@ -6,6 +6,12 @@ Primary cloud path: [`.github/workflows/ios-ipa.yml`](../.github/workflows/ios-i
 
 **Automated:** `GOOGLE_SERVICE_INFO_PLIST_BASE64` can be set via `./scripts/setup_github_secrets.sh` (already run if you used it after push).
 
+**Installable IPA:**  
+- **Free Apple account (Personal Team):** **[SETUP-SIGNING-FREE-ACCOUNT.md](SETUP-SIGNING-FREE-ACCOUNT.md)** — Xcode only; ignore developer.apple.com Certificates pages.  
+- **Paid $99/year program:** [SETUP-SIGNING.md](SETUP-SIGNING.md) / portal guides.
+
+App Check is off until you opt in later.
+
 ## What you need
 
 | Item | Where |
@@ -28,16 +34,21 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 
 ### Required for **installable** IPA on your iPhone
 
-Export from Keychain / Apple Developer (see [Apple’s export guide](https://docs.github.com/en/actions/deployment/deploying-xcode-applications/installing-an-apple-certificate-on-macos-runners-for-xcode-development)):
+See **[SETUP-SIGNING.md](SETUP-SIGNING.md)** for step-by-step export. Quick upload:
+
+```bash
+./scripts/encode_signing_secrets.sh path/to/cert.p12 path/to/profile.mobileprovision
+```
 
 | Secret | Value |
 |--------|--------|
-| `BUILD_CERTIFICATE_BASE64` | Distribution or **Apple Development** `.p12` as base64 |
+| `BUILD_CERTIFICATE_BASE64` | **Apple Development** `.p12` as base64 |
 | `P12_PASSWORD` | Password for the `.p12` |
-| `BUILD_PROVISION_PROFILE_BASE64` | `.mobileprovision` for `com.moneymatters.moneyMatters` including your device UDID |
+| `BUILD_PROVISION_PROFILE_BASE64` | `.mobileprovision` for `com.moneymatters.moneyMatters` + your UDID |
 | `KEYCHAIN_PASSWORD` | Any random string (workflow-only) |
+| `APPLE_TEAM_ID` | Optional; CI reads Team ID from the profile if omitted |
 
-Update `ios/ExportOptions.plist` → set your **Team ID** (Apple Developer → Membership).
+CI generates `ios/ExportOptions.ci.plist` from the profile during the build (manual signing + profile name).
 
 ## Run a build
 
