@@ -1,6 +1,6 @@
 # Money Matters — iPhone live test setup
 
-Complete these steps **in order** on your Mac and physical iPhone. The repo ships an MVP skeleton; nothing ingests real SMS until Firebase, signing, and Shortcuts are configured on your side.
+Complete these steps **in order** on your Mac and physical iPhone. Nothing ingests real SMS until Firebase, signing, and Shortcuts are configured on your side.
 
 ---
 
@@ -203,25 +203,16 @@ Use when you want a shareable `.ipa` (Ad Hoc / Development) or TestFlight path.
 
 1. Launch **Money Matters** on the iPhone.
 2. **Sign in** or create account (Email/Password — must match Firebase Auth config).
-3. Add payment sources (MVP gate: 2 banks + 2 cards — can be placeholders for testing).
+3. Add at least one bank or card (names + sender hints for SMS matching).
 
 ### 10. Register device ingest token
 
-During onboarding step **Connect SMS**, the app generates:
+On **Connect SMS** (onboarding or Dashboard → SMS icon), the app automatically:
 
-| Field | Purpose |
-|-------|---------|
-| **Device ID** | UUID; must match `deviceId` in Shortcuts POST body |
-| **Bearer token** | Raw secret sent as `Authorization: Bearer …` |
-| **Ingest URL** | Paste the deployed `ingestSms` URL from step 4 |
+1. Creates or loads a **Device ID** and **Bearer token** (saved on this iPhone).
+2. Writes `sha256(Bearer token)` to Firestore at `users/{uid}/device_tokens/{deviceId}`.
 
-The app stores `sha256(Bearer token)` in Firestore at:
-
-```text
-users/{uid}/device_tokens/{deviceId}
-```
-
-Copy all three values into Shortcuts (step 11). For manual Firestore seeding or curl tests, see [`firebase/README.md`](../firebase/README.md#seeding-a-device-token-manual-test).
+Copy **Ingest URL**, **Bearer token**, and **Device ID** into Shortcuts (step 11). Re-opening Connect SMS re-syncs Firestore — no manual Console step needed.
 
 Use **Test POST** on the Connect SMS screen to confirm HTTP `201` or `200` (duplicate).
 
@@ -297,7 +288,7 @@ Automated check on the agent machine:
 | `verify_setup.sh` fails on plist | Download `GoogleService-Info.plist` to `ios/Runner/` |
 | `pod install` errors | Install CocoaPods; run from `ios/` directory |
 | Xcode signing errors | Select Team; unique bundle ID; register device |
-| HTTP 401 on Test POST | Re-copy Bearer token; ensure onboarding wrote `device_tokens` doc |
+| HTTP 401 on Test POST | Open Connect SMS again (re-syncs token); re-copy Bearer into Shortcuts |
 | Shortcuts never fires | Physical device; automation enabled; keyword match; Run Immediately |
 | Developer Mode missing | iOS 16+ required; enable in Settings → Privacy & Security |
 

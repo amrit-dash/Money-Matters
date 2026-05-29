@@ -16,32 +16,42 @@ Step-by-step guide for **Automation A** (ingest SMS) and **Shortcut B** (sync no
 
 Personal Automation that POSTs each matching financial SMS while the app is **closed**.
 
-### Trigger
+**Important:** Message **automations** on iOS do not offer **Get Contents of URL**. You build the POST in a normal **Shortcut** first, then the automation only **runs that shortcut**.
 
-| Setting | Value |
-|---------|--------|
-| Type | **Personal Automation** → **Message** |
-| Sender | Any Sender (MVP) |
-| Message Contains | One or more keywords (OR via multiple automations): `debited`, `credited`, `INR`, `Rs`, `spent`, `payment`, `UPI`, `card` |
-| Run | **Run Immediately** (required) |
+### Part 1 — Create the shortcut (Shortcuts app → **+** → **Shortcut**)
 
-> **Tip:** Shortcuts may limit OR filters. Create separate automations per keyword if needed.
-
-### Actions (in order)
+Name it **Money Matters — Ingest SMS** (or similar). Add these actions **in order**:
 
 1. **Get Shortcut Input** → **Content** → set variable `body`
 2. **Get Shortcut Input** → **Sender** → set variable `sender`
 3. **Current Date** → Format **ISO 8601** → set variable `receivedAt`
-4. **Get Contents of URL**
+4. **Get Contents of URL** (search “URL” or look under **Web** / **Scripting**)
    - Method: **POST**
-   - URL: paste **Ingest URL** from app
+   - URL: paste **Ingest URL** from Money Matters → Connect SMS
    - Headers:
-     - `Authorization`: `Bearer <INGEST_TOKEN>` (from app onboarding)
+     - `Authorization`: `Bearer <INGEST_TOKEN>`
      - `Content-Type`: `application/json`
    - Request Body: **JSON** (see below)
-5. *(Optional)* **Open URL** when app may be foreground:
-   - `moneymatters://ingest?body=<url-encoded>&sender=<url-encoded>&receivedAt=<url-encoded>`
-   - Truncate long `body` in query; POST remains source of truth.
+5. *(Optional)* **Open URL** → `moneymatters://ingest?...` (POST remains source of truth)
+
+When run from a Message automation, **Shortcut Input** is the incoming SMS (Content + Sender).
+
+### Part 2 — Create the automation (Shortcuts app → **Automation** → **+**)
+
+| Setting | Value |
+|---------|--------|
+| Type | **Message** |
+| Sender | Any Sender |
+| Message Contains | Keywords such as `debited`, `credited`, `INR`, `Rs`, `spent`, `payment`, `UPI`, `card` |
+| Run | **Run Immediately** (required) |
+
+**Actions (only one step needed):**
+
+1. **Run Shortcut** → choose **Money Matters — Ingest SMS**
+
+> **Tip:** If you cannot combine keywords with OR, create one automation per keyword, each running the same shortcut.
+
+### JSON request body (inside the shortcut’s Get Contents of URL step)
 
 ### JSON request body
 
@@ -83,6 +93,7 @@ Add to Home Screen for quick access after travel, Focus mode, or iOS updates.
 
 | Symptom | Check |
 |---------|--------|
+| No **Get Contents of URL** in automation | Expected — put POST in a **Shortcut**, use **Run Shortcut** in the automation |
 | No POST in Firebase | Automation disabled, Focus, Low Power, or keyword mismatch |
 | HTTP 401 | Bearer token mismatch — re-copy from app onboarding |
 | HTTP 400 | Missing JSON field or invalid `receivedAt` |

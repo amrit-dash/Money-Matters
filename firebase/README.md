@@ -84,18 +84,18 @@ The Cloud Function uses the **Firebase Admin SDK** with default application cred
 | Device ingest token | Keychain + Shortcuts | Created by app onboarding; stored as `sha256` in Firestore |
 | `deviceId` | App onboarding | UUID sent in POST body; must match `device_tokens` doc ID |
 
-### Seeding a device token (manual test)
+### Device token registration (automatic)
 
-Before Shortcuts can POST, onboarding (Stream D) creates:
+On **Connect SMS** (onboarding or Dashboard → SMS icon), the Flutter app:
 
-```
-users/{uid}/device_tokens/{deviceId}
-  tokenHash: sha256("<raw-secret>")
-  createdAt: <timestamp>
-  label: "iPhone"
-```
+1. Loads or creates a device id + bearer token (stored on the iPhone).
+2. Writes `users/{uid}/device_tokens/{deviceId}` with `tokenHash: sha256(bearer)`.
 
-For manual curl testing, create this document in Firestore Console:
+No manual Firestore step is required for normal use.
+
+### Seeding a device token (emergency / curl only)
+
+If you need to test with curl without the app, create this document in Firestore Console:
 
 ```javascript
 // tokenHash = sha256 of the raw secret you will send as Bearer
