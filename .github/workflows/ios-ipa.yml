@@ -13,6 +13,7 @@ on:
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - 'analysis_options.yaml'
+      - 'scripts/prepare_export_options_ci.sh'
       - '.github/workflows/ios-ipa.yml'
 
 concurrency:
