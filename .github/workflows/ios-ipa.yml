@@ -39,8 +39,7 @@ jobs:
         with:
           channel: stable
           cache: true
-          cache-key: 'flutter-stable-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}'
-          pub-cache-path: '${{ runner.tool_cache }}/pub'
+          cache-key: flutter-stable-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
 
       - name: Install GoogleService-Info.plist from secret
         env:
