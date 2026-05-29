@@ -1,42 +1,12 @@
-# Firebase App Check
+# Firebase App Check (disabled — Personal Team)
 
-App Check reduces abuse of Firebase backends (Firestore, Auth) from unauthorized clients.
+App Check is **off** in this project. See **[APP-CHECK-FREE-APPLE-ACCOUNT.md](APP-CHECK-FREE-APPLE-ACCOUNT.md)** for the full Personal Team vs paid program breakdown.
 
-## What is protected
+**Bottom line:**
 
-| Surface | App Check | Notes |
-|---------|-----------|--------|
-| Flutter app → Auth | Yes | SDK sends App Check token after `AppCheckBootstrap.activate()` |
-| Flutter app → Firestore | Yes | Same |
-| Shortcuts → `ingestSms` HTTP | **No** | Shortcuts cannot attach App Check; uses **device Bearer token** + idempotency |
-| GitHub Actions / CI | Debug provider | Register debug token in Console for local builds |
+- **App Attest in provisioning:** not available on a free Personal Team.
+- **App Check with App Attest:** not viable for your signed sideload IPA today.
+- **App Check with Debug tokens:** possible for testing only; optional.
+- **No App Check:** fine for personal MVP (device tokens + Firestore rules + Auth).
 
-## Firebase Console (you — one-time)
-
-1. [App Check](https://console.firebase.google.com/project/money-matters-amrit/appcheck) → **Apps** → select **Money Matters iOS**.
-2. Register provider:
-   - **App Attest** (preferred on iOS 14+)
-   - Enable **DeviceCheck** as fallback (same screen).
-3. Under **APIs**, click **Enforce** for:
-   - **Cloud Firestore**
-   - **Authentication** (Identity Toolkit)
-   - **Firebase Storage** (if used later)
-4. Do **not** enforce App Check on the **`ingestSms`** HTTP function — Shortcuts would break.
-
-### Debug builds (Xcode Run, Simulator)
-
-1. Run the app once in **debug** (`AppleProvider.debug` is automatic in debug mode).
-2. Console → App Check → your iOS app → **Manage debug tokens** → copy the token from Xcode logs (search `Firebase App Check Debug Token`).
-3. Register that token in the Console.
-
-## Shortcuts ingest security (without App Check)
-
-- Per-device secret in `users/{uid}/device_tokens/{deviceId}` (SHA-256 hash stored).
-- `Authorization: Bearer <raw-token>` on every POST.
-- Idempotency key prevents replay duplicates.
-- Firestore rules scope all data to `request.auth.uid`.
-
-## Code
-
-- Activation: `lib/core/app_check/app_check_bootstrap.dart`
-- Called from `lib/main.dart` immediately after `Firebase.initializeApp`.
+Remove old App Check app entries in Firebase Console if the deleted iOS app still appears under App Check providers.
