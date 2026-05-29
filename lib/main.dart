@@ -2,7 +2,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'app_router.dart';
-import 'core/app_check/app_check_bootstrap.dart';
 import 'core/auth/auth_service.dart';
 import 'core/config/firebase_options.dart';
 import 'features/setup/firebase_setup_screen.dart';
@@ -23,8 +22,6 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  await AppCheckBootstrap.activate();
-
   final authService = AuthService();
   final localDatabase = LocalDatabase();
   final parsePipeline = IngestParsePipeline(
