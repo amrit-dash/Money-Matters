@@ -26,21 +26,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Pub
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-            .dart_tool
-          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
-          restore-keys: |
-            pub-${{ runner.os }}-
-
+      # Pin Flutter version so the ~2GB SDK cache key stays stable (channel: stable alone
+      # changes when Flutter releases a new stable, causing cache misses every time).
       - uses: subosito/flutter-action@v2
+        id: flutter
         with:
           channel: stable
+          flutter-version: '3.44.0'
           cache: true
-          cache-key: flutter-stable-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+
+      - name: Flutter cache status
+        run: |
+          echo "Flutter SDK cache hit: ${{ steps.flutter.outputs.CACHE-HIT }}"
+          echo "Pub cache hit: ${{ steps.flutter.outputs.PUB-CACHE-HIT }}"
 
       - name: Install GoogleService-Info.plist from secret
         env:

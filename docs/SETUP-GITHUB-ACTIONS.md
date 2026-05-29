@@ -4,6 +4,8 @@ GitHub’s `macos-latest` runners **include Xcode**. You never install Xcode on 
 
 Primary cloud path: [`.github/workflows/ios-ipa.yml`](../.github/workflows/ios-ipa.yml).
 
+**Caching:** The workflow pins Flutter **3.44.0** and caches the SDK (~2 GB) plus pub packages. The **first** run after a cache-key change always downloads; the **next** run on the same `pubspec.lock` should show `Flutter SDK cache hit: true` in the log. CocoaPods `ios/Pods` is cached when `Podfile.lock` exists.
+
 **Automated:** `GOOGLE_SERVICE_INFO_PLIST_BASE64` can be set via `./scripts/setup_github_secrets.sh` (already run if you used it after push).
 
 **Installable IPA:**  
