@@ -4,7 +4,7 @@ Cloud ingest queue for iOS Shortcuts SMS handoff. Shortcuts POST financial SMS t
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+ (Functions runtime; see `functions/package.json` `engines`)
 - [Firebase CLI](https://firebase.google.com/docs/cli): `npm install -g firebase-tools` or use `npx firebase-tools@latest`
 - A Firebase project with **Authentication**, **Firestore**, **Cloud Functions**, and **Cloud Messaging** enabled
 

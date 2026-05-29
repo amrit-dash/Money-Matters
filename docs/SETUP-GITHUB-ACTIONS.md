@@ -2,7 +2,9 @@
 
 GitHub’s `macos-latest` runners **include Xcode**. You never install Xcode on your Mac; you only need git, GitHub, and Apple Developer credentials for signing.
 
-Codemagic is **optional** — this repo’s primary cloud path is [`.github/workflows/ios-ipa.yml`](../.github/workflows/ios-ipa.yml).
+Primary cloud path: [`.github/workflows/ios-ipa.yml`](../.github/workflows/ios-ipa.yml).
+
+**Automated:** `GOOGLE_SERVICE_INFO_PLIST_BASE64` can be set via `./scripts/setup_github_secrets.sh` (already run if you used it after push).
 
 ## What you need
 
