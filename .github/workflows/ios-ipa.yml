@@ -1,5 +1,5 @@
 # Build installable iOS IPA on GitHub-hosted macOS — no local Xcode on your machine.
-# Signing secrets required for device install (see docs/SETUP-SIGNING.md).
+# Signing secrets required for device install (see docs/SETUP-SIGNING-FREE-ACCOUNT.md).
 
 name: iOS IPA
 
@@ -11,7 +11,13 @@ on:
       - 'lib/**'
       - 'ios/**'
       - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'analysis_options.yaml'
       - '.github/workflows/ios-ipa.yml'
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -19,10 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+          cache-key: 'flutter-stable-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}'
+          pub-cache-path: '${{ runner.tool_cache }}/pub'
 
       - name: Install GoogleService-Info.plist from secret
         env:
@@ -53,10 +71,18 @@ jobs:
         run: flutter pub get
 
       - name: Flutter analyze
-        run: flutter analyze
+        run: flutter analyze --fatal-infos
 
       - name: Flutter test
         run: flutter test
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock', 'pubspec.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
 
       - name: Install CocoaPods
         run: |
@@ -117,4 +143,4 @@ jobs:
       - name: Unsigned build notice
         if: steps.signing.outputs.enabled != 'true'
         run: |
-          echo "::notice::Signing secrets not set — built unsigned only. Follow docs/SETUP-SIGNING.md for an installable IPA."
+          echo "::notice::Signing secrets not set — built unsigned only. Follow docs/SETUP-SIGNING-FREE-ACCOUNT.md for an installable IPA."
