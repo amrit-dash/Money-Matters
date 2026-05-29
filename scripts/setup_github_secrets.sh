@@ -26,10 +26,7 @@ else
 fi
 
 echo ""
-echo "Signing secrets (installable IPA) must be set manually:"
-echo "  gh secret set BUILD_CERTIFICATE_BASE64 --repo ${REPO}"
-echo "  gh secret set P12_PASSWORD --repo ${REPO}"
-echo "  gh secret set BUILD_PROVISION_PROFILE_BASE64 --repo ${REPO}"
-echo "  gh secret set KEYCHAIN_PASSWORD --repo ${REPO}"
+echo "Signing secrets (installable IPA):"
+echo "  ./scripts/encode_signing_secrets.sh path/to/cert.p12 path/to/profile.mobileprovision ${REPO}"
 echo ""
-echo "See docs/SETUP-GITHUB-ACTIONS.md for exporting .p12 and .mobileprovision."
+echo "Full steps: docs/SETUP-SIGNING.md"
