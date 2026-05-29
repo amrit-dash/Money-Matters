@@ -1,0 +1,257 @@
+# Money Matters — Firebase Backend
+
+Cloud ingest queue for iOS Shortcuts SMS handoff. Shortcuts POST financial SMS to `ingestSms`; the Flutter app drains `raw_ingests` and processes `parse_jobs`.
+
+## Prerequisites
+
+- Node.js 20+
+- [Firebase CLI](https://firebase.google.com/docs/cli): `npm install -g firebase-tools` or use `npx firebase-tools@latest`
+- A Firebase project with **Authentication**, **Firestore**, **Cloud Functions**, and **Cloud Messaging** enabled
+
+## One-time setup
+
+### 1. Create / select Firebase project
+
+1. Create a project at [Firebase Console](https://console.firebase.google.com/) (or use an existing one).
+2. Enable **Email/Password** auth (Authentication → Sign-in method).
+3. Create a **Firestore** database (production mode; rules deploy from this repo).
+4. Upgrade to **Blaze** plan (required for Cloud Functions outbound networking).
+
+### 2. Configure project ID
+
+Active project: **`money-matters-amrit`** (see `.firebaserc`).
+
+```bash
+firebase use money-matters-amrit
+```
+
+### 3. Install dependencies and build
+
+```bash
+cd firebase
+npm run ci      # installs functions/ dependencies
+npm run build
+```
+
+### 4. Deploy
+
+```bash
+# Rules + indexes + functions
+firebase deploy
+
+# Or separately:
+npm run deploy:rules
+npm run deploy:functions
+```
+
+After deploy, note the function URL (region `asia-south1`):
+
+```
+https://asia-south1-YOUR_PROJECT_ID.cloudfunctions.net/ingestSms
+```
+
+Copy this URL into Shortcuts as `INGEST_URL` (see `docs/shortcuts/setup.md`):
+
+```
+https://asia-south1-money-matters-amrit.cloudfunctions.net/ingestSms
+```
+
+### Deploy failed with `iam.serviceaccounts.actAs` (403)
+
+If `firebase deploy` fails creating `ingestSms` in `asia-south1`:
+
+1. Open [Google Cloud Console IAM](https://console.cloud.google.com/iam-admin/iam?project=money-matters-amrit).
+2. Find your Google account (the one used for `firebase login`).
+3. Ensure roles include **Service Account User** (`roles/iam.serviceAccountUser`) and **Cloud Functions Admin** (or **Editor** on the project for personal use).
+4. Retry:
+
+   ```bash
+   cd firebase && firebase deploy --only functions:ingestSms,firestore:rules
+   ```
+
+Alternatively: Firebase Console → **Functions** → grant permissions when prompted after first deploy attempt.
+
+## Environment variables
+
+The Cloud Function uses the **Firebase Admin SDK** with default application credentials — no extra env vars are required at runtime.
+
+| Variable / config | Where | Notes |
+|-------------------|-------|-------|
+| Firebase project ID | `.firebaserc` | `money-matters-amrit` |
+| `INGEST_URL` | Shortcuts + app onboarding | Function URL from deploy output |
+| Device ingest token | Keychain + Shortcuts | Created by app onboarding; stored as `sha256` in Firestore |
+| `deviceId` | App onboarding | UUID sent in POST body; must match `device_tokens` doc ID |
+
+### Seeding a device token (manual test)
+
+Before Shortcuts can POST, onboarding (Stream D) creates:
+
+```
+users/{uid}/device_tokens/{deviceId}
+  tokenHash: sha256("<raw-secret>")
+  createdAt: <timestamp>
+  label: "iPhone"
+```
+
+For manual curl testing, create this document in Firestore Console:
+
+```javascript
+// tokenHash = sha256 of the raw secret you will send as Bearer
+// Example: echo -n "test-secret-32bytes-minimum!!" | shasum -a 256
+{
+  "tokenHash": "<sha256-hex>",
+  "createdAt": "<Firestore timestamp>",
+  "label": "curl-test"
+}
+```
+
+## Local emulators (optional)
+
+```bash
+cd firebase
+npm run emulators
+```
+
+Emulator UI: http://localhost:4000
+
+Point curl at `http://127.0.0.1:5001/YOUR_PROJECT_ID/asia-south1/ingestSms` when using the functions emulator.
+
+## API: `ingestSms`
+
+**POST** `https://asia-south1-<project>.cloudfunctions.net/ingestSms`
+
+### Headers
+
+| Header | Value |
+|--------|-------|
+| `Authorization` | `Bearer <deviceIngestToken>` |
+| `Content-Type` | `application/json` |
+
+### Body
+
+```json
+{
+  "body": "Rs.500 debited from A/c **1234 on 29-05-26...",
+  "sender": "VK-HDFCBK",
+  "receivedAt": "2026-05-29T14:32:00+05:30",
+  "deviceId": "uuid-from-app-onboarding",
+  "source": "shortcuts-automation-v1",
+  "batchHint": null
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `body` | yes | Raw SMS text |
+| `sender` | yes | Sender ID / short code |
+| `receivedAt` | yes | ISO8601; used for idempotency minute bucket |
+| `deviceId` | yes | Must match registered `device_tokens` doc |
+| `source` | yes | `shortcuts-automation-v1` or `manual-paste` |
+| `batchHint` | no | MVP: always `null`; reserved for future |
+
+### Idempotency
+
+```
+idempotencyKey = sha256(normalize(sender) + "|" + normalize(body) + "|" + floor_to_minute(receivedAt))
+```
+
+- `normalize(sender)` = trim + lowercase
+- `normalize(body)` = trim + collapse whitespace
+- `floor_to_minute(receivedAt)` = ISO8601 UTC floored to minute
+
+### Responses
+
+| Status | Body | Meaning |
+|--------|------|---------|
+| `201` | `{ "ok": true, "duplicate": false, "id": "<key>" }` | New ingest + pending parse job |
+| `200` | `{ "ok": true, "duplicate": true, "id": "<key>" }` | Exact retry deduplicated |
+| `401` | `{ "ok": false, "error": "..." }` | Invalid/missing Bearer token |
+| `400` | `{ "ok": false, "error": "..." }` | Validation error |
+| `500` | `{ "ok": false, "error": "Internal server error" }` | Server error |
+
+### curl example
+
+Replace placeholders with your values:
+
+```bash
+export PROJECT_ID="YOUR_FIREBASE_PROJECT_ID"
+export INGEST_URL="https://asia-south1-${PROJECT_ID}.cloudfunctions.net/ingestSms"
+export INGEST_TOKEN="your-raw-device-token-from-onboarding"
+export DEVICE_ID="your-device-uuid"
+
+curl -sS -X POST "$INGEST_URL" \
+  -H "Authorization: Bearer ${INGEST_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "body": "Rs.899 debited from A/c **4567 at ZUDIO on 29-05-26",
+    "sender": "VK-HDFCBK",
+    "receivedAt": "2026-05-29T14:32:00+05:30",
+    "deviceId": "'"${DEVICE_ID}"'",
+    "source": "shortcuts-automation-v1",
+    "batchHint": null
+  }'
+```
+
+Expected first call: HTTP 201. Repeat the same payload: HTTP 200 with `"duplicate": true`.
+
+Verify in Firestore:
+
+- `users/{uid}/raw_ingests/{idempotencyKey}`
+- `users/{uid}/parse_jobs/{autoId}` with `status: "pending"`
+
+## Firestore security rules
+
+All paths under `users/{uid}/**` allow read/write only when `request.auth.uid == uid`.
+
+Shortcuts never write Firestore directly — only the Cloud Function (Admin SDK) creates `raw_ingests` and `parse_jobs`.
+
+## FCM (MVP stub)
+
+FCM is **not** used for SMS ingestion. It delivers human-in-the-loop prompts only (unmatched payment source, ambiguous category).
+
+Planned data message shape (implemented in Flutter Stream D; send from a future function or Admin script):
+
+```json
+{
+  "type": "transaction_review",
+  "transactionId": "<firestore-doc-id>",
+  "reason": "unmatched_source | ambiguous_category",
+  "title": "Review transaction",
+  "body": "Tap to link payment source or set category."
+}
+```
+
+Topic or per-device token registration happens during app onboarding. No FCM Cloud Function is deployed in MVP — document hooks only.
+
+## Collections (reference)
+
+| Path | Doc ID | Purpose |
+|------|--------|---------|
+| `users/{uid}` | uid | Profile |
+| `users/{uid}/device_tokens/{deviceId}` | deviceId | Bearer token hash |
+| `users/{uid}/raw_ingests/{idempotencyKey}` | idempotency key | Raw SMS audit log |
+| `users/{uid}/parse_jobs/{auto}` | auto | Parse queue (`pending` → `done`/`failed`) |
+| `users/{uid}/transactions/{auto}` | auto | Parsed ledger rows (app-written) |
+| `users/{uid}/payment_sources/{auto}` | auto | Banks/cards (app-written) |
+| `users/{uid}/categories/{auto}` | auto | Categories (app-written) |
+
+## TODOs for project owner
+
+- [ ] Set Firebase project ID in `.firebaserc`
+- [ ] Run `firebase login` if not authenticated
+- [ ] Deploy: `cd firebase && npm ci && npm run build && firebase deploy`
+- [ ] Copy `INGEST_URL` to Shortcuts automation
+- [ ] Complete app onboarding to generate device token + `deviceId`
+- [ ] Run `flutterfire configure` at repo root (Flutter streams; not part of this folder)
+- [ ] Download `GoogleService-Info.plist` → `ios/Runner/` (not committed)
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm ci` | Install function dependencies |
+| `npm run build` | Compile TypeScript |
+| `npm run deploy` | Deploy all Firebase resources |
+| `npm run deploy:rules` | Firestore rules + indexes only |
+| `npm run deploy:functions` | Cloud Functions only |
+| `npm run emulators` | Local functions + Firestore emulators |

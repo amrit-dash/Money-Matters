@@ -1,0 +1,17 @@
+{
+  "name": "money-matters-firebase",
+  "private": true,
+  "description": "Firebase backend for Money Matters SMS ingest",
+  "scripts": {
+    "build": "npm run build --prefix functions",
+    "ci": "npm ci --prefix functions",
+    "deploy": "firebase deploy",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
+    "deploy:functions": "firebase deploy --only functions",
+    "emulators": "firebase emulators:start --only functions,firestore",
+    "lint": "npm run lint --prefix functions"
+  },
+  "engines": {
+    "node": "20"
+  }
+}
