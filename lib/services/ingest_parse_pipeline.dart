@@ -8,6 +8,8 @@ import '../models/payment_source.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart';
 import '../parse/parse_service.dart';
+import '../services/category_service.dart';
+import '../services/payment_source_service.dart';
 
 /// Result of processing local unprocessed ingests through the rules parser.
 class ParsePipelineResult {
@@ -30,25 +32,31 @@ class IngestParsePipeline {
     required LocalDatabase localDatabase,
     required AuthService authService,
     ParseService? parseService,
+    PaymentSourceService? paymentSourceService,
+    CategoryService? categoryService,
     FirebaseFirestore? firestore,
   })  : _localDatabase = localDatabase,
         _authService = authService,
         _parseService = parseService ?? ParseService(),
+        _paymentSourceService = paymentSourceService,
+        _categoryService = categoryService ?? CategoryService(),
         _firestore = firestore ?? FirebaseFirestore.instance;
 
   final LocalDatabase _localDatabase;
   final AuthService _authService;
   final ParseService _parseService;
+  final PaymentSourceService? _paymentSourceService;
+  final CategoryService _categoryService;
   final FirebaseFirestore _firestore;
   final _uuid = const Uuid();
 
-  static const _rulesVersion = 'mvp-1';
+  static const _rulesVersion = 'rules-v1';
   static const _parseJobsCollection = 'parse_jobs';
   static const _transactionsCollection = 'transactions';
 
   Future<ParsePipelineResult> processPending({
-    List<PaymentSource> paymentSources = const [],
-    List<Category> categories = const [],
+    List<PaymentSource>? paymentSources,
+    List<Category>? categories,
   }) async {
     if (!_authService.isSignedIn) {
       return const ParsePipelineResult(
@@ -58,6 +66,11 @@ class IngestParsePipeline {
         failed: 0,
       );
     }
+
+    final sources = paymentSources ??
+        await _paymentSourceService?.loadAll() ??
+        const <PaymentSource>[];
+    final cats = categories ?? await _categoryService.loadCategories();
 
     final rows = await _localDatabase.getUnprocessedRawIngests();
     var processed = 0;
@@ -70,8 +83,8 @@ class IngestParsePipeline {
         final ingest = _rawIngestFromRow(row);
         final outcome = await _parseService.parse(
           ingest,
-          paymentSources: paymentSources,
-          categories: categories,
+          paymentSources: sources,
+          categories: cats,
         );
 
         if (outcome.transaction != null) {

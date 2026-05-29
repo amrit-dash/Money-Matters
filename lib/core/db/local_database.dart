@@ -174,6 +174,62 @@ class LocalDatabase {
     return db.query('transactions', orderBy: 'timestamp DESC');
   }
 
+  Future<List<Map<String, dynamic>>> getTransactionsBetween(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final db = await database;
+    return db.query(
+      'transactions',
+      where: 'timestamp >= ? AND timestamp <= ?',
+      whereArgs: [
+        start.toUtc().toIso8601String(),
+        end.toUtc().toIso8601String(),
+      ],
+      orderBy: 'timestamp DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getFlaggedTransactions() async {
+    final db = await database;
+    return db.query(
+      'transactions',
+      where: 'ambiguous = 1 OR unmatched = 1',
+      orderBy: 'timestamp DESC',
+    );
+  }
+
+  Future<void> updateTransactionFlags(
+    String id, {
+    String? categoryId,
+    bool? ambiguous,
+    bool? unmatched,
+  }) async {
+    final db = await database;
+    final updates = <String, Object?>{};
+    if (categoryId != null) updates['category_id'] = categoryId;
+    if (ambiguous != null) updates['ambiguous'] = ambiguous ? 1 : 0;
+    if (unmatched != null) updates['unmatched'] = unmatched ? 1 : 0;
+    if (updates.isEmpty) return;
+    await db.update(
+      'transactions',
+      updates,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<DateTime?> getLatestRawIngestTime() async {
+    final db = await database;
+    final rows = await db.query(
+      'raw_ingests',
+      orderBy: 'received_at DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return DateTime.tryParse(rows.first['received_at'] as String? ?? '');
+  }
+
   Future<void> close() async {
     await _db?.close();
     _db = null;

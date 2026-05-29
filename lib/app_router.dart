@@ -5,6 +5,7 @@ import 'features/onboarding/connect_sms_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/recovery/recovery_screen.dart';
 import 'features/review/review_screen.dart';
+import 'services/app_services.dart';
 
 /// Named routes for Money Matters.
 class AppRoutes {
@@ -22,32 +23,50 @@ class AppRouter {
       case AppRoutes.onboarding:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const OnboardingFlow(),
+          builder: (ctx) => OnboardingFlow(
+            authService: AppScope.of(ctx).authService,
+            paymentSourceService: AppScope.of(ctx).paymentSourceService,
+          ),
         );
       case AppRoutes.connectSms:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const ConnectSmsScreen(),
+          builder: (ctx) => ConnectSmsScreen(
+            authService: AppScope.of(ctx).authService,
+          ),
         );
       case AppRoutes.dashboard:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const DashboardScreen(),
+          builder: (ctx) {
+            final services = AppScope.of(ctx);
+            return DashboardScreen(
+              repository: services.dashboardRepository,
+              queueDrain: services.queueDrain,
+            );
+          },
         );
       case AppRoutes.review:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const ReviewScreen(),
+          builder: (ctx) => ReviewScreen(
+            repository: AppScope.of(ctx).reviewRepository,
+          ),
         );
       case AppRoutes.recovery:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const RecoveryScreen(),
+          builder: (ctx) => RecoveryScreen(
+            repository: AppScope.of(ctx).recoveryRepository,
+          ),
         );
       default:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const OnboardingFlow(),
+          builder: (ctx) => OnboardingFlow(
+            authService: AppScope.of(ctx).authService,
+            paymentSourceService: AppScope.of(ctx).paymentSourceService,
+          ),
         );
     }
   }
@@ -59,7 +78,6 @@ class AppRouter {
       case 'recovery':
         return AppRoutes.recovery;
       case 'ingest':
-        // URL ingest handled by ingest layer; optionally refresh dashboard.
         return AppRoutes.dashboard;
       default:
         return null;

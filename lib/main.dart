@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'app_router.dart';
 import 'core/auth/auth_service.dart';
 import 'core/config/firebase_options.dart';
-import 'features/setup/firebase_setup_screen.dart';
 import 'core/db/local_database.dart';
+import 'features/setup/firebase_setup_screen.dart';
 import 'ingest/ingest_queue_drain.dart';
 import 'ingest/ingest_repository.dart';
 import 'ingest/url_ingest_handler.dart';
+import 'services/app_services.dart';
+import 'services/category_service.dart';
 import 'services/ingest_parse_pipeline.dart';
+import 'services/payment_source_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,9 +27,13 @@ Future<void> main() async {
   );
   final authService = AuthService();
   final localDatabase = LocalDatabase();
+  final paymentSourceService = PaymentSourceService(authService: authService);
+  final categoryService = CategoryService();
   final parsePipeline = IngestParsePipeline(
     localDatabase: localDatabase,
     authService: authService,
+    paymentSourceService: paymentSourceService,
+    categoryService: categoryService,
   );
   final ingestRepository = IngestRepository(
     authService: authService,
@@ -38,12 +45,24 @@ Future<void> main() async {
     parsePipeline: parsePipeline,
   );
   final urlIngestHandler = UrlIngestHandler(queueDrain: queueDrain);
+  final appServices = AppServices(
+    authService: authService,
+    localDatabase: localDatabase,
+    ingestRepository: ingestRepository,
+    queueDrain: queueDrain,
+    parsePipeline: parsePipeline,
+    paymentSourceService: paymentSourceService,
+    categoryService: categoryService,
+  );
 
   runApp(
-    MoneyMattersApp(
-      authService: authService,
-      queueDrain: queueDrain,
-      urlIngestHandler: urlIngestHandler,
+    AppScope(
+      services: appServices,
+      child: MoneyMattersApp(
+        authService: authService,
+        queueDrain: queueDrain,
+        urlIngestHandler: urlIngestHandler,
+      ),
     ),
   );
 }
@@ -102,6 +121,15 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
+        cardTheme: CardThemeData(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: ColorScheme.fromSeed(seedColor: Colors.teal).outlineVariant,
+            ),
+          ),
+        ),
       ),
       initialRoute: initialRoute,
       onGenerateRoute: AppRouter.onGenerateRoute,

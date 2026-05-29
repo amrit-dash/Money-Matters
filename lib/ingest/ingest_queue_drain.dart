@@ -23,11 +23,13 @@ class IngestQueueDrain {
 
   bool _isDraining = false;
   IngestDrainResult? _lastResult;
+  DateTime? _lastSyncAt;
 
   /// Emits after each successful drain cycle.
   Stream<IngestDrainResult> get onDrained => _drainEvents.stream;
 
   IngestDrainResult? get lastResult => _lastResult;
+  DateTime? get lastSyncAt => _lastSyncAt;
 
   /// Drains pending Firestore ingests into SQLite when user is signed in.
   ///
@@ -45,6 +47,7 @@ class IngestQueueDrain {
     try {
       final result = await _repository.drainPending();
       _lastResult = result;
+      _lastSyncAt = DateTime.now();
       if (_parsePipeline != null) {
         await _parsePipeline.processPending();
       }
