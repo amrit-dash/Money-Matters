@@ -53,8 +53,10 @@ https://asia-south1-YOUR_PROJECT_ID.cloudfunctions.net/ingestSms
 Copy this URL into Shortcuts as `INGEST_URL` (see `docs/shortcuts/setup.md`):
 
 ```
-https://asia-south1-money-matters-amrit.cloudfunctions.net/ingestSms
+https://ingestsms-ajirc5tjmq-el.a.run.app
 ```
+
+(Also reachable via `https://asia-south1-money-matters-amrit.cloudfunctions.net/ingestSms` if shown in Console.)
 
 ### Deploy failed with `iam.serviceaccounts.actAs` (403)
 

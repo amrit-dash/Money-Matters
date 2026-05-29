@@ -15,7 +15,7 @@ class OnboardingState extends ChangeNotifier {
 
   String deviceId = '';
   String ingestToken = '';
-  String ingestUrl = 'https://REGION-PROJECT.cloudfunctions.net/ingestSms';
+  String ingestUrl = 'https://ingestsms-ajirc5tjmq-el.a.run.app';
 
   final List<PaymentSource> paymentSources = [];
 
