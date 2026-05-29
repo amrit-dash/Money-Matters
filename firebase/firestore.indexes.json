@@ -1,13 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "device_tokens",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "tokenHash", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "parse_jobs",
       "queryScope": "COLLECTION",
       "fields": [
@@ -16,5 +9,17 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "device_tokens",
+      "fieldPath": "tokenHash",
+      "ttl": false,
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    }
+  ]
 }
