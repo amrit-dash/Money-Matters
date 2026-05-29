@@ -4,12 +4,12 @@ set -euo pipefail
 
 PROFILE="${1:?Usage: $0 path/to/profile.mobileprovision}"
 OUT="${2:-ios/ExportOptions.ci.plist}"
-BUNDLE_ID="${3:-com.amritdash.moneymatters}"
 
 PLIST_XML="$(security cms -D -i "$PROFILE")"
 TEAM_ID="$(printf '%s' "$PLIST_XML" | plutil -extract TeamIdentifier.0 raw -)"
 PROFILE_NAME="$(printf '%s' "$PLIST_XML" | plutil -extract Name raw -)"
 
+# Personal Team profiles are "Xcode managed" — export must use automatic signingStyle.
 cat > "$OUT" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -20,12 +20,7 @@ cat > "$OUT" <<EOF
 	<key>teamID</key>
 	<string>${TEAM_ID}</string>
 	<key>signingStyle</key>
-	<string>manual</string>
-	<key>provisioningProfiles</key>
-	<dict>
-		<key>${BUNDLE_ID}</key>
-		<string>${PROFILE_NAME}</string>
-	</dict>
+	<string>automatic</string>
 	<key>compileBitcode</key>
 	<false/>
 	<key>uploadBitcode</key>
@@ -40,4 +35,4 @@ cat > "$OUT" <<EOF
 </plist>
 EOF
 
-echo "Wrote ${OUT} (team=${TEAM_ID}, profile=${PROFILE_NAME})"
+echo "Wrote ${OUT} (team=${TEAM_ID}, profile=${PROFILE_NAME}, signing=automatic)"
