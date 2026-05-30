@@ -72,11 +72,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: const Text('Dashboard'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.sms_outlined),
-            tooltip: 'Connect SMS',
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.connectSms),
-          ),
-          IconButton(
             icon: const Icon(Icons.flag_outlined),
             tooltip: 'Review flagged',
             onPressed: () => Navigator.pushNamed(context, AppRoutes.review),
@@ -85,6 +80,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.sync),
             tooltip: 'Recovery',
             onPressed: () => Navigator.pushNamed(context, AppRoutes.recovery),
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'Profile',
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.profile),
           ),
         ],
       ),
@@ -198,12 +198,14 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'No transactions yet',
+            'Nothing to show yet',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(
-            'Send a test SMS via Shortcuts, or paste missed messages in Recovery.',
+            'Transactions appear after bank SMS reaches the app. '
+            'Set up the Shortcuts automation in Profile → Connect SMS, '
+            'then pull down to sync. Paste missed messages in Recovery.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,

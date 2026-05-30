@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'features/accounts/accounts_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/onboarding/connect_sms_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
+import 'features/profile/profile_screen.dart';
 import 'features/recovery/recovery_screen.dart';
 import 'features/review/review_screen.dart';
 import 'services/app_services.dart';
@@ -14,6 +16,8 @@ class AppRoutes {
   static const dashboard = '/dashboard';
   static const review = '/review';
   static const recovery = '/recovery';
+  static const profile = '/profile';
+  static const accounts = '/accounts';
 }
 
 /// Builds [MaterialApp] routes. Coordinator wires [initialRoute] from auth state.
@@ -58,6 +62,23 @@ class AppRouter {
           settings: settings,
           builder: (ctx) => RecoveryScreen(
             repository: AppScope.of(ctx).recoveryRepository,
+          ),
+        );
+      case AppRoutes.profile:
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (ctx) {
+            final services = AppScope.of(ctx);
+            return ProfileScreen(
+              authService: services.authService,
+            );
+          },
+        );
+      case AppRoutes.accounts:
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (ctx) => AccountsScreen(
+            paymentSourceService: AppScope.of(ctx).paymentSourceService,
           ),
         );
       default:

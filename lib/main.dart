@@ -102,6 +102,11 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
     widget.authService.authStateChanges.listen((user) async {
       if (user != null) {
         await widget.queueDrain.drainIfAuthenticated();
+      } else {
+        _navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          AppRoutes.onboarding,
+          (route) => false,
+        );
       }
     });
 
