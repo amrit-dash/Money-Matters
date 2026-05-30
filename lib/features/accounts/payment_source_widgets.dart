@@ -3,6 +3,8 @@ import 'package:uuid/uuid.dart';
 
 import 'package:money_matters/models/payment_source.dart';
 
+import '../../core/theme/app_theme.dart';
+
 /// Banks and cards only — wallet sources are excluded from the UI.
 List<PaymentSource> visiblePaymentSources(List<PaymentSource> sources) =>
     sources.where((s) => s.type != PaymentSourceType.wallet).toList();
@@ -35,52 +37,81 @@ class PaymentSourcesBody extends StatelessWidget {
     final cards = visible.where((s) => s.type == PaymentSourceType.card);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.page),
       children: [
-        if (introText != null) ...[
-          Text(introText!, style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 8),
-        ],
-        if (showWalletNote)
+        if (introText != null)
           Text(
-            'Banks and cards only — not wallet apps (e.g. MobiKwik). '
-            'Those SMS are matched via your bank/card sender hints.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            introText!,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
           ),
-        if (introText != null || showWalletNote) const SizedBox(height: 16),
+        if (showWalletNote) ...[
+          if (introText != null) const SizedBox(height: AppSpacing.tight),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Banks and cards only — not wallet apps. '
+                      'Wallet SMS are matched via your bank/card sender hints.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.section),
         PaymentSourceSectionHeader(
-          title: 'Banks (${banks.length})',
+          title: 'Banks',
+          count: banks.length,
           onAdd: () => _openEditor(context, PaymentSourceType.bank),
         ),
-        ...banks.map(
-          (s) => PaymentSourceTile(
-            source: s,
-            onEdit: () => _openEditor(
-              context,
-              PaymentSourceType.bank,
-              existing: s,
+        if (banks.isEmpty)
+          _EmptySectionHint(type: 'bank')
+        else
+          ...banks.map(
+            (s) => PaymentSourceTile(
+              source: s,
+              onEdit: () => _openEditor(
+                context,
+                PaymentSourceType.bank,
+                existing: s,
+              ),
+              onDelete: () => _delete(context, s),
             ),
-            onDelete: () => _delete(context, s),
           ),
-        ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.section),
         PaymentSourceSectionHeader(
-          title: 'Cards (${cards.length})',
+          title: 'Cards',
+          count: cards.length,
           onAdd: () => _openEditor(context, PaymentSourceType.card),
         ),
-        ...cards.map(
-          (s) => PaymentSourceTile(
-            source: s,
-            onEdit: () => _openEditor(
-              context,
-              PaymentSourceType.card,
-              existing: s,
+        if (cards.isEmpty)
+          _EmptySectionHint(type: 'card')
+        else
+          ...cards.map(
+            (s) => PaymentSourceTile(
+              source: s,
+              onEdit: () => _openEditor(
+                context,
+                PaymentSourceType.card,
+                existing: s,
+              ),
+              onDelete: () => _delete(context, s),
             ),
-            onDelete: () => _delete(context, s),
           ),
-        ),
       ],
     );
   }
@@ -124,28 +155,52 @@ class PaymentSourcesBody extends StatelessWidget {
   }
 }
 
+class _EmptySectionHint extends StatelessWidget {
+  const _EmptySectionHint({required this.type});
+
+  final String type;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.item),
+      child: Text(
+        'No ${type}s yet — tap + to add one.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+      ),
+    );
+  }
+}
+
 class PaymentSourceSectionHeader extends StatelessWidget {
   const PaymentSourceSectionHeader({
     super.key,
     required this.title,
+    required this.count,
     required this.onAdd,
   });
 
   final String title;
+  final int count;
   final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
-        const Spacer(),
-        IconButton(
-          onPressed: onAdd,
-          icon: const Icon(Icons.add),
-          tooltip: 'Add',
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.item),
+      child: Row(
+        children: [
+          Text('$title ($count)', style: Theme.of(context).textTheme.titleMedium),
+          const Spacer(),
+          FilledButton.tonalIcon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -165,21 +220,32 @@ class PaymentSourceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final typeLabel = source.type == PaymentSourceType.bank ? 'Bank' : 'Card';
-    return Card(
-      child: ListTile(
-        title: Text(source.name),
-        subtitle: Text(
-          '$typeLabel · **${source.last4 ?? '????'} · ${source.senderHints.join(', ')}',
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(icon: const Icon(Icons.edit), onPressed: onEdit),
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: onDelete,
-            ),
-          ],
+    final hints = source.senderHints.isEmpty
+        ? 'No sender hints'
+        : source.senderHints.join(', ');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.tight),
+      child: Card(
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          title: Text(source.name),
+          subtitle: Text('•••• ${source.last4 ?? '????'} · $typeLabel · $hints'),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: 'Edit',
+                onPressed: onEdit,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Delete',
+                onPressed: onDelete,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -253,44 +319,41 @@ class _PaymentSourceEditorState extends State<PaymentSourceEditor> {
     final action = widget.existing != null ? 'Edit' : 'Add';
     return Padding(
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+        left: AppSpacing.page,
+        right: AppSpacing.page,
+        top: AppSpacing.page,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.page,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('$action $label', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.section),
           TextField(
             controller: _nameController,
             decoration: InputDecoration(
               labelText: '$label name',
-              border: const OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.item),
           TextField(
             controller: _last4Controller,
             decoration: const InputDecoration(
               labelText: 'Last 4 digits',
-              border: OutlineInputBorder(),
             ),
             keyboardType: TextInputType.number,
             maxLength: 4,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.item),
           TextField(
             controller: _hintsController,
             decoration: const InputDecoration(
               labelText: 'Sender hints (comma-separated)',
               hintText: 'VK-HDFCBK, AD-HDFCBK',
-              border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.section),
           FilledButton(onPressed: _save, child: const Text('Save')),
         ],
       ),

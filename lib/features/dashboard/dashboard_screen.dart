@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../app_router.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
 import '../../ingest/ingest_queue_drain.dart';
 import '../../ingest/ingest_repository.dart';
 import 'dashboard_repository.dart';
@@ -95,8 +97,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: () => Navigator.pushNamed(context, AppRoutes.review),
           ),
           IconButton(
-            icon: const Icon(Icons.sync),
-            tooltip: 'Recovery',
+            icon: const Icon(Icons.inbox_outlined),
+            tooltip: 'Recovery queue',
             onPressed: () => Navigator.pushNamed(context, AppRoutes.recovery),
           ),
           IconButton(
@@ -104,14 +106,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             tooltip: 'Profile',
             onPressed: () => Navigator.pushNamed(context, AppRoutes.profile),
           ),
-        ],
-      ),
-      body: _loading
+          ],
+        ),
+        body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: () => _load(syncQueue: true),
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.page),
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
                   SegmentedButton<_PeriodMode>(
@@ -132,15 +134,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     },
                   ),
                   if (_syncMessage != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _syncMessage!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
+                    const SizedBox(height: AppSpacing.item),
+                    Card(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer
+                          .withValues(alpha: 0.4),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.sync,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _syncMessage!,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
-                  const SizedBox(height: 24),
+                  if (_rawIngestCount > 0 || _transactionCount > 0) ...[
+                    const SizedBox(height: AppSpacing.item),
+                    _PipelineSummary(
+                      synced: _rawIngestCount,
+                      parsed: _transactionCount,
+                      onOpenRecovery: () =>
+                          Navigator.pushNamed(context, AppRoutes.recovery),
+                    ),
+                  ],
+                  const SizedBox(height: AppSpacing.section),
                   if (_summary != null && _isEmpty)
                     _EmptyState(
                       rawIngestCount: _rawIngestCount,
@@ -155,29 +185,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _summary!.label,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.item),
                     _TotalCard(
                       label: 'Total spend',
                       amount: _currency.format(_summary!.totalSpend),
+                      emphasized: true,
                     ),
                     if (_summary!.totalIncome > 0) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.tight),
                       _TotalCard(
                         label: 'Income',
                         amount: _currency.format(_summary!.totalIncome),
                         muted: true,
                       ),
                     ],
-                    const SizedBox(height: 24),
-                    Text(
-                      'By category',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.section),
+                    AppSectionHeader(title: 'By category'),
                     if (_summary!.breakdown.isEmpty)
                       Text(
                         'No categorized spend in this period.',
-                        style: Theme.of(context).textTheme.bodyMedium,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
                       )
                     else
                       ..._summary!.breakdown.map(
@@ -196,6 +225,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
+class _PipelineSummary extends StatelessWidget {
+  const _PipelineSummary({
+    required this.synced,
+    required this.parsed,
+    required this.onOpenRecovery,
+  });
+
+  final int synced;
+  final int parsed;
+  final VoidCallback onOpenRecovery;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onOpenRecovery,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$synced synced · $parsed parsed',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tap to view recovery queue',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.rawIngestCount,
@@ -209,61 +289,41 @@ class _EmptyState extends StatelessWidget {
   final VoidCallback onConnectSms;
   final VoidCallback onRecovery;
 
+  String get _title {
+    if (rawIngestCount > 0 && transactionCount == 0) {
+      return 'Messages synced, nothing parsed';
+    }
+    return 'No spend in this period';
+  }
+
   String get _message {
     if (rawIngestCount > 0 && transactionCount == 0) {
-      return '$rawIngestCount message${rawIngestCount == 1 ? '' : 's'} synced, '
-          '0 transactions parsed. Messages may not be bank SMS format — '
-          'paste real debit/credit alerts in Recovery, or add payment sources '
-          'in Profile → Accounts.';
+      return '$rawIngestCount SMS stored locally but none became transactions. '
+          'Check bank SMS format in Recovery, or add payment sources in Accounts.';
     }
     if (rawIngestCount > 0) {
-      return '$rawIngestCount message${rawIngestCount == 1 ? '' : 's'} synced '
-          'but none fall in this period. Try Monthly view or pull down to sync.';
+      return '$rawIngestCount SMS synced but none fall in this period. '
+          'Try Monthly view or pull down to sync.';
     }
-    return 'Transactions appear after bank SMS reaches the app. '
-        'Set up the Shortcuts automation in Profile → Connect SMS, '
-        'then pull down to sync. Paste missed messages in Recovery.';
+    return 'Connect bank SMS via Shortcuts, then pull down to sync. '
+        'Paste missed messages in Recovery.';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Column(
-        children: [
-          Icon(
-            Icons.receipt_long_outlined,
-            size: 64,
-            color: Theme.of(context).colorScheme.outline,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            rawIngestCount > 0 && transactionCount == 0
-                ? 'Messages synced, nothing parsed'
-                : 'Nothing to show yet',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _message,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: onConnectSms,
-            icon: const Icon(Icons.sms_outlined),
-            label: const Text('Connect SMS'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: onRecovery,
-            icon: const Icon(Icons.sync),
-            label: const Text('Open Recovery'),
-          ),
-        ],
+    return AppEmptyState(
+      icon: Icons.receipt_long_outlined,
+      title: _title,
+      message: _message,
+      primaryAction: FilledButton.icon(
+        onPressed: onConnectSms,
+        icon: const Icon(Icons.sms_outlined),
+        label: const Text('Connect SMS'),
+      ),
+      secondaryAction: OutlinedButton.icon(
+        onPressed: onRecovery,
+        icon: const Icon(Icons.inbox_outlined),
+        label: const Text('Open Recovery'),
       ),
     );
   }
@@ -274,25 +334,39 @@ class _TotalCard extends StatelessWidget {
     required this.label,
     required this.amount,
     this.muted = false,
+    this.emphasized = false,
   });
 
   final String label;
   final String amount;
   final bool muted;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Card(
+      color: emphasized
+          ? scheme.primaryContainer.withValues(alpha: 0.35)
+          : null,
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: Theme.of(context).textTheme.bodyLarge),
-            const Spacer(),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 8),
             Text(
               amount,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: muted ? Theme.of(context).colorScheme.outline : null,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: muted ? scheme.outline : scheme.onSurface,
+                    fontWeight: FontWeight.w600,
                   ),
             ),
           ],
@@ -318,23 +392,47 @@ class _CategoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      padding: const EdgeInsets.only(bottom: AppSpacing.item),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text(name)),
-              Text(amount),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  Text(
+                    amount,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.tight),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: share.clamp(0, 1),
+                  minHeight: 6,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '$count transactions · ${(share * 100).toStringAsFixed(0)}%',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
             ],
           ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(value: share.clamp(0, 1)),
-          Text(
-            '$count transactions · ${(share * 100).toStringAsFixed(0)}%',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
+        ),
       ),
     );
   }

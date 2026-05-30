@@ -43,13 +43,18 @@ class LocalRecoveryRepository implements RecoveryRepository {
   @override
   Future<IngestStatus> status() async {
     final counts = await _ingestRepository.pendingCounts();
-    final pending = counts['rawIngests']! + counts['parseJobs']!;
+    final pendingMessages = counts['awaitingParse'] ?? counts['rawIngests'] ?? 0;
+    final pendingJobs = counts['parseJobs'] ?? 0;
     final lastIngest = await _db.getLatestRawIngestTime();
     return IngestStatus(
       lastSyncAt: _lastSyncAt ?? _queueDrain.lastSyncAt,
-      pendingCount: pending,
+      pendingCount: pendingMessages,
       lastIngestAt: lastIngest,
       failedParseCount: _queueDrain.lastResult?.parseResult?.failed ?? 0,
+      syncedMessageCount: await _db.countRawIngests(),
+      pendingMessageCount: pendingMessages,
+      pendingParseJobCount: pendingJobs,
+      parsedTransactionCount: await _db.countTransactions(),
     );
   }
 

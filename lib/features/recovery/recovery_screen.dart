@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../app_router.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
 import 'recovery_repository.dart';
 
 class RecoveryScreen extends StatefulWidget {
@@ -110,6 +112,11 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
     return _dateFormat.format(dt);
   }
 
+  AppStatTone _pendingTone(IngestStatus status) {
+    if (status.totalPending > 0) return AppStatTone.warning;
+    return AppStatTone.success;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,6 +125,7 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.dashboard_outlined),
+            tooltip: 'Dashboard',
             onPressed: () => Navigator.pushNamed(context, AppRoutes.dashboard),
           ),
         ],
@@ -127,34 +135,107 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
           : RefreshIndicator(
               onRefresh: _refresh,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.page),
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
-                  Text(
-                    'Ingest status',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  AppSectionHeader(
+                    title: 'Queue status',
+                    subtitle: 'Synced SMS on device vs items waiting to parse',
                   ),
-                  const SizedBox(height: 12),
-                  _StatusCard(
+                  if (_status != null) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AppStatTile(
+                            label: 'Synced SMS',
+                            value: '${_status!.syncedMessageCount}',
+                            icon: Icons.cloud_done_outlined,
+                            tone: AppStatTone.neutral,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.item),
+                        Expanded(
+                          child: AppStatTile(
+                            label: 'Pending parse',
+                            value: '${_status!.totalPending}',
+                            icon: Icons.hourglass_top_outlined,
+                            tone: _pendingTone(_status!),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.item),
+                        Expanded(
+                          child: AppStatTile(
+                            label: 'Parsed txns',
+                            value: '${_status!.parsedTransactionCount}',
+                            icon: Icons.receipt_long_outlined,
+                            tone: AppStatTone.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_status!.pendingMessageCount > 0 ||
+                        _status!.pendingParseJobCount > 0) ...[
+                      const SizedBox(height: AppSpacing.item),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Pending breakdown',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: AppSpacing.tight),
+                              if (_status!.pendingMessageCount > 0)
+                                _BreakdownRow(
+                                  label: 'Messages awaiting parse',
+                                  count: _status!.pendingMessageCount,
+                                ),
+                              if (_status!.pendingParseJobCount > 0)
+                                _BreakdownRow(
+                                  label: 'Parse jobs in queue',
+                                  count: _status!.pendingParseJobCount,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                  const SizedBox(height: AppSpacing.item),
+                  _MetaRow(
                     label: 'Last sync',
                     value: _formatTime(_status?.lastSyncAt),
                   ),
-                  _StatusCard(
+                  const SizedBox(height: AppSpacing.tight),
+                  _MetaRow(
                     label: 'Last ingest',
                     value: _formatTime(_status?.lastIngestAt),
                   ),
-                  _StatusCard(
-                    label: 'Pending in queue',
-                    value: '${_status?.pendingCount ?? 0}',
-                    highlight: (_status?.pendingCount ?? 0) > 0,
-                  ),
-                  if ((_status?.failedParseCount ?? 0) > 0)
-                    _StatusCard(
-                      label: 'Failed parses (last sync)',
-                      value: '${_status!.failedParseCount}',
-                      highlight: true,
+                  if ((_status?.failedParseCount ?? 0) > 0) ...[
+                    const SizedBox(height: AppSpacing.item),
+                    Card(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .errorContainer
+                          .withValues(alpha: 0.35),
+                      child: ListTile(
+                        leading: Icon(
+                          Icons.error_outline,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        title: Text(
+                          '${_status!.failedParseCount} parse(s) failed on last sync',
+                        ),
+                        subtitle: const Text(
+                          'Check SMS format or payment source hints',
+                        ),
+                      ),
                     ),
+                  ],
                   if (_error != null) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.item),
                     Text(
                       _error!,
                       style: TextStyle(
@@ -162,34 +243,27 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.section),
                   FilledButton.icon(
                     onPressed: _loading ? null : _syncNow,
-                    icon: const Icon(Icons.cloud_download),
-                    label: const Text('Drain queue now'),
+                    icon: const Icon(Icons.sync),
+                    label: const Text('Sync and parse now'),
                   ),
-                  const Divider(height: 32),
-                  Text(
-                    'Multi-paste recovery',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  const SizedBox(height: AppSpacing.section),
+                  AppSectionHeader(
+                    title: 'Paste missed SMS',
+                    subtitle: 'Separate messages with a blank line',
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Copy SMS from Messages search and paste below. Separate messages with a blank line.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
                   TextField(
                     controller: _pasteController,
-                    maxLines: 10,
+                    maxLines: 8,
                     decoration: const InputDecoration(
                       hintText:
                           'Rs.500 debited from A/c **1234...\n\nRs.899 spent on card **4567...',
-                      border: OutlineInputBorder(),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  FilledButton(
+                  const SizedBox(height: AppSpacing.item),
+                  FilledButton.tonal(
                     onPressed: _submitting ? null : _submitPaste,
                     child: _submitting
                         ? const SizedBox(
@@ -200,17 +274,20 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                         : const Text('Submit pasted SMS'),
                   ),
                   if (_lastSubmitMessage != null) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.tight),
                     Text(
                       _lastSubmitMessage!,
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  OutlinedButton(
+                  const SizedBox(height: AppSpacing.section),
+                  OutlinedButton.icon(
                     onPressed: () =>
                         Navigator.pushNamed(context, AppRoutes.connectSms),
-                    child: const Text('Connect SMS setup'),
+                    icon: const Icon(Icons.sms_outlined),
+                    label: const Text('SMS setup guide'),
                   ),
                 ],
               ),
@@ -219,30 +296,48 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
   }
 }
 
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({
-    required this.label,
-    required this.value,
-    this.highlight = false,
-  });
+class _BreakdownRow extends StatelessWidget {
+  const _BreakdownRow({required this.label, required this.count});
 
   final String label;
-  final String value;
-  final bool highlight;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: highlight
-          ? Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3)
-          : null,
-      child: ListTile(
-        title: Text(label),
-        trailing: Text(
-          value,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          AppStatusChip(
+            label: '$count',
+            tone: AppStatTone.warning,
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const Spacer(),
+        Text(value, style: Theme.of(context).textTheme.bodyMedium),
+      ],
     );
   }
 }

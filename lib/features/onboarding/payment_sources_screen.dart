@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../accounts/payment_source_widgets.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
 import 'onboarding_state.dart';
 import '../../services/payment_source_service.dart';
 
@@ -25,17 +27,29 @@ class PaymentSourcesScreen extends StatelessWidget {
         builder: (context, _) {
           return Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.page,
+                  AppSpacing.page,
+                  AppSpacing.page,
+                  0,
+                ),
+                child: const OnboardingStepIndicator(
+                  currentStep: 1,
+                  totalSteps: 3,
+                  labels: ['Sign in', 'Accounts', 'Connect SMS'],
+                ),
+              ),
               Expanded(
                 child: PaymentSourcesBody(
                   sources: state.paymentSources,
                   onSourcesChanged: state.setPaymentSources,
                   introText:
-                      'Add at least one bank or card that sends you debit/credit SMS. '
-                      'You can manage them later in Profile → Accounts.',
+                      'Add at least one bank or card that sends debit/credit SMS.',
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.page),
                 child: FilledButton(
                   onPressed: state.paymentSourcesComplete
                       ? () async {

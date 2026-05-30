@@ -51,28 +51,63 @@ class IngestQueueDrain {
     }
   }
 
+  static const _maxDrainCycles = 10;
+
   Future<IngestDrainResult?> _runDrainCycle() async {
-    final drainResult = await _repository.drainPending();
+    var rawIngestsSynced = 0;
+    var parseJobsSynced = 0;
+    var transactionsSynced = 0;
     ParsePipelineResult? parseResult;
-    if (_parsePipeline != null) {
-      parseResult = await _parsePipeline.processPending();
+
+    for (var cycle = 0; cycle < _maxDrainCycles; cycle++) {
+      final drainResult = await _repository.drainPending();
+      rawIngestsSynced += drainResult.rawIngestsSynced;
+      parseJobsSynced += drainResult.parseJobsSynced;
+      transactionsSynced += drainResult.transactionsSynced;
+
+      if (_parsePipeline != null) {
+        parseResult = _mergeParseResults(
+          parseResult,
+          await _parsePipeline.processPending(),
+        );
+      }
+
+      final pending = await _repository.pendingCounts();
+      final awaitingParse = pending['awaitingParse'] ?? 0;
+      if (drainResult.totalSynced == 0 && awaitingParse == 0) {
+        break;
+      }
     }
 
     final result = IngestDrainResult(
-      rawIngestsSynced: drainResult.rawIngestsSynced,
-      parseJobsSynced: drainResult.parseJobsSynced,
-      transactionsSynced: drainResult.transactionsSynced,
+      rawIngestsSynced: rawIngestsSynced,
+      parseJobsSynced: parseJobsSynced,
+      transactionsSynced: transactionsSynced,
       parseResult: parseResult,
     );
     _lastResult = result;
     _lastSyncAt = DateTime.now();
 
     if (result.totalSynced > 0 ||
-        result.transactionsParsed > 0 ||
+        (parseResult?.processed ?? 0) > 0 ||
         (parseResult?.failed ?? 0) > 0) {
       _drainEvents.add(result);
     }
     return result;
+  }
+
+  ParsePipelineResult _mergeParseResults(
+    ParsePipelineResult? previous,
+    ParsePipelineResult current,
+  ) {
+    if (previous == null) return current;
+    return ParsePipelineResult(
+      processed: previous.processed + current.processed,
+      transactionsCreated:
+          previous.transactionsCreated + current.transactionsCreated,
+      skipped: previous.skipped + current.skipped,
+      failed: previous.failed + current.failed,
+    );
   }
 
   /// Returns combined local pending counts for status UI.

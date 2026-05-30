@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
 import 'onboarding_state.dart';
 
 class ShortcutsSetupScreen extends StatefulWidget {
@@ -29,10 +31,10 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
 
   static const _checklistItems = [
     'Message automation: Run Immediately + keyword (e.g. debited)',
-    'Use Shortcut Input (triggering SMS) for body and sender — see setup guide',
-    'POST via Get Contents of URL (inline automation or library shortcut)',
-    'If Run Shortcut: set Input to Shortcut Input so the SMS is passed through',
-    'Optional: Shortcut B — Sync now (moneymatters://recovery)',
+    'Use Shortcut Input for SMS body and sender',
+    'POST via Get Contents of URL',
+    'If Run Shortcut: pass Shortcut Input through',
+    'Optional: Sync shortcut (moneymatters://recovery)',
   ];
 
   final Set<int> _checkedSteps = {};
@@ -110,22 +112,31 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
         listenable: widget.state,
         builder: (context, _) {
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.page),
             children: [
-              Text(
-                'Shortcuts automations POST each financial SMS while the app is closed.',
-                style: Theme.of(context).textTheme.bodyMedium,
+              if (widget.showFinishOnboarding)
+                const OnboardingStepIndicator(
+                  currentStep: 2,
+                  totalSteps: 3,
+                  labels: ['Sign in', 'Accounts', 'Connect SMS'],
+                ),
+              if (widget.showFinishOnboarding)
+                const SizedBox(height: AppSpacing.section),
+              AppSectionHeader(
+                title: 'Shortcuts automation',
+                subtitle:
+                    'POST each financial SMS to Money Matters while the app is closed',
               ),
-              const SizedBox(height: 16),
               if (widget.state.deviceTokenSynced)
                 Card(
-                  color: Theme.of(context).colorScheme.primaryContainer,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withValues(alpha: 0.45),
                   child: const ListTile(
                     leading: Icon(Icons.check_circle_outline),
-                    title: Text('Device token synced to Firebase'),
-                    subtitle: Text(
-                      'Bearer token registered — safe to copy into Shortcuts.',
-                    ),
+                    title: Text('Device token synced'),
+                    subtitle: Text('Safe to copy credentials into Shortcuts'),
                   ),
                 )
               else if (widget.state.deviceTokenSyncError != null)
@@ -137,7 +148,8 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
                     subtitle: Text(widget.state.deviceTokenSyncError!),
                   ),
                 ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.section),
+              AppSectionHeader(title: 'Copy into Shortcuts'),
               _CopyableField(
                 label: 'Ingest URL',
                 value: _urlController.text.trim(),
@@ -146,54 +158,52 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
                   controller: _urlController,
                   decoration: const InputDecoration(
                     labelText: 'Ingest URL',
-                    border: OutlineInputBorder(),
                   ),
                   onChanged: widget.state.setIngestUrl,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.item),
               _CopyableField(
                 label: 'Bearer token',
                 value: widget.state.ingestToken,
                 onCopy: () => _copyField('Bearer token', widget.state.ingestToken),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.item),
               _CopyableField(
                 label: 'Device ID',
                 value: widget.state.deviceId,
                 onCopy: () => _copyField('Device ID', widget.state.deviceId),
               ),
-              const Divider(height: 32),
-              Text('Setup checklist', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              ...List.generate(_checklistItems.length, (i) {
-                return CheckboxListTile(
-                  value: _checkedSteps.contains(i),
-                  onChanged: (v) {
-                    setState(() {
-                      if (v == true) {
-                        _checkedSteps.add(i);
-                      } else {
-                        _checkedSteps.remove(i);
-                      }
-                      widget.state.markChecklistComplete(
-                        _checkedSteps.length == _checklistItems.length,
-                      );
-                    });
-                  },
-                  title: Text(_checklistItems[i]),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  dense: true,
-                );
-              }),
-              const Divider(height: 32),
-              Text('Health check', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Text(
-                'Send a test POST or confirm you received a test SMS in the queue.',
-                style: Theme.of(context).textTheme.bodySmall,
+              const SizedBox(height: AppSpacing.section),
+              AppSectionHeader(title: 'Setup checklist'),
+              Card(
+                child: Column(
+                  children: List.generate(_checklistItems.length, (i) {
+                    return CheckboxListTile(
+                      value: _checkedSteps.contains(i),
+                      onChanged: (v) {
+                        setState(() {
+                          if (v == true) {
+                            _checkedSteps.add(i);
+                          } else {
+                            _checkedSteps.remove(i);
+                          }
+                          widget.state.markChecklistComplete(
+                            _checkedSteps.length == _checklistItems.length,
+                          );
+                        });
+                      },
+                      title: Text(_checklistItems[i]),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    );
+                  }),
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.section),
+              AppSectionHeader(
+                title: 'Health check',
+                subtitle: 'Send a test POST or confirm manually',
+              ),
               Row(
                 children: [
                   Expanded(
@@ -208,9 +218,9 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
                           : const Text('Test POST'),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.item),
                   Expanded(
-                    child: FilledButton(
+                    child: FilledButton.tonal(
                       onPressed: widget.state.confirmHealthCheckManual,
                       child: const Text('Manual confirm'),
                     ),
@@ -218,29 +228,26 @@ class _ShortcutsSetupScreenState extends State<ShortcutsSetupScreen> {
                 ],
               ),
               if (_testResult != null) ...[
-                const SizedBox(height: 8),
-                Text(_testResult!, style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: AppSpacing.tight),
+                Text(
+                  _testResult!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
               ],
               if (widget.state.healthCheckPassed)
-                const ListTile(
-                  leading: Icon(Icons.check_circle, color: Colors.green),
-                  title: Text('Health check passed'),
+                Card(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withValues(alpha: 0.35),
+                  child: const ListTile(
+                    leading: Icon(Icons.check_circle_outline),
+                    title: Text('Health check passed'),
+                  ),
                 ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  widget.state.skipHealthCheck();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Skipped — automations may not be working. Re-check in Recovery.',
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('Skip with warning'),
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.section),
               if (widget.showFinishOnboarding)
                 FilledButton(
                   onPressed: widget.state.shortcutsGateSatisfied &&

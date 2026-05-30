@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:money_matters/models/category.dart';
 import 'package:money_matters/models/transaction.dart';
 
+import '../../core/theme/app_theme.dart';
+
 class RelabelResult {
   const RelabelResult({
     required this.categoryId,
@@ -42,27 +44,28 @@ class _RelabelSheetState extends State<RelabelSheet> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+        left: AppSpacing.page,
+        right: AppSpacing.page,
+        top: AppSpacing.page,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.page,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('Relabel', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.tight),
           Text(
             widget.transaction.merchant ?? 'Unknown merchant',
-            style: Theme.of(context).textTheme.bodyMedium,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.section),
           DropdownButtonFormField<String>(
             initialValue: _selectedCategoryId,
             decoration: const InputDecoration(
               labelText: 'Category',
-              border: OutlineInputBorder(),
             ),
             items: widget.categories
                 .map(

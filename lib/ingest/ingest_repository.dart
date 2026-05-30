@@ -29,18 +29,24 @@ class IngestDrainResult {
   /// User-facing summary after drain + local parse.
   String formatSyncMessage() {
     final parsed = transactionsParsed;
+    final processed = parseResult?.processed ?? 0;
     final failed = parseResult?.failed ?? 0;
-    if (totalSynced == 0 && parsed == 0 && failed == 0) {
+    if (totalSynced == 0 && processed == 0 && failed == 0) {
       return 'Already up to date';
     }
     final parts = <String>[];
-    if (totalSynced > 0) {
-      parts.add('Synced $totalSynced item(s)');
+    if (rawIngestsSynced > 0) {
+      parts.add('Downloaded $rawIngestsSynced SMS from cloud');
+    } else if (parseJobsSynced > 0 || transactionsSynced > 0) {
+      parts.add('Updated local mirror');
+    }
+    if (processed > 0) {
+      parts.add('processed $processed on device');
     }
     if (parsed > 0) {
-      parts.add('parsed $parsed transaction(s)');
-    } else if (totalSynced > 0) {
-      parts.add('0 transactions parsed');
+      parts.add('$parsed transaction(s) created');
+    } else if (processed > 0) {
+      parts.add('0 transactions matched');
     }
     if (failed > 0) {
       parts.add('$failed parse(s) failed');
@@ -111,7 +117,12 @@ class IngestRepository {
     var count = 0;
     for (final doc in snapshot.docs) {
       final ingest = _rawIngestFromFirestore(doc.id, doc.data());
-      await _localDatabase.upsertRawIngest(_rawIngestToSqlite(ingest, syncedAt));
+      final row = _rawIngestToSqlite(ingest, syncedAt);
+      final existing = await _localDatabase.getRawIngest(ingest.id);
+      if (existing?['processed_at'] != null) {
+        row['processed_at'] = existing!['processed_at'];
+      }
+      await _localDatabase.upsertRawIngest(row);
       count++;
     }
     return count;
@@ -127,7 +138,15 @@ class IngestRepository {
     var count = 0;
     for (final doc in snapshot.docs) {
       final job = _parseJobFromFirestore(doc.id, doc.data());
-      await _localDatabase.upsertParseJob(_parseJobToSqlite(job, syncedAt));
+      final row = _parseJobToSqlite(job, syncedAt);
+      final existing = await _localDatabase.getParseJob(job.id);
+      final existingStatus = existing?['status'] as String?;
+      if (existingStatus != null && existingStatus != _pendingStatus) {
+        row['status'] = existingStatus;
+        row['error'] = existing!['error'];
+        row['rules_version'] = existing['rules_version'];
+      }
+      await _localDatabase.upsertParseJob(row);
       count++;
     }
     return count;
@@ -154,10 +173,16 @@ class IngestRepository {
   }
 
   /// Returns local pending counts for ingest status UI.
+  ///
+  /// [awaitingParse] is the canonical pending metric: unprocessed SMS on device.
+  /// Each SMS also has a parse job, so raw + jobs must not be summed (double count).
   Future<Map<String, int>> pendingCounts() async {
+    final rawIngests = await _localDatabase.countPendingRawIngests();
+    final parseJobs = await _localDatabase.countPendingParseJobs();
     return {
-      'rawIngests': await _localDatabase.countPendingRawIngests(),
-      'parseJobs': await _localDatabase.countPendingParseJobs(),
+      'rawIngests': rawIngests,
+      'parseJobs': parseJobs,
+      'awaitingParse': rawIngests,
     };
   }
 

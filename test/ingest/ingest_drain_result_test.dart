@@ -4,7 +4,7 @@ import 'package:money_matters/services/ingest_parse_pipeline.dart';
 
 void main() {
   group('IngestDrainResult', () {
-    test('formatSyncMessage distinguishes synced vs parsed counts', () {
+    test('formatSyncMessage distinguishes download vs parse', () {
       const withParsed = IngestDrainResult(
         rawIngestsSynced: 9,
         parseJobsSynced: 0,
@@ -18,7 +18,7 @@ void main() {
       );
       expect(
         withParsed.formatSyncMessage(),
-        'Synced 9 item(s), parsed 3 transaction(s)',
+        'Downloaded 9 SMS from cloud, processed 9 on device, 3 transaction(s) created',
       );
 
       const withFailures = IngestDrainResult(
@@ -34,7 +34,7 @@ void main() {
       );
       expect(
         withFailures.formatSyncMessage(),
-        'Synced 2 item(s), parsed 1 transaction(s), 1 parse(s) failed',
+        'Downloaded 2 SMS from cloud, processed 1 on device, 1 transaction(s) created, 1 parse(s) failed',
       );
 
       const syncedOnly = IngestDrainResult(
@@ -50,7 +50,7 @@ void main() {
       );
       expect(
         syncedOnly.formatSyncMessage(),
-        'Synced 9 item(s), 0 transactions parsed',
+        'Downloaded 9 SMS from cloud, processed 9 on device, 0 transactions matched',
       );
 
       const upToDate = IngestDrainResult(

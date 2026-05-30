@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 
 import 'package:money_matters/models/transaction.dart';
 
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
 import 'relabel_sheet.dart';
 import 'review_repository.dart';
 
@@ -75,21 +77,28 @@ class _ReviewScreenState extends State<ReviewScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
-              ? Center(
-                  child: Text(
-                    'No flagged transactions',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
+              ? AppEmptyState(
+                  icon: Icons.check_circle_outline,
+                  title: 'All clear',
+                  message:
+                      'No flagged transactions need review right now.',
                 )
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _items.length,
+                    padding: const EdgeInsets.all(AppSpacing.page),
+                    itemCount: _items.length + 1,
                     separatorBuilder: (context, index) =>
-                        const SizedBox(height: 8),
+                        const SizedBox(height: AppSpacing.tight),
                     itemBuilder: (context, index) {
-                      final tx = _items[index];
+                      if (index == 0) {
+                        return AppSectionHeader(
+                          title: 'Flagged (${_items.length})',
+                          subtitle:
+                              'Ambiguous categories or unmatched payment sources',
+                        );
+                      }
+                      final tx = _items[index - 1];
                       return _FlaggedTile(
                         transaction: tx,
                         amountLabel: _currency.format(tx.amount),
@@ -119,23 +128,72 @@ class _FlaggedTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final flags = <String>[
-      if (transaction.ambiguous) 'Ambiguous category',
-      if (transaction.unmatched) 'Unmatched source',
+      if (transaction.ambiguous) 'Ambiguous',
+      if (transaction.unmatched) 'Unmatched',
     ];
 
     return Card(
-      child: ListTile(
-        title: Text(transaction.merchant ?? 'Unknown merchant'),
-        subtitle: Text('$dateLabel · ${flags.join(' · ')}'),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(amountLabel, style: Theme.of(context).textTheme.titleMedium),
-            TextButton(onPressed: onRelabel, child: const Text('Relabel')),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        transaction.merchant ?? 'Unknown merchant',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        dateLabel,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  amountLabel,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+            if (flags.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.tight),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: flags
+                    .map(
+                      (f) => AppStatusChip(
+                        label: f,
+                        tone: AppStatTone.warning,
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.item),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: onRelabel,
+                child: const Text('Relabel'),
+              ),
+            ),
           ],
         ),
-        isThreeLine: true,
       ),
     );
   }

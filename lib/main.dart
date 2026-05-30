@@ -85,10 +85,12 @@ class MoneyMattersApp extends StatefulWidget {
 
 class _MoneyMattersAppState extends State<MoneyMattersApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  late bool _isSignedIn;
 
   @override
   void initState() {
     super.initState();
+    _isSignedIn = widget.authService.isSignedIn;
     _bootstrap();
   }
 
@@ -100,7 +102,12 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
     });
 
     widget.authService.authStateChanges.listen((user) async {
-      if (user != null) {
+      final signedIn = user != null;
+      if (signedIn != _isSignedIn && mounted) {
+        setState(() => _isSignedIn = signedIn);
+      }
+
+      if (signedIn) {
         await widget.queueDrain.drainIfAuthenticated();
       } else {
         _navigatorKey.currentState?.pushNamedAndRemoveUntil(
@@ -118,7 +125,7 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
   @override
   Widget build(BuildContext context) {
     final initialRoute =
-        widget.authService.isSignedIn ? AppRoutes.dashboard : AppRoutes.onboarding;
+        _isSignedIn ? AppRoutes.dashboard : AppRoutes.onboarding;
 
     return MaterialApp(
       navigatorKey: _navigatorKey,

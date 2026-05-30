@@ -22,6 +22,10 @@ class MockRecoveryRepository implements RecoveryRepository {
       lastIngestAt:
           _lastIngest ?? DateTime.now().subtract(const Duration(minutes: 45)),
       failedParseCount: 0,
+      syncedMessageCount: 12,
+      pendingMessageCount: _pending,
+      pendingParseJobCount: 0,
+      parsedTransactionCount: 9,
     );
   }
 

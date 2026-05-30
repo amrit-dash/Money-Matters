@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:money_matters/models/payment_source.dart';
 
 import '../../services/payment_source_service.dart';
+import '../../core/theme/app_theme.dart';
 import 'payment_source_widgets.dart';
 
 /// Post-onboarding CRUD for banks and cards.
@@ -112,8 +113,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   sources: _sources,
                   onSourcesChanged: _onSourcesChanged,
                   introText:
-                      'Banks and cards that send you debit/credit SMS. '
-                      'Changes save automatically.',
+                      'Banks and cards that send debit/credit SMS. Changes save automatically.',
+                  showWalletNote: true,
                 ),
     );
   }
@@ -128,7 +129,7 @@ class _ErrorBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.page),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

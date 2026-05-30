@@ -102,6 +102,18 @@ class LocalDatabase {
     );
   }
 
+  Future<Map<String, dynamic>?> getRawIngest(String idempotencyKey) async {
+    final db = await database;
+    final rows = await db.query(
+      'raw_ingests',
+      where: 'idempotency_key = ?',
+      whereArgs: [idempotencyKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
   Future<List<Map<String, dynamic>>> getUnprocessedRawIngests() async {
     final db = await database;
     return db.query(
@@ -144,6 +156,18 @@ class LocalDatabase {
       row,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  Future<Map<String, dynamic>?> getParseJob(String id) async {
+    final db = await database;
+    final rows = await db.query(
+      'parse_jobs',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
   }
 
   Future<List<Map<String, dynamic>>> getPendingParseJobs() async {

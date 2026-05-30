@@ -22,6 +22,22 @@ class AppRoutes {
 
 /// Builds [MaterialApp] routes. Coordinator wires [initialRoute] from auth state.
 class AppRouter {
+  /// Makes dashboard the sole route — no back stack to onboarding/login.
+  static void goToDashboard(BuildContext context) {
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.dashboard,
+      (route) => false,
+    );
+  }
+
+  /// Clears the stack and shows onboarding after sign-out.
+  static void goToOnboarding(BuildContext context) {
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.onboarding,
+      (route) => false,
+    );
+  }
+
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case AppRoutes.onboarding:

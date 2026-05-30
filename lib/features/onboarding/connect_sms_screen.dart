@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../app_router.dart';
 import '../../core/auth/auth_service.dart';
 import 'onboarding_state.dart';
-import '../../app_router.dart';
 import 'shortcuts_setup_screen.dart';
 
 /// Connect SMS — usable from onboarding or later from the dashboard.
@@ -78,12 +78,12 @@ class _ConnectSmsScreenState extends State<ConnectSmsScreen> {
       return Scaffold(
         appBar: AppBar(title: const Text('Connect SMS')),
         body: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.page),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(_syncError!, style: Theme.of(context).textTheme.bodyLarge),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.item),
               FilledButton(
                 onPressed: _syncDeviceRegistration,
                 child: const Text('Retry'),
@@ -98,7 +98,7 @@ class _ConnectSmsScreenState extends State<ConnectSmsScreen> {
       state: _state,
       onComplete: () {
         if (widget.showFinishOnboarding) {
-          Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+          AppRouter.goToDashboard(context);
         } else {
           Navigator.of(context).pop();
         }

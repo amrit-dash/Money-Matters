@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../app_router.dart';
 import '../../core/auth/auth_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
 
 /// Lightweight settings hub: accounts, SMS setup, sign out.
 class ProfileScreen extends StatelessWidget {
@@ -43,52 +45,73 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final email = authService.currentUser?.email;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
       body: ListView(
+        padding: const EdgeInsets.all(AppSpacing.page),
         children: [
-          if (email != null)
-            ListTile(
-              leading: CircleAvatar(
-                child: Text(
-                  email.isNotEmpty ? email[0].toUpperCase() : '?',
-                ),
+          Card(
+            color: scheme.primaryContainer.withValues(alpha: 0.35),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
+                    child: Text(
+                      email != null && email.isNotEmpty
+                          ? email[0].toUpperCase()
+                          : '?',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          email ?? 'Signed in',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        AppStatusChip(
+                          label: 'Active session',
+                          tone: AppStatTone.success,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              title: Text(email),
-              subtitle: const Text('Signed in'),
-            )
-          else
-            const ListTile(
-              leading: Icon(Icons.person_outline),
-              title: Text('Signed in'),
             ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.account_balance_outlined),
-            title: const Text('Accounts'),
-            subtitle: const Text('Banks and cards for SMS matching'),
-            trailing: const Icon(Icons.chevron_right),
+          ),
+          const SizedBox(height: AppSpacing.section),
+          AppSectionHeader(title: 'Setup'),
+          AppMenuTile(
+            icon: Icons.account_balance_outlined,
+            title: 'Accounts',
+            subtitle: 'Banks and cards for SMS matching',
             onTap: () => Navigator.pushNamed(context, AppRoutes.accounts),
           ),
-          ListTile(
-            leading: const Icon(Icons.sms_outlined),
-            title: const Text('Connect SMS'),
-            subtitle: const Text('Shortcuts setup and device token'),
-            trailing: const Icon(Icons.chevron_right),
+          const SizedBox(height: AppSpacing.tight),
+          AppMenuTile(
+            icon: Icons.sms_outlined,
+            title: 'Connect SMS',
+            subtitle: 'Shortcuts automation and device token',
             onTap: () => Navigator.pushNamed(context, AppRoutes.connectSms),
           ),
-          const Divider(),
-          ListTile(
-            leading: Icon(
-              Icons.logout,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            title: Text(
-              'Sign out',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
+          const SizedBox(height: AppSpacing.section),
+          AppSectionHeader(title: 'Account'),
+          AppMenuTile(
+            icon: Icons.logout,
+            title: 'Sign out',
             onTap: () => _signOut(context),
+            destructive: true,
           ),
         ],
       ),

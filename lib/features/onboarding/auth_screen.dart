@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
 import 'onboarding_state.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -119,47 +121,58 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign in')),
+      appBar: AppBar(title: const Text('Welcome')),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.page),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const OnboardingStepIndicator(
+                  currentStep: 0,
+                  totalSteps: 3,
+                  labels: ['Sign in', 'Accounts', 'Connect SMS'],
+                ),
+                const SizedBox(height: AppSpacing.section),
                 Text(
                   'Money Matters',
-                  style: Theme.of(context).textTheme.headlineMedium,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.tight),
                 Text(
-                  'Sign in with Google or email. Data stays in your Firebase project.',
-                  style: Theme.of(context).textTheme.bodyMedium,
+                  'Track spend from bank SMS. Your data stays in your Firebase project.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                 ),
                 if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Material(
+                  const SizedBox(height: AppSpacing.section),
+                  Card(
                     color: Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(8),
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Text(
                         _error!,
                         style: TextStyle(
-                          color: Theme.of(context).colorScheme.onErrorContainer,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onErrorContainer,
                         ),
                       ),
                     ),
                   ),
                 ],
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.section),
                 OutlinedButton.icon(
                   onPressed: _busy ? null : _signInWithGoogle,
                   icon: const Icon(Icons.g_mobiledata, size: 28),
                   label: const Text('Continue with Google'),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.section),
                 Row(
                   children: [
                     const Expanded(child: Divider()),
@@ -173,12 +186,11 @@ class _AuthScreenState extends State<AuthScreen> {
                     const Expanded(child: Divider()),
                   ],
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.section),
                 TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(
                     labelText: 'Email',
-                    border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
@@ -188,12 +200,11 @@ class _AuthScreenState extends State<AuthScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.item),
                 TextFormField(
                   controller: _passwordController,
                   decoration: const InputDecoration(
                     labelText: 'Password',
-                    border: OutlineInputBorder(),
                   ),
                   obscureText: true,
                   validator: (v) {
@@ -203,7 +214,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.section),
                 FilledButton(
                   onPressed: _busy ? null : _submitEmail,
                   child: _busy
