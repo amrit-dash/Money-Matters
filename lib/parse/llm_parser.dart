@@ -1,7 +1,7 @@
 import '../models/raw_ingest.dart';
 import 'parse_result.dart';
 
-/// Optional LLM gate for ambiguous parses (v1.1). MVP ships a no-op fallback.
+/// Optional LLM gate for ambiguous parses. Default implementation is a no-op.
 abstract class LlmParser {
   Future<ParseResult?> refine(RawIngest ingest, ParseResult rulesResult);
 }

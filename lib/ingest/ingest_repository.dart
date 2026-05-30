@@ -104,7 +104,7 @@ class IngestRepository {
 
   /// Mirrors transactions updated since last local sync watermark.
   ///
-  /// Uses a rolling 30-day window for MVP; coordinator may refine sync policy.
+  /// Uses a rolling 30-day window; sync policy may be refined later.
   Future<int> _drainRecentTransactions(String syncedAt) async {
     final since = DateTime.now().toUtc().subtract(const Duration(days: 30));
     final snapshot = await _userCollection(_transactionsCollection)

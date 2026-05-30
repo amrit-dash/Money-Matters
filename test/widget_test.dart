@@ -9,8 +9,10 @@ void main() {
     expect(DefaultFirebaseOptions.ios.iosClientId, isNotNull);
   });
 
-  test('AppRoutes define onboarding and dashboard', () {
+  test('AppRoutes define core navigation paths', () {
     expect(AppRoutes.onboarding, '/onboarding');
     expect(AppRoutes.dashboard, '/dashboard');
+    expect(AppRoutes.profile, '/profile');
+    expect(AppRoutes.accounts, '/accounts');
   });
 }
