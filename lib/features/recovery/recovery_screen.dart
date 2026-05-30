@@ -147,6 +147,12 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                     value: '${_status?.pendingCount ?? 0}',
                     highlight: (_status?.pendingCount ?? 0) > 0,
                   ),
+                  if ((_status?.failedParseCount ?? 0) > 0)
+                    _StatusCard(
+                      label: 'Failed parses (last sync)',
+                      value: '${_status!.failedParseCount}',
+                      highlight: true,
+                    ),
                   if (_error != null) ...[
                     const SizedBox(height: 8),
                     Text(

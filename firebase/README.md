@@ -235,7 +235,7 @@ Topic or per-device token registration happens during app onboarding. No FCM Clo
 | `users/{uid}/parse_jobs/{auto}` | auto | Parse queue (`pending` → `done`/`failed`) |
 | `users/{uid}/transactions/{auto}` | auto | Parsed ledger rows (app-written) |
 | `users/{uid}/payment_sources/{auto}` | auto | Banks/cards (app-written) |
-| `users/{uid}/categories/{auto}` | auto | Categories (app-written) |
+| *(none)* | — | Categories are in-app defaults only — see `CategoryService` |
 
 ## TODOs for project owner
 

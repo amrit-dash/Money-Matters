@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
-import 'package:uuid/uuid.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../core/auth/auth_service.dart';
 import '../core/db/local_database.dart';
@@ -48,7 +48,6 @@ class IngestParsePipeline {
   final PaymentSourceService? _paymentSourceService;
   final CategoryService _categoryService;
   final FirebaseFirestore _firestore;
-  final _uuid = const Uuid();
 
   static const _rulesVersion = 'rules-v1';
   static const _parseJobsCollection = 'parse_jobs';
@@ -79,8 +78,8 @@ class IngestParsePipeline {
     var failed = 0;
 
     for (final row in rows) {
+      final ingest = _rawIngestFromRow(row);
       try {
-        final ingest = _rawIngestFromRow(row);
         final outcome = await _parseService.parse(
           ingest,
           paymentSources: sources,
@@ -88,9 +87,8 @@ class IngestParsePipeline {
         );
 
         if (outcome.transaction != null) {
-          final tx = outcome.transaction!.copyWith(
-            id: outcome.transaction!.id ?? _uuid.v4(),
-          );
+          // Stable id = raw ingest id (one SMS → one transaction, idempotent retries).
+          final tx = outcome.transaction!.copyWith(id: ingest.id);
           await _persistTransaction(tx);
           transactionsCreated++;
         } else {
@@ -100,7 +98,11 @@ class IngestParsePipeline {
         await _localDatabase.markRawIngestProcessed(ingest.id);
         await _markParseJobDone(ingest.id);
         processed++;
-      } catch (_) {
+      } catch (e, st) {
+        debugPrint(
+          'IngestParsePipeline: failed ${ingest.id}: $e\n$st',
+        );
+        await _markParseJobFailed(ingest.id, e);
         failed++;
       }
     }
@@ -193,5 +195,37 @@ class IngestParsePipeline {
         .collection('raw_ingests')
         .doc(rawIngestId)
         .update({'processedAt': FieldValue.serverTimestamp()});
+  }
+
+  Future<void> _markParseJobFailed(String rawIngestId, Object error) async {
+    final uid = _authService.requireUid();
+    final errorMsg = error.toString();
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    final jobs = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection(_parseJobsCollection)
+        .where('rawIngestId', isEqualTo: rawIngestId)
+        .where('status', isEqualTo: 'pending')
+        .limit(5)
+        .get();
+
+    for (final doc in jobs.docs) {
+      await doc.reference.update({
+        'status': 'failed',
+        'error': errorMsg,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await _localDatabase.upsertParseJob({
+        'id': doc.id,
+        'raw_ingest_id': rawIngestId,
+        'status': 'failed',
+        'rules_version': _rulesVersion,
+        'error': errorMsg,
+        'updated_at': now,
+        'synced_at': now,
+      });
+    }
   }
 }

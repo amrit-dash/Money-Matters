@@ -21,6 +21,22 @@ void main() {
         'Synced 9 item(s), parsed 3 transaction(s)',
       );
 
+      const withFailures = IngestDrainResult(
+        rawIngestsSynced: 2,
+        parseJobsSynced: 0,
+        transactionsSynced: 0,
+        parseResult: ParsePipelineResult(
+          processed: 1,
+          transactionsCreated: 1,
+          skipped: 0,
+          failed: 1,
+        ),
+      );
+      expect(
+        withFailures.formatSyncMessage(),
+        'Synced 2 item(s), parsed 1 transaction(s), 1 parse(s) failed',
+      );
+
       const syncedOnly = IngestDrainResult(
         rawIngestsSynced: 9,
         parseJobsSynced: 0,

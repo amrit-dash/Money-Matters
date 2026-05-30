@@ -29,13 +29,26 @@ class IngestDrainResult {
   /// User-facing summary after drain + local parse.
   String formatSyncMessage() {
     final parsed = transactionsParsed;
-    if (totalSynced == 0 && parsed == 0) {
+    final failed = parseResult?.failed ?? 0;
+    if (totalSynced == 0 && parsed == 0 && failed == 0) {
       return 'Already up to date';
     }
-    if (parsed > 0) {
-      return 'Synced $totalSynced item(s), parsed $parsed transaction(s)';
+    final parts = <String>[];
+    if (totalSynced > 0) {
+      parts.add('Synced $totalSynced item(s)');
     }
-    return 'Synced $totalSynced item(s), 0 transactions parsed';
+    if (parsed > 0) {
+      parts.add('parsed $parsed transaction(s)');
+    } else if (totalSynced > 0) {
+      parts.add('0 transactions parsed');
+    }
+    if (failed > 0) {
+      parts.add('$failed parse(s) failed');
+    }
+    if (parts.isEmpty) {
+      return 'Already up to date';
+    }
+    return parts.join(', ');
   }
 
   @override

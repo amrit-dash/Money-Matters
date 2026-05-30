@@ -1,6 +1,10 @@
 import 'package:money_matters/models/category.dart';
 
 /// Default spend categories for analytics and relabel UI.
+///
+/// Categories are **in-memory defaults only** — not persisted to Firestore.
+/// Merchant matching rules live in code; user relabels sync to
+/// `users/{uid}/transactions/{id}.categoryId`.
 class CategoryService {
   CategoryService();
 

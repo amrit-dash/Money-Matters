@@ -49,16 +49,23 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
     if (result == null || tx.id == null) return;
 
-    await widget.repository.relabel(
-      transactionId: tx.id!,
-      categoryId: result.categoryId,
-      merchantRuleHint: result.saveMerchantRule ? tx.merchant : null,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Category updated')),
-    );
-    _load();
+    try {
+      await widget.repository.relabel(
+        transactionId: tx.id!,
+        categoryId: result.categoryId,
+        merchantRuleHint: result.saveMerchantRule ? tx.merchant : null,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Category updated')),
+      );
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save category: $e')),
+      );
+    }
   }
 
   @override

@@ -49,7 +49,7 @@ class LocalRecoveryRepository implements RecoveryRepository {
       lastSyncAt: _lastSyncAt ?? _queueDrain.lastSyncAt,
       pendingCount: pending,
       lastIngestAt: lastIngest,
-      failedParseCount: 0,
+      failedParseCount: _queueDrain.lastResult?.parseResult?.failed ?? 0,
     );
   }
 

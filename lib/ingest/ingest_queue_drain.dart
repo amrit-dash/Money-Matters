@@ -67,7 +67,9 @@ class IngestQueueDrain {
     _lastResult = result;
     _lastSyncAt = DateTime.now();
 
-    if (result.totalSynced > 0 || result.transactionsParsed > 0) {
+    if (result.totalSynced > 0 ||
+        result.transactionsParsed > 0 ||
+        (parseResult?.failed ?? 0) > 0) {
       _drainEvents.add(result);
     }
     return result;
