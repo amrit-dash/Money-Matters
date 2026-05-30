@@ -35,11 +35,7 @@ class ProfileScreen extends StatelessWidget {
     if (confirmed != true || !context.mounted) return;
 
     await authService.signOut();
-    if (!context.mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.onboarding,
-      (route) => false,
-    );
+    // Navigation is handled by [MoneyMattersApp]'s auth listener in main.dart.
   }
 
   @override
