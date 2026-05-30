@@ -1,11 +1,27 @@
 {
   "indexes": [
     {
+      "collectionGroup": "raw_ingests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "processedAt", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "parse_jobs",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+        { "fieldPath": "updatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "parse_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rawIngestId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     }
   ],
