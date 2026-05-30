@@ -63,4 +63,11 @@ class PaymentSource {
       (hint) => normalized.contains(hint.trim().toLowerCase()),
     );
   }
+
+  /// Matches bank name in SMS body (e.g. "-Federal Bank" footer on manual paste).
+  bool matchesBody(String body) {
+    final normalizedName = name.trim().toLowerCase();
+    if (normalizedName.isEmpty) return false;
+    return body.toLowerCase().contains(normalizedName);
+  }
 }

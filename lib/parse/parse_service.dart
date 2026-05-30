@@ -78,6 +78,12 @@ class ParseService {
       }
     }
 
+    for (final source in sources) {
+      if (source.matchesBody(ingest.body)) {
+        return source.id;
+      }
+    }
+
     return null;
   }
 

@@ -350,7 +350,9 @@ class _PaymentSourceEditorState extends State<PaymentSourceEditor> {
             controller: _hintsController,
             decoration: const InputDecoration(
               labelText: 'Sender hints (comma-separated)',
-              hintText: 'VK-HDFCBK, AD-HDFCBK',
+              hintText: 'VK-HDFCBK, FEDBNK-S',
+              helperText:
+                  'SMS sender IDs from your bank (e.g. FEDBNK-S for Federal Bank)',
             ),
           ),
           const SizedBox(height: AppSpacing.section),

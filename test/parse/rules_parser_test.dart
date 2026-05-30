@@ -117,6 +117,29 @@ void main() {
       expect(result.candidate!.merchant, 'HEALTH CHECK');
       expect(result.candidate!.instrumentLast4, '0000');
     });
+
+    test('parses Federal Bank UPI sent SMS with amount, debit, date, and VPA', () {
+      final result = parser.parse(
+        sampleIngest(
+          'Rs 10.00 sent via UPI on 31-05-2026 at 02:50:52 to amrit.dash60-4@.Ref:615162984499.Not you? Call 18004251199/SMS BLOCKUPI to 98950 88888 -Federal Bank',
+          sender: 'manual-paste',
+        ),
+      );
+
+      expect(result.classification, IngestClassification.transaction);
+      expect(result.candidate, isNotNull);
+      expect(result.candidate!.amount, 10);
+      expect(result.candidate!.type, TransactionType.debit);
+      expect(result.candidate!.merchant, 'AMRIT.DASH60-4@');
+      expect(result.candidate!.upiHint, 'amrit.dash60-4@');
+      expect(result.candidate!.timestamp.year, 2026);
+      expect(result.candidate!.timestamp.month, 5);
+      expect(result.candidate!.timestamp.day, 31);
+      expect(result.candidate!.timestamp.hour, 2);
+      expect(result.candidate!.timestamp.minute, 50);
+      expect(result.candidate!.timestamp.second, 52);
+      expect(result.candidate!.ambiguous, isTrue);
+    });
   });
 
   group('ParseService', () {
@@ -217,6 +240,91 @@ void main() {
 
       expect(outcome.result.isTransaction, isTrue);
       expect(outcome.transaction!.amount, 899);
+    });
+
+    test('Federal Bank SMS links to payment source via FEDBNK-S sender hint', () async {
+      final sources = [
+        PaymentSource(
+          id: 'federal-bank',
+          name: 'Federal Bank',
+          type: PaymentSourceType.bank,
+          last4: '1234',
+          senderHints: ['fedbnk-s'],
+          createdAt: DateTime.parse('2026-05-01T00:00:00Z'),
+        ),
+      ];
+
+      final outcome = await service.parse(
+        RawIngest(
+          id: 'federal-sms-1',
+          body:
+              'Rs 65.00 sent via UPI on 31-05-2026 at 14:20:00 to merchant@paytm.Ref:123.Not you? -Federal Bank',
+          sender: 'FEDBNK-S',
+          receivedAt: DateTime.parse('2026-05-31T14:20:00+05:30'),
+          deviceId: 'device-1',
+          source: 'shortcuts-automation-v1',
+          createdAt: DateTime.parse('2026-05-31T14:20:00+05:30'),
+        ),
+        paymentSources: sources,
+      );
+
+      expect(outcome.result.isTransaction, isTrue);
+      expect(outcome.transaction!.amount, 65);
+      expect(outcome.transaction!.paymentSourceId, 'federal-bank');
+      expect(outcome.transaction!.unmatched, isFalse);
+    });
+
+    test('Federal Bank manual paste links via body footer when sender is manual-paste', () async {
+      final sources = [
+        PaymentSource(
+          id: 'federal-bank',
+          name: 'Federal Bank',
+          type: PaymentSourceType.bank,
+          last4: '1234',
+          senderHints: const [],
+          createdAt: DateTime.parse('2026-05-01T00:00:00Z'),
+        ),
+      ];
+
+      final outcome = await service.parse(
+        RawIngest(
+          id: 'federal-paste-2',
+          body:
+              'Rs 10.00 sent via UPI on 31-05-2026 at 02:50:52 to amrit.dash60-4@.Ref:615162984499.Not you? Call 18004251199/SMS BLOCKUPI to 98950 88888 -Federal Bank',
+          sender: 'manual-paste',
+          receivedAt: DateTime.parse('2026-05-31T02:50:52+05:30'),
+          deviceId: 'device-1',
+          source: 'manual-paste',
+          createdAt: DateTime.parse('2026-05-31T02:50:52+05:30'),
+        ),
+        paymentSources: sources,
+      );
+
+      expect(outcome.transaction!.paymentSourceId, 'federal-bank');
+      expect(outcome.transaction!.unmatched, isFalse);
+    });
+
+    test('Federal Bank recovery paste creates transaction via ParseService', () async {
+      final ingest = RawIngest(
+        id: 'federal-paste-1',
+        body:
+            'Rs 10.00 sent via UPI on 31-05-2026 at 02:50:52 to amrit.dash60-4@.Ref:615162984499.Not you? Call 18004251199/SMS BLOCKUPI to 98950 88888 -Federal Bank',
+        sender: 'manual-paste',
+        receivedAt: DateTime.parse('2026-05-31T02:50:52+05:30'),
+        deviceId: 'device-1',
+        source: 'manual-paste',
+        createdAt: DateTime.parse('2026-05-31T02:50:52+05:30'),
+      );
+
+      final outcome = await service.parse(ingest);
+
+      expect(outcome.result.isTransaction, isTrue);
+      expect(outcome.transaction, isNotNull);
+      expect(outcome.transaction!.amount, 10);
+      expect(outcome.transaction!.type, TransactionType.debit);
+      expect(outcome.transaction!.merchant, 'AMRIT.DASH60-4@');
+      expect(outcome.transaction!.unmatched, isTrue);
+      expect(outcome.transaction!.ambiguous, isTrue);
     });
   });
 }

@@ -34,9 +34,24 @@ class RulesParser {
     caseSensitive: false,
   );
 
-  static final RegExp _upiPattern = RegExp(
-    r'(?:paid|sent|to)\s+(?:to\s+)?([A-Z][A-Z\s]{2,30})(?:\s+via|\s+on|\s+using|\s*$)',
+  /// Federal Bank: Rs 10.00 sent via UPI on 31-05-2026 at 02:50:52 to vpa@.
+  static final RegExp _federalSentUpiPattern = RegExp(
+    r'sent via UPI on .+? to ([\w.\-]+@[\w.\-]*?)(?=[\s,.]|$)',
     caseSensitive: false,
+  );
+
+  static final RegExp _upiToVpaPattern = RegExp(
+    r'\bto\s+([\w.\-]+@[\w.\-]*?)(?=[\s,.]|$)',
+    caseSensitive: false,
+  );
+
+  static final RegExp _upiPattern = RegExp(
+    r'(?:paid|sent)\s+(?:to\s+)?(?!via\b)([A-Z][A-Z\s]{2,30})(?:\s+via|\s+on|\s+using|\s*$)',
+    caseSensitive: false,
+  );
+
+  static final RegExp _timePattern = RegExp(
+    r'\bat\s+(\d{2}:\d{2}(?::\d{2})?)\b',
   );
 
   static final RegExp _datePattern = RegExp(
@@ -67,6 +82,7 @@ class RulesParser {
     RegExp(r'\bdebited\b', caseSensitive: false),
     RegExp(r'\bspent\b', caseSensitive: false),
     RegExp(r'\bpaid\b', caseSensitive: false),
+    RegExp(r'\bsent\b', caseSensitive: false),
     RegExp(r'\bwithdrawn\b', caseSensitive: false),
     RegExp(r'\bdr\b', caseSensitive: false),
   ];
@@ -186,6 +202,11 @@ class RulesParser {
   }
 
   String? _extractMerchant(String body) {
+    final federalMatch = _federalSentUpiPattern.firstMatch(body);
+    if (federalMatch != null) {
+      return _cleanVpaMerchant(federalMatch.group(1)!);
+    }
+
     final atMatch = _merchantAtPattern.firstMatch(body);
     if (atMatch != null) {
       return _cleanMerchant(atMatch.group(1)!);
@@ -201,6 +222,11 @@ class RulesParser {
       return _cleanMerchant(upiPathMatch.group(1)!);
     }
 
+    final vpaMatch = _upiToVpaPattern.firstMatch(body);
+    if (vpaMatch != null) {
+      return _cleanVpaMerchant(vpaMatch.group(1)!);
+    }
+
     final upiMatch = _upiPattern.firstMatch(body);
     if (upiMatch != null) {
       return _cleanMerchant(upiMatch.group(1)!);
@@ -213,11 +239,22 @@ class RulesParser {
     if (!RegExp(r'\bUPI\b', caseSensitive: false).hasMatch(body)) {
       return null;
     }
+
+    final federalMatch = _federalSentUpiPattern.firstMatch(body);
+    if (federalMatch != null) {
+      return _normalizeVpa(federalMatch.group(1)!);
+    }
+
+    final toVpaMatch = _upiToVpaPattern.firstMatch(body);
+    if (toVpaMatch != null) {
+      return _normalizeVpa(toVpaMatch.group(1)!);
+    }
+
     final vpaMatch = RegExp(
       r'([\w.\-]+@[\w.\-]+)',
       caseSensitive: false,
     ).firstMatch(body);
-    if (vpaMatch != null) return vpaMatch.group(1);
+    if (vpaMatch != null) return _normalizeVpa(vpaMatch.group(1)!);
 
     final upiPath = RegExp(
       r'UPI/[^/]+/([\w.@]+)',
@@ -228,6 +265,18 @@ class RulesParser {
 
   String _cleanMerchant(String raw) {
     return raw.trim().replaceAll(RegExp(r'\s+'), ' ').toUpperCase();
+  }
+
+  String _cleanVpaMerchant(String raw) {
+    return _normalizeVpa(raw).toUpperCase();
+  }
+
+  String _normalizeVpa(String raw) {
+    var vpa = raw.trim();
+    if (vpa.endsWith('.')) {
+      vpa = vpa.substring(0, vpa.length - 1);
+    }
+    return vpa;
   }
 
   DateTime _extractTimestamp(String body, DateTime fallback) {
@@ -244,7 +293,20 @@ class RulesParser {
       var year = int.parse(parts[2]);
       if (year < 100) year += 2000;
 
-      return DateTime(year, month, day, fallback.hour, fallback.minute);
+      var hour = fallback.hour;
+      var minute = fallback.minute;
+      var second = 0;
+      final timeMatch = _timePattern.firstMatch(body);
+      if (timeMatch != null) {
+        final timeParts = timeMatch.group(1)!.split(':');
+        hour = int.parse(timeParts[0]);
+        minute = int.parse(timeParts[1]);
+        if (timeParts.length > 2) {
+          second = int.parse(timeParts[2]);
+        }
+      }
+
+      return DateTime(year, month, day, hour, minute, second);
     } catch (_) {
       return fallback;
     }
@@ -273,24 +335,25 @@ class RulesParser {
   bool _isAmbiguous(String? merchant, String? upiHint) {
     if (merchant == null || merchant.isEmpty) return true;
 
-    // Person-name UPI payments (AE8): short name with space, no brand markers.
-    if (upiHint != null || merchant.contains(' ')) {
-      final knownBrands = {
-        'SWIGGY',
-        'ZOMATO',
-        'ZUDIO',
-        'AMAZON',
-        'FLIPKART',
-        'BIGBASKET',
-        'ZEPTO',
-        'BLINKIT',
-      };
-      if (!knownBrands.contains(merchant)) {
-        final looksLikePerson = RegExp(r'^[A-Z]+(?: [A-Z]+)?$').hasMatch(merchant);
-        if (looksLikePerson && merchant.split(' ').length <= 3) {
-          return true;
-        }
+    final knownBrands = {
+      'SWIGGY',
+      'ZOMATO',
+      'ZUDIO',
+      'AMAZON',
+      'FLIPKART',
+      'BIGBASKET',
+      'ZEPTO',
+      'BLINKIT',
+    };
+    if (knownBrands.contains(merchant)) return false;
+
+    // Person-name or personal VPA UPI payments (AE8 / Federal Bank).
+    if (upiHint != null || merchant.contains(' ') || merchant.contains('@')) {
+      final looksLikePerson = RegExp(r'^[A-Z]+(?: [A-Z]+)?$').hasMatch(merchant);
+      if (looksLikePerson && merchant.split(' ').length <= 3) {
+        return true;
       }
+      if (merchant.contains('@')) return true;
     }
 
     return false;
