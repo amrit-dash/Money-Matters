@@ -87,25 +87,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flag_outlined),
-            tooltip: 'Review flagged',
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.review),
-          ),
-          IconButton(
-            icon: const Icon(Icons.inbox_outlined),
-            tooltip: 'Recovery queue',
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.recovery),
-          ),
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            tooltip: 'Profile',
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.profile),
-          ),
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('Dashboard'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.flag_outlined),
+              tooltip: 'Review flagged',
+              onPressed: () => Navigator.pushNamed(context, AppRoutes.review),
+            ),
+            IconButton(
+              icon: const Icon(Icons.inbox_outlined),
+              tooltip: 'Recovery queue',
+              onPressed: () => Navigator.pushNamed(context, AppRoutes.recovery),
+            ),
+            IconButton(
+              icon: const Icon(Icons.person_outline),
+              tooltip: 'Profile',
+              onPressed: () => Navigator.pushNamed(context, AppRoutes.profile),
+            ),
           ],
         ),
         body: _loading
@@ -221,6 +224,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
+      ),
     );
   }
 }

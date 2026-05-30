@@ -78,12 +78,12 @@ class _ConnectSmsScreenState extends State<ConnectSmsScreen> {
       return Scaffold(
         appBar: AppBar(title: const Text('Connect SMS')),
         body: Padding(
-          padding: const EdgeInsets.all(AppSpacing.page),
+          padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(_syncError!, style: Theme.of(context).textTheme.bodyLarge),
-              const SizedBox(height: AppSpacing.item),
+              const SizedBox(height: 16),
               FilledButton(
                 onPressed: _syncDeviceRegistration,
                 child: const Text('Retry'),
