@@ -133,6 +133,15 @@ class OnboardingState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setPaymentSources(List<PaymentSource> sources) {
+    paymentSources
+      ..clear()
+      ..addAll(
+        sources.where((s) => s.type != PaymentSourceType.wallet),
+      );
+    notifyListeners();
+  }
+
   void markChecklistComplete(bool value) {
     shortcutsChecklistComplete = value;
     notifyListeners();
