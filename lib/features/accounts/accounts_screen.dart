@@ -51,7 +51,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
     }
   }
 
-  Future<void> _persist(List<PaymentSource> updated, {String? message}) async {
+  Future<void> _persist(List<PaymentSource> updated) async {
     if (!hasBankOrCard(updated)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -69,30 +69,20 @@ class _AccountsScreenState extends State<AccountsScreen> {
         _sources = updated;
         _saving = false;
       });
-      if (message != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saved to cloud')),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save: $e')),
+        SnackBar(content: Text('Could not save to cloud: $e')),
       );
     }
   }
 
   void _onSourcesChanged(List<PaymentSource> updated) {
-    final previous = _sources;
-    final wasEdit = updated.length == previous.length;
-    final wasDelete = updated.length < previous.length;
-    final message = wasDelete
-        ? 'Payment source removed'
-        : wasEdit
-            ? 'Payment source updated'
-            : 'Payment source added';
-    _persist(updated, message: message);
+    _persist(updated);
   }
 
   @override

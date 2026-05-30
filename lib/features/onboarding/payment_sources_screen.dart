@@ -39,10 +39,20 @@ class PaymentSourcesScreen extends StatelessWidget {
                 child: FilledButton(
                   onPressed: state.paymentSourcesComplete
                       ? () async {
-                          await state.persistPaymentSources(
-                            paymentSourceService,
-                          );
-                          onContinue();
+                          try {
+                            await state.persistPaymentSources(
+                              paymentSourceService,
+                            );
+                            if (!context.mounted) return;
+                            onContinue();
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Could not save to cloud: $e'),
+                              ),
+                            );
+                          }
                         }
                       : null,
                   child: const Text('Continue'),
