@@ -108,4 +108,12 @@ class LocalDashboardRepository implements DashboardRepository {
 
   DateTime _endOfDay(DateTime dt) =>
       DateTime(dt.year, dt.month, dt.day, 23, 59, 59, 999);
+
+  @override
+  Future<({int rawIngests, int transactions})> localCounts() async {
+    return (
+      rawIngests: await _db.countRawIngests(),
+      transactions: await _db.countTransactions(),
+    );
+  }
 }

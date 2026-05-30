@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../app_router.dart';
 import '../../ingest/ingest_queue_drain.dart';
+import '../../ingest/ingest_repository.dart';
 import 'dashboard_repository.dart';
 
 enum _PeriodMode { weekly, monthly }
@@ -26,13 +29,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   PeriodSummary? _summary;
   bool _loading = true;
   String? _syncMessage;
+  int _rawIngestCount = 0;
+  int _transactionCount = 0;
+  StreamSubscription<IngestDrainResult>? _drainSubscription;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
 
   @override
   void initState() {
     super.initState();
+    _drainSubscription = widget.queueDrain?.onDrained.listen((_) {
+      if (mounted) _load();
+    });
     _load();
+  }
+
+  @override
+  void dispose() {
+    _drainSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _load({bool syncQueue = false}) async {
@@ -43,17 +58,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (syncQueue && widget.queueDrain != null) {
       final result = await widget.queueDrain!.drainIfAuthenticated();
-      if (mounted && result != null && result.totalSynced > 0) {
-        _syncMessage = 'Synced ${result.totalSynced} item(s)';
+      if (mounted && result != null) {
+        _syncMessage = result.formatSyncMessage();
       }
     }
 
     final summary = _mode == _PeriodMode.weekly
         ? await widget.repository.weeklySummary()
         : await widget.repository.monthlySummary();
+    final counts = await widget.repository.localCounts();
     if (!mounted) return;
     setState(() {
       _summary = summary;
+      _rawIngestCount = counts.rawIngests;
+      _transactionCount = counts.transactions;
       _loading = false;
       if (!syncQueue) _syncMessage = null;
     });
@@ -125,6 +143,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 24),
                   if (_summary != null && _isEmpty)
                     _EmptyState(
+                      rawIngestCount: _rawIngestCount,
+                      transactionCount: _transactionCount,
                       onConnectSms: () =>
                           Navigator.pushNamed(context, AppRoutes.connectSms),
                       onRecovery: () =>
@@ -178,12 +198,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
+    required this.rawIngestCount,
+    required this.transactionCount,
     required this.onConnectSms,
     required this.onRecovery,
   });
 
+  final int rawIngestCount;
+  final int transactionCount;
   final VoidCallback onConnectSms;
   final VoidCallback onRecovery;
+
+  String get _message {
+    if (rawIngestCount > 0 && transactionCount == 0) {
+      return '$rawIngestCount message${rawIngestCount == 1 ? '' : 's'} synced, '
+          '0 transactions parsed. Messages may not be bank SMS format — '
+          'paste real debit/credit alerts in Recovery, or add payment sources '
+          'in Profile → Accounts.';
+    }
+    if (rawIngestCount > 0) {
+      return '$rawIngestCount message${rawIngestCount == 1 ? '' : 's'} synced '
+          'but none fall in this period. Try Monthly view or pull down to sync.';
+    }
+    return 'Transactions appear after bank SMS reaches the app. '
+        'Set up the Shortcuts automation in Profile → Connect SMS, '
+        'then pull down to sync. Paste missed messages in Recovery.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -198,14 +238,14 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Nothing to show yet',
+            rawIngestCount > 0 && transactionCount == 0
+                ? 'Messages synced, nothing parsed'
+                : 'Nothing to show yet',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(
-            'Transactions appear after bank SMS reaches the app. '
-            'Set up the Shortcuts automation in Profile → Connect SMS, '
-            'then pull down to sync. Paste missed messages in Recovery.',
+            _message,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,

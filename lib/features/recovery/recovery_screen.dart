@@ -62,8 +62,11 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
       await widget.repository.triggerSync();
       await _refresh();
       if (!mounted) return;
+      final message =
+          widget.repository.lastSyncResult?.formatSyncMessage() ??
+              'Queue drained and parsed';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Queue drained and parsed')),
+        SnackBar(content: Text(message)),
       );
     } catch (e) {
       if (!mounted) return;

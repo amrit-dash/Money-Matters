@@ -119,6 +119,12 @@ class LocalDatabase {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
+  Future<int> countRawIngests() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) AS c FROM raw_ingests');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
   Future<void> markRawIngestProcessed(String idempotencyKey) async {
     final db = await database;
     await db.update(
@@ -172,6 +178,12 @@ class LocalDatabase {
   Future<List<Map<String, dynamic>>> getAllTransactions() async {
     final db = await database;
     return db.query('transactions', orderBy: 'timestamp DESC');
+  }
+
+  Future<int> countTransactions() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) AS c FROM transactions');
+    return Sqflite.firstIntValue(result) ?? 0;
   }
 
   Future<List<Map<String, dynamic>>> getTransactionsBetween(

@@ -21,11 +21,11 @@ class IngestQueueDrain {
   final StreamController<IngestDrainResult> _drainEvents =
       StreamController<IngestDrainResult>.broadcast();
 
-  bool _isDraining = false;
+  Future<IngestDrainResult?>? _inFlight;
   IngestDrainResult? _lastResult;
   DateTime? _lastSyncAt;
 
-  /// Emits after each successful drain cycle.
+  /// Emits after each successful drain + parse cycle.
   Stream<IngestDrainResult> get onDrained => _drainEvents.stream;
 
   IngestDrainResult? get lastResult => _lastResult;
@@ -33,31 +33,44 @@ class IngestQueueDrain {
 
   /// Drains pending Firestore ingests into SQLite when user is signed in.
   ///
-  /// Safe to call repeatedly; concurrent calls coalesce into one in-flight drain.
+  /// Safe to call repeatedly; concurrent calls await the same in-flight cycle.
   Future<IngestDrainResult?> drainIfAuthenticated() async {
     if (!_authService.isSignedIn) {
       return null;
     }
 
-    if (_isDraining) {
-      return _lastResult;
+    if (_inFlight != null) {
+      return _inFlight;
     }
 
-    _isDraining = true;
+    _inFlight = _runDrainCycle();
     try {
-      final result = await _repository.drainPending();
-      _lastResult = result;
-      _lastSyncAt = DateTime.now();
-      if (_parsePipeline != null) {
-        await _parsePipeline.processPending();
-      }
-      if (result.totalSynced > 0) {
-        _drainEvents.add(result);
-      }
-      return result;
+      return await _inFlight;
     } finally {
-      _isDraining = false;
+      _inFlight = null;
     }
+  }
+
+  Future<IngestDrainResult?> _runDrainCycle() async {
+    final drainResult = await _repository.drainPending();
+    ParsePipelineResult? parseResult;
+    if (_parsePipeline != null) {
+      parseResult = await _parsePipeline.processPending();
+    }
+
+    final result = IngestDrainResult(
+      rawIngestsSynced: drainResult.rawIngestsSynced,
+      parseJobsSynced: drainResult.parseJobsSynced,
+      transactionsSynced: drainResult.transactionsSynced,
+      parseResult: parseResult,
+    );
+    _lastResult = result;
+    _lastSyncAt = DateTime.now();
+
+    if (result.totalSynced > 0 || result.transactionsParsed > 0) {
+      _drainEvents.add(result);
+    }
+    return result;
   }
 
   /// Returns combined local pending counts for status UI.

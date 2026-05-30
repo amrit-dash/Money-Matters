@@ -5,6 +5,7 @@ import '../core/db/local_database.dart';
 import '../models/parse_job.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart' as ledger;
+import '../services/ingest_parse_pipeline.dart';
 
 /// Result of a Firestore → SQLite drain cycle.
 class IngestDrainResult {
@@ -12,18 +13,35 @@ class IngestDrainResult {
     required this.rawIngestsSynced,
     required this.parseJobsSynced,
     required this.transactionsSynced,
+    this.parseResult,
   });
 
   final int rawIngestsSynced;
   final int parseJobsSynced;
   final int transactionsSynced;
+  final ParsePipelineResult? parseResult;
 
   int get totalSynced =>
       rawIngestsSynced + parseJobsSynced + transactionsSynced;
 
+  int get transactionsParsed => parseResult?.transactionsCreated ?? 0;
+
+  /// User-facing summary after drain + local parse.
+  String formatSyncMessage() {
+    final parsed = transactionsParsed;
+    if (totalSynced == 0 && parsed == 0) {
+      return 'Already up to date';
+    }
+    if (parsed > 0) {
+      return 'Synced $totalSynced item(s), parsed $parsed transaction(s)';
+    }
+    return 'Synced $totalSynced item(s), 0 transactions parsed';
+  }
+
   @override
   String toString() =>
-      'IngestDrainResult(raw=$rawIngestsSynced, jobs=$parseJobsSynced, tx=$transactionsSynced)';
+      'IngestDrainResult(raw=$rawIngestsSynced, jobs=$parseJobsSynced, '
+      'tx=$transactionsSynced, parsed=$transactionsParsed)';
 }
 
 /// Drains pending [raw_ingests], [parse_jobs], and [transactions] from Firestore

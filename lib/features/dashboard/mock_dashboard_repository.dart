@@ -98,4 +98,9 @@ class MockDashboardRepository implements DashboardRepository {
       ],
     );
   }
+
+  @override
+  Future<({int rawIngests, int transactions})> localCounts() async {
+    return (rawIngests: 0, transactions: 22);
+  }
 }

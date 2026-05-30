@@ -2,6 +2,7 @@ import 'package:uuid/uuid.dart';
 
 import 'package:money_matters/models/raw_ingest.dart';
 
+import '../../ingest/ingest_repository.dart';
 import 'recovery_repository.dart';
 
 /// In-memory stub until ingest layer is wired.
@@ -54,4 +55,7 @@ class MockRecoveryRepository implements RecoveryRepository {
     _lastSync = DateTime.now();
     _pending = 0;
   }
+
+  @override
+  IngestDrainResult? get lastSyncResult => null;
 }

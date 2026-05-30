@@ -40,4 +40,7 @@ class PeriodSummary {
 abstract class DashboardRepository {
   Future<PeriodSummary> weeklySummary({DateTime? anchor});
   Future<PeriodSummary> monthlySummary({DateTime? anchor});
+
+  /// Local SQLite counts for empty-state messaging.
+  Future<({int rawIngests, int transactions})> localCounts();
 }

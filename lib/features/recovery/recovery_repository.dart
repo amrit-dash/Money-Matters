@@ -1,5 +1,7 @@
 import 'package:money_matters/models/raw_ingest.dart';
 
+import '../../ingest/ingest_repository.dart';
+
 /// Ingest queue status for recovery screen.
 class IngestStatus {
   const IngestStatus({
@@ -20,6 +22,7 @@ abstract class RecoveryRepository {
   Future<IngestStatus> status();
   Future<List<RawIngest>> submitPastedMessages(List<String> messageBodies);
   Future<void> triggerSync();
+  IngestDrainResult? get lastSyncResult;
 }
 
 /// Splits pasted text into individual SMS blocks (blank-line separated).

@@ -104,6 +104,19 @@ void main() {
 
       expect(result.candidate!.upiHint, 'amrit@paytm');
     });
+
+    test('parses onboarding health-check POST body as transaction', () {
+      final result = parser.parse(sampleIngest(
+        'Rs.1.00 debited from A/c **0000 at HEALTH CHECK on 2026-05-29T10:00:00+05:30',
+        sender: 'MM-HEALTH',
+      ));
+
+      expect(result.classification, IngestClassification.transaction);
+      expect(result.candidate, isNotNull);
+      expect(result.candidate!.amount, 1);
+      expect(result.candidate!.merchant, 'HEALTH CHECK');
+      expect(result.candidate!.instrumentLast4, '0000');
+    });
   });
 
   group('ParseService', () {
