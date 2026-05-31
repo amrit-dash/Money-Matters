@@ -12,18 +12,34 @@ Project: `money-matters-amrit`
 | `payment_sources/{sourceId}` | app UUID | `PaymentSourceService` | parse pipeline, Accounts screen | `name`, `type`, `last4`, `senderHints[]`, `createdAt` |
 | `raw_ingests/{idempotencyKey}` | SHA-based key from sender+body+receivedAt | `ingestSms` CF (atomic with parse_job) | `IngestRepository.drainPending` | `body`, `sender`, `receivedAt`, `deviceId`, `source`, `batchHint`, `createdAt`, `processedAt` |
 | `parse_jobs/{auto}` | auto | `ingestSms` CF creates `pending`; app sets `done`/`failed` | drain + pipeline | `rawIngestId`, `status`, `rulesVersion`, `error`, `updatedAt` |
-| `transactions/{txId}` | same as raw ingest id | `IngestParsePipeline` on parse; app on relabel | drain, dashboard, review | `rawIngestId`, `amount`, `currency`, `merchant`, `timestamp`, `categoryId`, `paymentSourceId`, `unmatched`, `ambiguous`, `type`, `processedAt` |
+| `transactions/{txId}` | same as raw ingest id | `IngestParsePipeline` on parse; app on classify | drain, dashboard, review | `rawIngestId`, `amount`, `currency`, `merchant`, `timestamp`, `categoryId`, `paymentSourceId`, `unmatched`, `ambiguous`, `type`, `needsClassification`, `merchantNormalized`, `userNotes`, `shoppingItems`, `classifiedBy`, `processedAt` |
+| `categories/{categoryId}` | slug (`food`, `shopping`, …) | `CategoryService` (seeds defaults on first load); user adds merchant rules | parse pipeline (auto-categorize), classify UI | `name`, `system`, `merchantRules[]`, `createdAt` |
+| `fcm_tokens/{token}` | FCM registration token | `FcmService` on sign-in / token refresh | `notifyClassification` CF | `token`, `platform`, `createdAt`, `updatedAt` |
+
+### New transaction fields (v2)
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `type` | `debit` \| `credit` | Spend vs income. Credits are excluded from spend totals. |
+| `unmatched` | bool | No saved bank/card matched. **Excluded from dashboard totals**; surfaced in its own bucket. |
+| `needsClassification` | bool | Debit with no confident category — drives the in-app "Needs your input" inbox and FCM prompt. |
+| `merchantNormalized` | string? | Cleaned merchant name (rules/LLM), preferred for display. |
+| `userNotes` | string? | Free-text note added during the classify flow. |
+| `shoppingItems` | string[] | Optional items captured during classify. |
+| `classifiedBy` | `rules` \| `llm` \| `user` | Provenance of the current category. |
 
 ## Flow
 
 1. **SMS ingest** — iOS Shortcut or Recovery multi-paste POSTs to `ingestSms`. CF atomically creates `raw_ingests/{key}` + `parse_jobs/{auto}` with `status: pending`.
 2. **Drain** — App pulls unprocessed ingests (`processedAt == null`), pending jobs, and recent transactions into local SQLite.
-3. **Parse** — `IngestParsePipeline` runs rules parser, writes `transactions/{rawIngestId}`, sets `parse_jobs` → `done`, sets `raw_ingests.processedAt`. On error: job → `failed`, ingest stays unprocessed for retry.
-4. **Review relabel** — Updates local SQLite + `transactions/{id}.categoryId` in Firestore.
+3. **Parse** — `IngestParsePipeline` runs rules parser, matches a payment source and category, writes `transactions/{rawIngestId}`, sets `parse_jobs` → `done`, sets `raw_ingests.processedAt`. On error: job → `failed`, ingest stays unprocessed for retry.
+4. **LLM gate (rules-first)** — Only for `needsClassification`/`ambiguous` debits, the pipeline calls the `classifyTransaction` callable CF (Gemini). On success it sets `categoryId`/`merchantNormalized` and clears the flags; on error or missing API key it leaves the transaction for the in-app inbox (never blocks the drain).
+5. **Notify** — `notifyClassification` (Firestore trigger) sends an FCM "categorize" push to `fcm_tokens` when a transaction needs input. Requires a paid Apple Developer account for real APNs delivery; the in-app inbox is the always-working fallback.
+6. **Classify (in-app HITL)** — Review inbox → Classify screen writes `categoryId`, `userNotes`, `shoppingItems`, `classifiedBy: user` to local SQLite + `transactions/{id}` in Firestore, and optionally teaches a `categories/{id}.merchantRules` rule.
 
 ## Categories
 
-Not stored in Firestore. Default categories ship in `CategoryService` (in-memory). User relabels persist only on the transaction document.
+Stored in `users/{uid}/categories`. `CategoryService` seeds nine defaults (food, groceries, transport, shopping, bills, entertainment, health, transfer, other) on first load, each with `merchantRules[]` used for rules-first auto-categorization. Classifying with "remember this merchant" appends a rule via `arrayUnion`. Falls back to in-memory defaults when signed out or offline.
 
 ## Console verification
 

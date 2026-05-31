@@ -7,6 +7,8 @@ origin: docs/brainstorms/money-matters-sms-ledger-requirements.md
 
 # Money Matters MVP — Build Plan
 
+> **2026-05-31 production pass shipped:** false-positive hardening (loan/EMI/balance marketing rejected; verb + instrument context required), `unmatched` bucket excluded from dashboard totals, per-payment-source breakdown with drill-down + transaction detail, Firestore-backed reclassifiable categories (`users/{uid}/categories`), LLM `classifyTransaction` CF (Gemini, rules-first gate, `needsConfig` fallback), `notifyClassification` FCM trigger, and an in-app "Needs your input" inbox/badge that works without push. New tx fields: `type`, `needsClassification`, `merchantNormalized`, `userNotes`, `shoppingItems`, `classifiedBy`. See `docs/HANDOFF.md` for USER ACTIONS (Gemini key, function deploy, paid Apple account for real push).
+
 ## Problem frame
 
 Personal iOS ledger: Shortcuts POST financial SMS to Firebase while the app is killed; Flutter drains, rules-parse, links payment sources, shows analytics. Stock iOS only — no inbox API, no Android. Architecture **S1 cloud-handoff-first** (see origin doc).
