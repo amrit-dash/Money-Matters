@@ -62,21 +62,58 @@ class RulesParser {
     RegExp(r'bill\s+due', caseSensitive: false),
     RegExp(r'payment\s+due', caseSensitive: false),
     RegExp(r'minimum\s+due', caseSensitive: false),
+    RegExp(r'\bmin\.?\s+due', caseSensitive: false),
     RegExp(r'due\s+on', caseSensitive: false),
     RegExp(r'statement\s+generated', caseSensitive: false),
     RegExp(r'pay\s+by', caseSensitive: false),
+    RegExp(r'emi\s+due', caseSensitive: false),
+    RegExp(r'total\s+amount\s+due', caseSensitive: false),
   ];
 
-  static final List<RegExp> _promoPatterns = [
+  /// Marketing / loan-offer markers that reject a message even when it also
+  /// contains a debit/credit verb (e.g. "...get Rs.6,00,130 credited! Apply now").
+  /// A genuine bank debit/credit alert never contains these.
+  static final List<RegExp> _hardPromoPatterns = [
     RegExp(r'pre[\s-]?approved', caseSensitive: false),
-    RegExp(r'limited\s+time\s+offer', caseSensitive: false),
-    RegExp(r'cashback\s+offer', caseSensitive: false),
-    RegExp(r'reward\s+points', caseSensitive: false),
-    RegExp(r'congratulations', caseSensitive: false),
-    RegExp(r'download\s+(?:our\s+)?app', caseSensitive: false),
-    RegExp(r'apply\s+now', caseSensitive: false),
+    RegExp(r'\bapply\s+now\b', caseSensitive: false),
+    RegExp(r'eligible\s+for', caseSensitive: false),
+    RegExp(r'you\s+are\s+eligible', caseSensitive: false),
     RegExp(r'loan\s+offer', caseSensitive: false),
+    RegExp(r'personal\s+loan', caseSensitive: false),
+    RegExp(r'instant\s+loan', caseSensitive: false),
+    RegExp(r'business\s+loan', caseSensitive: false),
+    RegExp(r'\bloan\s+up\s*to\b', caseSensitive: false),
+    RegExp(r'\bget\s+a\s+loan\b', caseSensitive: false),
+    RegExp(r'emi\s+offer', caseSensitive: false),
+    RegExp(r'limited\s+time', caseSensitive: false),
+    RegExp(r'lowest\s+interest', caseSensitive: false),
+    RegExp(r'interest\s+rate', caseSensitive: false),
+    RegExp(r'click\s+here', caseSensitive: false),
+    RegExp(r't&c\s*apply', caseSensitive: false),
+    RegExp(r'\bredeem\b', caseSensitive: false),
+    RegExp(r'reward\s+points', caseSensitive: false),
+    RegExp(r'cashback\s+offer', caseSensitive: false),
+    RegExp(r'download\s+(?:our\s+)?app', caseSensitive: false),
+    RegExp(r'\bcongratulations\b', caseSensitive: false),
+    RegExp(r'missed\s+call', caseSensitive: false),
+    RegExp(r'offer\s+valid', caseSensitive: false),
+    RegExp(r'\bhurry\b', caseSensitive: false),
   ];
+
+  /// Softer promo markers — only reject when there is no real debit/credit verb.
+  static final List<RegExp> _promoPatterns = [
+    RegExp(r'\boffer\b', caseSensitive: false),
+    RegExp(r'\bdiscount\b', caseSensitive: false),
+    RegExp(r'\bsale\b', caseSensitive: false),
+    RegExp(r'\bwin\b', caseSensitive: false),
+  ];
+
+  /// Account / card / UPI context — a genuine transaction references one.
+  static final RegExp _instrumentContextPattern = RegExp(
+    r'\bA/c\b|\bAcct?\b|\baccount\b|\bcard\b|\bUPI\b|\bwallet\b|\bVPA\b|'
+    r'\*\*\d|ending\s+\d|\bx{2,}\d',
+    caseSensitive: false,
+  );
 
   static final List<RegExp> _debitPatterns = [
     RegExp(r'\bdebited\b', caseSensitive: false),
@@ -84,6 +121,9 @@ class RulesParser {
     RegExp(r'\bpaid\b', caseSensitive: false),
     RegExp(r'\bsent\b', caseSensitive: false),
     RegExp(r'\bwithdrawn\b', caseSensitive: false),
+    RegExp(r'\bpurchase\b', caseSensitive: false),
+    // Card-spend alerts: "Thank you for using ... Card ending 1234 for Rs ...".
+    RegExp(r'using\b[\w\s]*\bcard\b', caseSensitive: false),
     RegExp(r'\bdr\b', caseSensitive: false),
   ];
 
@@ -104,6 +144,17 @@ class RulesParser {
       );
     }
 
+    // Hard promo / loan-offer markers reject even with a debit/credit verb.
+    // This is the primary guard against false positives such as a loan-offer
+    // SMS being logged as a large transaction.
+    if (_matchesAny(body, _hardPromoPatterns)) {
+      return ParseResult(
+        classification: IngestClassification.promo,
+        confidence: 0.9,
+        rulesVersion: rulesVersion,
+      );
+    }
+
     if (_matchesAny(body, _promoPatterns) && !_hasStrongTransactionSignal(body)) {
       return ParseResult(
         classification: IngestClassification.promo,
@@ -120,7 +171,9 @@ class RulesParser {
       );
     }
 
-    if (!_looksLikeTransaction(body)) {
+    // A real transaction requires an explicit debit/credit verb — a bare amount
+    // (e.g. "Avl bal Rs.5,000") or balance enquiry must not create a row.
+    if (!_hasStrongTransactionSignal(body)) {
       return ParseResult(
         classification: IngestClassification.unknown,
         confidence: 0.2,
@@ -133,6 +186,16 @@ class RulesParser {
       return ParseResult(
         classification: IngestClassification.unknown,
         confidence: 0.3,
+        rulesVersion: rulesVersion,
+      );
+    }
+
+    // Require account/card/UPI context: a genuine debit/credit alert references
+    // the instrument. Without it the detection is too weak to count as spend.
+    if (!_instrumentContextPattern.hasMatch(body)) {
+      return ParseResult(
+        classification: IngestClassification.unknown,
+        confidence: 0.35,
         rulesVersion: rulesVersion,
       );
     }
@@ -162,12 +225,6 @@ class RulesParser {
 
   bool _matchesAny(String body, List<RegExp> patterns) {
     return patterns.any((p) => p.hasMatch(body));
-  }
-
-  bool _looksLikeTransaction(String body) {
-    return _matchesAny(body, _debitPatterns) ||
-        _matchesAny(body, _creditPatterns) ||
-        _amountPattern.hasMatch(body);
   }
 
   bool _hasStrongTransactionSignal(String body) {

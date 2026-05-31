@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/auth/auth_service.dart';
@@ -331,6 +333,16 @@ class IngestRepository {
       type: ledger.TransactionType.fromString(
         data['type'] as String? ?? 'debit',
       ),
+      needsClassification: data['needsClassification'] as bool? ?? false,
+      merchantNormalized: data['merchantNormalized'] as String?,
+      userNotes: data['userNotes'] as String?,
+      shoppingItems: (data['shoppingItems'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+      classifiedBy: ledger.ClassifiedBy.fromString(
+        data['classifiedBy'] as String?,
+      ),
     );
   }
 
@@ -350,6 +362,12 @@ class IngestRepository {
       'unmatched': tx.unmatched ? 1 : 0,
       'ambiguous': tx.ambiguous ? 1 : 0,
       'type': tx.type.name,
+      'needs_classification': tx.needsClassification ? 1 : 0,
+      'merchant_normalized': tx.merchantNormalized,
+      'user_notes': tx.userNotes,
+      'shopping_items':
+          tx.shoppingItems.isEmpty ? null : jsonEncode(tx.shoppingItems),
+      'classified_by': tx.classifiedBy?.name,
       'synced_at': syncedAt,
     };
   }

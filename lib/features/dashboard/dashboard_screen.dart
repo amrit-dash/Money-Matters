@@ -8,7 +8,10 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../ingest/ingest_queue_drain.dart';
 import '../../ingest/ingest_repository.dart';
+import '../../services/category_service.dart';
+import '../review/review_repository.dart';
 import 'dashboard_repository.dart';
+import 'source_detail_screen.dart';
 
 enum _PeriodMode { weekly, monthly }
 
@@ -16,10 +19,14 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
     required this.repository,
+    required this.reviewRepository,
+    required this.categoryService,
     this.queueDrain,
   });
 
   final DashboardRepository repository;
+  final ReviewRepository reviewRepository;
+  final CategoryService categoryService;
   final IngestQueueDrain? queueDrain;
 
   @override
@@ -33,6 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _syncMessage;
   int _rawIngestCount = 0;
   int _transactionCount = 0;
+  int _needsInputCount = 0;
   StreamSubscription<IngestDrainResult>? _drainSubscription;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
@@ -69,11 +77,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? await widget.repository.weeklySummary()
         : await widget.repository.monthlySummary();
     final counts = await widget.repository.localCounts();
+    final needsInput = await widget.reviewRepository.needsInputCount();
     if (!mounted) return;
     setState(() {
       _summary = summary;
       _rawIngestCount = counts.rawIngests;
       _transactionCount = counts.transactions;
+      _needsInputCount = needsInput;
       _loading = false;
       if (!syncQueue) _syncMessage = null;
     });
@@ -83,7 +93,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _summary != null &&
       _summary!.totalSpend == 0 &&
       _summary!.totalIncome == 0 &&
-      _summary!.breakdown.isEmpty;
+      _summary!.breakdown.isEmpty &&
+      _summary!.unmatchedCount == 0;
+
+  String _sourceSubtitle(SourceBreakdown row) {
+    final source = row.source;
+    if (source == null) return '${row.transactionCount} transactions';
+    final type = source.type.name;
+    final last4 = source.last4;
+    final suffix = last4 != null ? ' ···· $last4' : '';
+    return '$type$suffix · ${row.transactionCount} transactions';
+  }
+
+  Future<void> _openSource(String? sourceId, String title) async {
+    final source = sourceId == null
+        ? null
+        : await widget.repository.paymentSourceById(sourceId);
+    if (!mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SourceDetailScreen(
+          dashboardRepository: widget.repository,
+          reviewRepository: widget.reviewRepository,
+          categoryService: widget.categoryService,
+          paymentSourceId: sourceId,
+          title: title,
+          source: source,
+        ),
+      ),
+    );
+    if (mounted) _load();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -95,12 +136,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
           title: const Text('Dashboard'),
           actions: [
             IconButton(
-              icon: const Icon(Icons.flag_outlined),
-              tooltip: 'Review flagged',
-              onPressed: () => Navigator.pushNamed(context, AppRoutes.review),
+              icon: Badge(
+                isLabelVisible: _needsInputCount > 0,
+                label: Text('$_needsInputCount'),
+                child: const Icon(Icons.inbox_outlined),
+              ),
+              tooltip: 'Needs your input',
+              onPressed: () async {
+                await Navigator.pushNamed(context, AppRoutes.review);
+                if (mounted) _load();
+              },
             ),
             IconButton(
-              icon: const Icon(Icons.inbox_outlined),
+              icon: const Icon(Icons.cloud_sync_outlined),
               tooltip: 'Recovery queue',
               onPressed: () => Navigator.pushNamed(context, AppRoutes.recovery),
             ),
@@ -201,6 +249,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         amount: _currency.format(_summary!.totalIncome),
                         muted: true,
                       ),
+                    ],
+                    if (_summary!.sources.isNotEmpty ||
+                        _summary!.unmatchedCount > 0) ...[
+                      const SizedBox(height: AppSpacing.section),
+                      AppSectionHeader(
+                        title: 'By account',
+                        subtitle: 'Tap a bank or card to see its transactions',
+                      ),
+                      ..._summary!.sources.map(
+                        (row) => _SourceRow(
+                          name: row.displayName,
+                          subtitle: _sourceSubtitle(row),
+                          amount: _currency.format(row.amount),
+                          share: row.shareOf(_summary!.totalSpend),
+                          count: row.transactionCount,
+                          onTap: row.source == null
+                              ? null
+                              : () => _openSource(
+                                    row.source!.id,
+                                    row.displayName,
+                                  ),
+                        ),
+                      ),
+                      if (_summary!.unmatchedCount > 0)
+                        _SourceRow(
+                          name: 'Unmatched · not counted',
+                          subtitle:
+                              'No saved bank/card matched — add one in Accounts',
+                          amount: _currency.format(_summary!.unmatchedSpend),
+                          share: 0,
+                          count: _summary!.unmatchedCount,
+                          muted: true,
+                          onTap: () => _openSource(null, 'Unmatched'),
+                        ),
                     ],
                     const SizedBox(height: AppSpacing.section),
                     AppSectionHeader(title: 'By category'),
@@ -374,6 +456,85 @@ class _TotalCard extends StatelessWidget {
                   ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceRow extends StatelessWidget {
+  const _SourceRow({
+    required this.name,
+    required this.subtitle,
+    required this.amount,
+    required this.share,
+    required this.count,
+    this.onTap,
+    this.muted = false,
+  });
+
+  final String name;
+  final String subtitle;
+  final String amount;
+  final double share;
+  final int count;
+  final VoidCallback? onTap;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.tight),
+      child: Card(
+        color: muted ? scheme.surfaceContainerHighest.withValues(alpha: 0.4) : null,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: muted
+                      ? scheme.surfaceContainerHighest
+                      : scheme.primaryContainer,
+                  child: Icon(
+                    muted ? Icons.help_outline : Icons.account_balance_wallet_outlined,
+                    size: 18,
+                    color: muted ? scheme.onSurfaceVariant : scheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  amount,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: muted ? scheme.onSurfaceVariant : scheme.onSurface,
+                      ),
+                ),
+                if (onTap != null)
+                  Icon(Icons.chevron_right, color: scheme.outline),
+              ],
+            ),
+          ),
         ),
       ),
     );

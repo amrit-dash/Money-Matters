@@ -87,6 +87,47 @@ void main() {
       expect(result.candidate, isNull);
     });
 
+    test('rejects loan-offer promo that contains a credit verb (false positive)',
+        () {
+      // Regression: this exact shape was logged as a ₹6,00,130 transaction.
+      final result = parser.parse(sampleIngest(
+        'Congratulations! You are eligible for a pre-approved personal loan. '
+        'Get Rs.6,00,130 credited instantly to your A/c. Apply now! T&C apply.',
+      ));
+
+      expect(result.classification, IngestClassification.promo);
+      expect(result.candidate, isNull);
+    });
+
+    test('rejects EMI-offer marketing even with an amount and card context', () {
+      final result = parser.parse(sampleIngest(
+        'EMI offer on your Card ending 4567! Convert spends to EMI at lowest '
+        'interest rate. Limited time. Click here to apply.',
+      ));
+
+      expect(result.classification, IngestClassification.promo);
+      expect(result.candidate, isNull);
+    });
+
+    test('ignores balance-only SMS with no debit/credit verb', () {
+      final result = parser.parse(sampleIngest(
+        'Avl bal in A/c **4567 is Rs.5,000.00 as on 29-05-26.',
+      ));
+
+      expect(result.classification, isNot(IngestClassification.transaction));
+      expect(result.candidate, isNull);
+    });
+
+    test('ignores min-due reminder without a real transaction verb', () {
+      final result = parser.parse(sampleIngest(
+        'Your Card ending 4567 total amount due is Rs.12,500. Min due Rs.625 '
+        'by 05-Jun.',
+      ));
+
+      expect(result.classification, isNot(IngestClassification.transaction));
+      expect(result.candidate, isNull);
+    });
+
     test('parses credited refund as credit transaction', () {
       final result = parser.parse(sampleIngest(
         'INR 299.00 credited to A/c **4567 on 29-05-26. Refund from AMAZON.',

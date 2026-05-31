@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum TransactionType {
   debit,
   credit;
@@ -7,6 +9,21 @@ enum TransactionType {
       (e) => e.name == value,
       orElse: () => TransactionType.debit,
     );
+  }
+}
+
+/// Who/what assigned the current category on a transaction.
+enum ClassifiedBy {
+  rules,
+  llm,
+  user;
+
+  static ClassifiedBy? fromString(String? value) {
+    if (value == null) return null;
+    for (final e in ClassifiedBy.values) {
+      if (e.name == value) return e;
+    }
+    return null;
   }
 }
 
@@ -23,6 +40,11 @@ class Transaction {
     this.unmatched = false,
     this.ambiguous = false,
     required this.type,
+    this.needsClassification = false,
+    this.merchantNormalized,
+    this.userNotes,
+    this.shoppingItems = const [],
+    this.classifiedBy,
   });
 
   final String? id;
@@ -37,6 +59,25 @@ class Transaction {
   final bool ambiguous;
   final TransactionType type;
 
+  /// True when the transaction still needs a category from the user or LLM.
+  /// Drives the in-app "Needs your input" inbox and FCM classify prompts.
+  final bool needsClassification;
+
+  /// LLM/heuristic-normalized merchant name (e.g. raw VPA → "Zepto").
+  final String? merchantNormalized;
+
+  /// Free-text note the user adds when classifying (e.g. "groceries").
+  final String? userNotes;
+
+  /// Optional shopping-list items captured during the classify flow.
+  final List<String> shoppingItems;
+
+  /// Provenance of the current category: rules, llm, or user.
+  final ClassifiedBy? classifiedBy;
+
+  /// Display name preferring the normalized merchant.
+  String? get displayMerchant => merchantNormalized ?? merchant;
+
   Map<String, dynamic> toJson() => {
         if (id != null) 'id': id,
         'rawIngestId': rawIngestId,
@@ -49,6 +90,11 @@ class Transaction {
         'unmatched': unmatched,
         'ambiguous': ambiguous,
         'type': type.name,
+        'needsClassification': needsClassification,
+        if (merchantNormalized != null) 'merchantNormalized': merchantNormalized,
+        if (userNotes != null) 'userNotes': userNotes,
+        if (shoppingItems.isNotEmpty) 'shoppingItems': shoppingItems,
+        if (classifiedBy != null) 'classifiedBy': classifiedBy!.name,
       };
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
@@ -64,6 +110,47 @@ class Transaction {
       unmatched: json['unmatched'] as bool? ?? false,
       ambiguous: json['ambiguous'] as bool? ?? false,
       type: TransactionType.fromString(json['type'] as String? ?? 'debit'),
+      needsClassification: json['needsClassification'] as bool? ?? false,
+      merchantNormalized: json['merchantNormalized'] as String?,
+      userNotes: json['userNotes'] as String?,
+      shoppingItems: (json['shoppingItems'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      classifiedBy: ClassifiedBy.fromString(json['classifiedBy'] as String?),
+    );
+  }
+
+  /// Maps a `transactions` table row (snake_case) to a [Transaction].
+  factory Transaction.fromSqlite(Map<String, dynamic> row) {
+    final rawItems = row['shopping_items'] as String?;
+    List<String> items = const [];
+    if (rawItems != null && rawItems.isNotEmpty) {
+      try {
+        items = (jsonDecode(rawItems) as List<dynamic>)
+            .map((e) => e.toString())
+            .toList();
+      } catch (_) {
+        items = const [];
+      }
+    }
+    return Transaction(
+      id: row['id'] as String?,
+      rawIngestId: row['raw_ingest_id'] as String? ?? '',
+      amount: (row['amount'] as num?)?.toDouble() ?? 0,
+      currency: row['currency'] as String? ?? 'INR',
+      merchant: row['merchant'] as String?,
+      timestamp: DateTime.parse(row['timestamp'] as String),
+      categoryId: row['category_id'] as String?,
+      paymentSourceId: row['payment_source_id'] as String?,
+      unmatched: (row['unmatched'] as int? ?? 0) == 1,
+      ambiguous: (row['ambiguous'] as int? ?? 0) == 1,
+      type: TransactionType.fromString(row['type'] as String? ?? 'debit'),
+      needsClassification: (row['needs_classification'] as int? ?? 0) == 1,
+      merchantNormalized: row['merchant_normalized'] as String?,
+      userNotes: row['user_notes'] as String?,
+      shoppingItems: items,
+      classifiedBy: ClassifiedBy.fromString(row['classified_by'] as String?),
     );
   }
 
@@ -79,6 +166,11 @@ class Transaction {
     bool? unmatched,
     bool? ambiguous,
     TransactionType? type,
+    bool? needsClassification,
+    String? merchantNormalized,
+    String? userNotes,
+    List<String>? shoppingItems,
+    ClassifiedBy? classifiedBy,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -92,6 +184,11 @@ class Transaction {
       unmatched: unmatched ?? this.unmatched,
       ambiguous: ambiguous ?? this.ambiguous,
       type: type ?? this.type,
+      needsClassification: needsClassification ?? this.needsClassification,
+      merchantNormalized: merchantNormalized ?? this.merchantNormalized,
+      userNotes: userNotes ?? this.userNotes,
+      shoppingItems: shoppingItems ?? this.shoppingItems,
+      classifiedBy: classifiedBy ?? this.classifiedBy,
     );
   }
 }

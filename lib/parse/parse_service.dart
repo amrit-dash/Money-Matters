@@ -41,6 +41,11 @@ class ParseService {
     );
     final categoryId = _matchCategory(candidate, categories);
 
+    // A debit with no confident category still needs the user (or LLM) to
+    // classify it. Credits (refunds, salary) do not block on a spend category.
+    final needsClassification =
+        candidate.type == TransactionType.debit && categoryId == null;
+
     final transaction = Transaction(
       rawIngestId: ingest.id,
       amount: candidate.amount,
@@ -52,6 +57,8 @@ class ParseService {
       unmatched: paymentSourceId == null,
       ambiguous: candidate.ambiguous || categoryId == null,
       type: candidate.type,
+      needsClassification: needsClassification,
+      classifiedBy: categoryId != null ? ClassifiedBy.rules : null,
     );
 
     return ParseServiceOutcome(result: result, transaction: transaction);

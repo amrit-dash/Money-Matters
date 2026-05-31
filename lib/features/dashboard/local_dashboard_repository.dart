@@ -1,20 +1,42 @@
 import 'package:intl/intl.dart';
+import 'package:money_matters/models/category.dart';
+import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/db/local_database.dart';
 import '../../services/category_service.dart';
+import '../../services/payment_source_service.dart';
 import 'dashboard_repository.dart';
 
 /// Dashboard analytics from local SQLite transactions.
+///
+/// Unmatched transactions (no saved bank/card) are excluded from headline
+/// totals and the category breakdown, and surfaced separately so promo or
+/// unknown-source noise never inflates spend.
 class LocalDashboardRepository implements DashboardRepository {
   LocalDashboardRepository({
     required LocalDatabase localDatabase,
     required CategoryService categoryService,
+    PaymentSourceService? paymentSourceService,
   })  : _db = localDatabase,
-        _categories = categoryService;
+        _categories = categoryService,
+        _paymentSources = paymentSourceService;
 
   final LocalDatabase _db;
   final CategoryService _categories;
+  final PaymentSourceService? _paymentSources;
+
+  List<PaymentSource>? _sourceCache;
+
+  Future<List<PaymentSource>> _loadSources() async {
+    if (_sourceCache != null) return _sourceCache!;
+    try {
+      _sourceCache = await _paymentSources?.loadAll() ?? const [];
+    } catch (_) {
+      _sourceCache = const [];
+    }
+    return _sourceCache!;
+  }
 
   @override
   Future<PeriodSummary> weeklySummary({DateTime? anchor}) async {
@@ -46,34 +68,89 @@ class LocalDashboardRepository implements DashboardRepository {
     required DateTime end,
   }) async {
     final rows = await _db.getTransactionsBetween(start, end);
-    final transactions = rows.map(_transactionFromRow).toList();
+    final transactions = rows.map(Transaction.fromSqlite).toList();
+    final sources = await _loadSources();
+    final categories = await _categories.loadCategories();
+
+    return summarize(
+      label: label,
+      start: start,
+      end: end,
+      transactions: transactions,
+      sources: sources,
+      categories: categories,
+      uncategorized: _categories.uncategorized(),
+    );
+  }
+
+  /// Pure aggregation used by the dashboard. Unmatched debits (no saved
+  /// bank/card) and credits are excluded from [PeriodSummary.totalSpend] and
+  /// the category breakdown; unmatched spend is surfaced separately so promo
+  /// or unknown-source noise never inflates headline totals.
+  static PeriodSummary summarize({
+    required String label,
+    required DateTime start,
+    required DateTime end,
+    required List<Transaction> transactions,
+    required List<PaymentSource> sources,
+    required List<Category> categories,
+    required Category uncategorized,
+  }) {
+    final sourcesById = {for (final s in sources) s.id: s};
 
     var totalSpend = 0.0;
     var totalIncome = 0.0;
+    var unmatchedSpend = 0.0;
+    var unmatchedCount = 0;
     final byCategory = <String, ({double amount, int count})>{};
+    final bySource = <String, ({double amount, int count})>{};
 
     for (final tx in transactions) {
-      if (tx.type == TransactionType.debit) {
-        totalSpend += tx.amount;
-        final key = tx.categoryId ?? 'uncategorized';
-        final current = byCategory[key];
-        byCategory[key] = (
-          amount: (current?.amount ?? 0) + tx.amount,
-          count: (current?.count ?? 0) + 1,
-        );
-      } else {
+      if (tx.type == TransactionType.credit) {
         totalIncome += tx.amount;
+        continue;
       }
+
+      // Unmatched debits are surfaced separately and never counted in totals.
+      if (tx.unmatched || tx.paymentSourceId == null) {
+        unmatchedSpend += tx.amount;
+        unmatchedCount += 1;
+        continue;
+      }
+
+      totalSpend += tx.amount;
+
+      final catKey = tx.categoryId ?? 'uncategorized';
+      final cat = byCategory[catKey];
+      byCategory[catKey] = (
+        amount: (cat?.amount ?? 0) + tx.amount,
+        count: (cat?.count ?? 0) + 1,
+      );
+
+      final srcKey = tx.paymentSourceId!;
+      final src = bySource[srcKey];
+      bySource[srcKey] = (
+        amount: (src?.amount ?? 0) + tx.amount,
+        count: (src?.count ?? 0) + 1,
+      );
     }
 
-    final categories = await _categories.loadCategories();
     final breakdown = byCategory.entries.map((entry) {
       final cat = categories.firstWhere(
         (c) => c.id == entry.key,
-        orElse: () => _categories.uncategorized(),
+        orElse: () => uncategorized,
       );
       return CategoryBreakdown(
         category: cat,
+        amount: entry.value.amount,
+        transactionCount: entry.value.count,
+      );
+    }).toList()
+      ..sort((a, b) => b.amount.compareTo(a.amount));
+
+    final sourceBreakdown = bySource.entries.map((entry) {
+      return SourceBreakdown(
+        source: sourcesById[entry.key],
         amount: entry.value.amount,
         transactionCount: entry.value.count,
       );
@@ -87,23 +164,25 @@ class LocalDashboardRepository implements DashboardRepository {
       totalSpend: totalSpend,
       totalIncome: totalIncome,
       breakdown: breakdown,
+      sources: sourceBreakdown,
+      unmatchedSpend: unmatchedSpend,
+      unmatchedCount: unmatchedCount,
     );
   }
 
-  Transaction _transactionFromRow(Map<String, dynamic> row) {
-    return Transaction(
-      id: row['id'] as String?,
-      rawIngestId: row['raw_ingest_id'] as String? ?? '',
-      amount: (row['amount'] as num?)?.toDouble() ?? 0,
-      currency: row['currency'] as String? ?? 'INR',
-      merchant: row['merchant'] as String?,
-      timestamp: DateTime.parse(row['timestamp'] as String),
-      categoryId: row['category_id'] as String?,
-      paymentSourceId: row['payment_source_id'] as String?,
-      unmatched: (row['unmatched'] as int? ?? 0) == 1,
-      ambiguous: (row['ambiguous'] as int? ?? 0) == 1,
-      type: TransactionType.fromString(row['type'] as String? ?? 'debit'),
-    );
+  @override
+  Future<List<Transaction>> sourceTransactions(String? paymentSourceId) async {
+    final rows = await _db.getTransactionsForSource(paymentSourceId);
+    return rows.map(Transaction.fromSqlite).toList();
+  }
+
+  @override
+  Future<PaymentSource?> paymentSourceById(String id) async {
+    final sources = await _loadSources();
+    for (final s in sources) {
+      if (s.id == id) return s;
+    }
+    return null;
   }
 
   DateTime _endOfDay(DateTime dt) =>

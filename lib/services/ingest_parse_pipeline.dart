@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:flutter/foundation.dart' show debugPrint;
 
@@ -7,6 +9,7 @@ import '../models/category.dart';
 import '../models/payment_source.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart';
+import '../parse/llm_parser.dart';
 import '../parse/parse_service.dart';
 import '../services/category_service.dart';
 import '../services/payment_source_service.dart';
@@ -34,12 +37,14 @@ class IngestParsePipeline {
     ParseService? parseService,
     PaymentSourceService? paymentSourceService,
     CategoryService? categoryService,
+    TransactionClassifier? classifier,
     FirebaseFirestore? firestore,
   })  : _localDatabase = localDatabase,
         _authService = authService,
         _parseService = parseService ?? ParseService(),
         _paymentSourceService = paymentSourceService,
         _categoryService = categoryService ?? CategoryService(),
+        _classifier = classifier ?? const NoOpTransactionClassifier(),
         _firestore = firestore ?? FirebaseFirestore.instance;
 
   final LocalDatabase _localDatabase;
@@ -47,6 +52,7 @@ class IngestParsePipeline {
   final ParseService _parseService;
   final PaymentSourceService? _paymentSourceService;
   final CategoryService _categoryService;
+  final TransactionClassifier _classifier;
   final FirebaseFirestore _firestore;
 
   static const _rulesVersion = 'rules-v1';
@@ -88,7 +94,8 @@ class IngestParsePipeline {
 
         if (outcome.transaction != null) {
           // Stable id = raw ingest id (one SMS → one transaction, idempotent retries).
-          final tx = outcome.transaction!.copyWith(id: ingest.id);
+          var tx = outcome.transaction!.copyWith(id: ingest.id);
+          tx = await _maybeClassify(tx, ingest, cats);
           await _persistTransaction(tx);
           transactionsCreated++;
         } else {
@@ -112,6 +119,37 @@ class IngestParsePipeline {
       transactionsCreated: transactionsCreated,
       skipped: skipped,
       failed: failed,
+    );
+  }
+
+  /// Rules-first LLM gate: only uncategorized/ambiguous transactions are sent
+  /// to the classifier. Any failure or missing config keeps the transaction in
+  /// the in-app "Needs your input" inbox — never crashes the drain.
+  Future<Transaction> _maybeClassify(
+    Transaction tx,
+    RawIngest ingest,
+    List<Category> categories,
+  ) async {
+    if (!tx.needsClassification && !tx.ambiguous) return tx;
+
+    final result = await _classifier.classify(
+      transaction: tx,
+      smsBody: ingest.body,
+      categoryIds: categories.map((c) => c.id).toList(),
+    );
+    if (result == null || result.needsConfig) return tx;
+
+    final validCategory = result.categoryId != null &&
+        categories.any((c) => c.id == result.categoryId);
+    final categoryId = validCategory ? result.categoryId : tx.categoryId;
+    final resolved = categoryId != null && !result.needsUserInput;
+
+    return tx.copyWith(
+      categoryId: categoryId,
+      merchantNormalized: result.merchantNormalized,
+      needsClassification: resolved ? false : tx.needsClassification,
+      ambiguous: resolved ? false : tx.ambiguous,
+      classifiedBy: resolved ? ClassifiedBy.llm : tx.classifiedBy,
     );
   }
 
@@ -145,6 +183,12 @@ class IngestParsePipeline {
       'unmatched': tx.unmatched ? 1 : 0,
       'ambiguous': tx.ambiguous ? 1 : 0,
       'type': tx.type.name,
+      'needs_classification': tx.needsClassification ? 1 : 0,
+      'merchant_normalized': tx.merchantNormalized,
+      'user_notes': tx.userNotes,
+      'shopping_items':
+          tx.shoppingItems.isEmpty ? null : jsonEncode(tx.shoppingItems),
+      'classified_by': tx.classifiedBy?.name,
       'synced_at': syncedAt,
     });
 

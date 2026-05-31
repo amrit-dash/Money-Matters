@@ -7,7 +7,7 @@ import '../../core/db/local_database.dart';
 import '../../services/category_service.dart';
 import 'review_repository.dart';
 
-/// Review queue backed by local SQLite with Firestore sync on relabel.
+/// Review queue backed by local SQLite with Firestore sync on classify.
 class LocalReviewRepository implements ReviewRepository {
   LocalReviewRepository({
     required LocalDatabase localDatabase,
@@ -27,21 +27,39 @@ class LocalReviewRepository implements ReviewRepository {
   @override
   Future<List<Transaction>> flaggedTransactions() async {
     final rows = await _db.getFlaggedTransactions();
-    return rows.map(_transactionFromRow).toList();
+    return rows.map(Transaction.fromSqlite).toList();
   }
 
   @override
   Future<List<Category>> availableCategories() => _categories.loadCategories();
 
   @override
-  Future<void> relabel({
-    required String transactionId,
-    required String categoryId,
-    String? merchantRuleHint,
+  Future<Transaction?> transactionById(String id) async {
+    final row = await _db.getTransaction(id);
+    if (row == null) return null;
+    return Transaction.fromSqlite(row);
+  }
+
+  @override
+  Future<int> needsInputCount() => _db.countNeedsClassification();
+
+  @override
+  Future<void> classify({
+    required Transaction transaction,
+    required ClassifyInput input,
   }) async {
-    await _db.updateTransactionFlags(
-      transactionId,
-      categoryId: categoryId,
+    final id = transaction.id;
+    if (id == null) {
+      throw StateError('Cannot classify a transaction without an id');
+    }
+
+    await _db.updateTransactionClassification(
+      id,
+      categoryId: input.categoryId,
+      userNotes: input.userNotes,
+      shoppingItems: input.shoppingItems,
+      classifiedBy: ClassifiedBy.user.name,
+      needsClassification: false,
       ambiguous: false,
     );
 
@@ -50,26 +68,49 @@ class LocalReviewRepository implements ReviewRepository {
         .collection('users')
         .doc(uid)
         .collection('transactions')
-        .doc(transactionId)
-        .update({
-      'categoryId': categoryId,
+        .doc(id)
+        .set({
+      'categoryId': input.categoryId,
       'ambiguous': false,
-    });
+      'needsClassification': false,
+      'classifiedBy': ClassifiedBy.user.name,
+      if (input.userNotes != null) 'userNotes': input.userNotes,
+      if (input.shoppingItems.isNotEmpty) 'shoppingItems': input.shoppingItems,
+    }, SetOptions(merge: true));
+
+    // Teach a user-specific merchant rule so future SMS auto-categorize.
+    if (input.saveMerchantRule) {
+      final merchant = transaction.merchant;
+      if (merchant != null && merchant.isNotEmpty) {
+        await _categories.addMerchantRule(
+          categoryId: input.categoryId,
+          merchant: merchant,
+        );
+      }
+    }
   }
 
-  Transaction _transactionFromRow(Map<String, dynamic> row) {
-    return Transaction(
-      id: row['id'] as String?,
-      rawIngestId: row['raw_ingest_id'] as String? ?? '',
-      amount: (row['amount'] as num?)?.toDouble() ?? 0,
-      currency: row['currency'] as String? ?? 'INR',
-      merchant: row['merchant'] as String?,
-      timestamp: DateTime.parse(row['timestamp'] as String),
-      categoryId: row['category_id'] as String?,
-      paymentSourceId: row['payment_source_id'] as String?,
-      unmatched: (row['unmatched'] as int? ?? 0) == 1,
-      ambiguous: (row['ambiguous'] as int? ?? 0) == 1,
-      type: TransactionType.fromString(row['type'] as String? ?? 'debit'),
+  @override
+  Future<void> relabel({
+    required String transactionId,
+    required String categoryId,
+    String? merchantRuleHint,
+  }) async {
+    final tx = await transactionById(transactionId) ??
+        Transaction(
+          id: transactionId,
+          rawIngestId: '',
+          amount: 0,
+          timestamp: DateTime.now(),
+          type: TransactionType.debit,
+          merchant: merchantRuleHint,
+        );
+    await classify(
+      transaction: tx,
+      input: ClassifyInput(
+        categoryId: categoryId,
+        saveMerchantRule: merchantRuleHint != null,
+      ),
     );
   }
 }

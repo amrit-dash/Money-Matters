@@ -5,9 +5,11 @@ import 'package:money_matters/models/transaction.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
-import 'relabel_sheet.dart';
+import 'classify_screen.dart';
 import 'review_repository.dart';
 
+/// "Needs your input" inbox — the in-app fallback for classification that works
+/// without push notifications (no paid Apple account required).
 class ReviewScreen extends StatefulWidget {
   const ReviewScreen({super.key, required this.repository});
 
@@ -40,40 +42,23 @@ class _ReviewScreenState extends State<ReviewScreen> {
     });
   }
 
-  Future<void> _openRelabel(Transaction tx) async {
-    final categories = await widget.repository.availableCategories();
-    if (!mounted) return;
-
-    final result = await showModalBottomSheet<RelabelResult>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => RelabelSheet(transaction: tx, categories: categories),
+  Future<void> _openClassify(Transaction tx) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ClassifyScreen(
+          repository: widget.repository,
+          transaction: tx,
+        ),
+      ),
     );
-    if (result == null || tx.id == null) return;
-
-    try {
-      await widget.repository.relabel(
-        transactionId: tx.id!,
-        categoryId: result.categoryId,
-        merchantRuleHint: result.saveMerchantRule ? tx.merchant : null,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Category updated')),
-      );
-      _load();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save category: $e')),
-      );
-    }
+    if (changed == true) _load();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Review')),
+      appBar: AppBar(title: const Text('Needs your input')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
@@ -81,7 +66,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   icon: Icons.check_circle_outline,
                   title: 'All clear',
                   message:
-                      'No flagged transactions need review right now.',
+                      'No transactions need your input right now. New ones '
+                      'show up here when a category or payment source is unknown.',
                 )
               : RefreshIndicator(
                   onRefresh: _load,
@@ -93,9 +79,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     itemBuilder: (context, index) {
                       if (index == 0) {
                         return AppSectionHeader(
-                          title: 'Flagged (${_items.length})',
+                          title: 'To classify (${_items.length})',
                           subtitle:
-                              'Ambiguous categories or unmatched payment sources',
+                              'Tap to pick a category, add notes or shopping items',
                         );
                       }
                       final tx = _items[index - 1];
@@ -103,7 +89,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         transaction: tx,
                         amountLabel: _currency.format(tx.amount),
                         dateLabel: _dateFormat.format(tx.timestamp),
-                        onRelabel: () => _openRelabel(tx),
+                        onTap: () => _openClassify(tx),
                       );
                     },
                   ),
@@ -117,82 +103,82 @@ class _FlaggedTile extends StatelessWidget {
     required this.transaction,
     required this.amountLabel,
     required this.dateLabel,
-    required this.onRelabel,
+    required this.onTap,
   });
 
   final Transaction transaction;
   final String amountLabel;
   final String dateLabel;
-  final VoidCallback onRelabel;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final flags = <String>[
+      if (transaction.needsClassification) 'Needs category',
       if (transaction.ambiguous) 'Ambiguous',
       if (transaction.unmatched) 'Unmatched',
     ];
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        transaction.merchant ?? 'Unknown merchant',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        dateLabel,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                      ),
-                    ],
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          transaction.displayMerchant ?? 'Unknown merchant',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          dateLabel,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Text(
-                  amountLabel,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                  Text(
+                    amountLabel,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+              if (flags.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.tight),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: flags
+                      .map(
+                        (f) => AppStatusChip(
+                          label: f,
+                          tone: AppStatTone.warning,
+                        ),
+                      )
+                      .toList(),
                 ),
               ],
-            ),
-            if (flags.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.tight),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: flags
-                    .map(
-                      (f) => AppStatusChip(
-                        label: f,
-                        tone: AppStatTone.warning,
-                      ),
-                    )
-                    .toList(),
-              ),
             ],
-            const SizedBox(height: AppSpacing.item),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.tonal(
-                onPressed: onRelabel,
-                child: const Text('Relabel'),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

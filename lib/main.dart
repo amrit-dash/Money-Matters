@@ -5,12 +5,15 @@ import 'app_router.dart';
 import 'core/auth/auth_service.dart';
 import 'core/config/firebase_options.dart';
 import 'core/db/local_database.dart';
+import 'core/theme/app_theme.dart';
 import 'features/setup/firebase_setup_screen.dart';
 import 'ingest/ingest_queue_drain.dart';
 import 'ingest/ingest_repository.dart';
 import 'ingest/url_ingest_handler.dart';
+import 'parse/llm_parser.dart';
 import 'services/app_services.dart';
 import 'services/category_service.dart';
+import 'services/fcm_service.dart';
 import 'services/ingest_parse_pipeline.dart';
 import 'services/payment_source_service.dart';
 
@@ -28,12 +31,13 @@ Future<void> main() async {
   final authService = AuthService();
   final localDatabase = LocalDatabase();
   final paymentSourceService = PaymentSourceService(authService: authService);
-  final categoryService = CategoryService();
+  final categoryService = CategoryService(authService: authService);
   final parsePipeline = IngestParsePipeline(
     localDatabase: localDatabase,
     authService: authService,
     paymentSourceService: paymentSourceService,
     categoryService: categoryService,
+    classifier: CloudFunctionsClassifier(),
   );
   final ingestRepository = IngestRepository(
     authService: authService,
@@ -45,6 +49,7 @@ Future<void> main() async {
     parsePipeline: parsePipeline,
   );
   final urlIngestHandler = UrlIngestHandler(queueDrain: queueDrain);
+  final fcmService = FcmService(authService: authService);
   final appServices = AppServices(
     authService: authService,
     localDatabase: localDatabase,
@@ -62,6 +67,7 @@ Future<void> main() async {
         authService: authService,
         queueDrain: queueDrain,
         urlIngestHandler: urlIngestHandler,
+        fcmService: fcmService,
       ),
     ),
   );
@@ -73,11 +79,13 @@ class MoneyMattersApp extends StatefulWidget {
     required this.authService,
     required this.queueDrain,
     required this.urlIngestHandler,
+    required this.fcmService,
   });
 
   final AuthService authService;
   final IngestQueueDrain queueDrain;
   final UrlIngestHandler urlIngestHandler;
+  final FcmService fcmService;
 
   @override
   State<MoneyMattersApp> createState() => _MoneyMattersAppState();
@@ -101,6 +109,8 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
       _navigatorKey.currentState?.pushNamed(AppRoutes.recovery);
     });
 
+    widget.fcmService.attachHandlers(onClassify: _openClassify);
+
     widget.authService.authStateChanges.listen((user) async {
       final signedIn = user != null;
       if (signedIn != _isSignedIn && mounted) {
@@ -108,6 +118,7 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
       }
 
       if (signedIn) {
+        await widget.fcmService.registerForUser();
         await widget.queueDrain.drainIfAuthenticated();
       } else {
         _navigatorKey.currentState?.pushNamedAndRemoveUntil(
@@ -118,8 +129,14 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
     });
 
     if (widget.authService.isSignedIn) {
+      await widget.fcmService.registerForUser();
       await widget.queueDrain.drainIfAuthenticated();
     }
+  }
+
+  /// Deep-links a tapped classify notification to the classify flow.
+  void _openClassify(String txId) {
+    _navigatorKey.currentState?.pushNamed(AppRoutes.classify, arguments: txId);
   }
 
   @override
@@ -130,19 +147,7 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
     return MaterialApp(
       navigatorKey: _navigatorKey,
       title: 'Money Matters',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-        useMaterial3: true,
-        cardTheme: CardThemeData(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: ColorScheme.fromSeed(seedColor: Colors.teal).outlineVariant,
-            ),
-          ),
-        ),
-      ),
+      theme: buildAppTheme(),
       initialRoute: initialRoute,
       onGenerateRoute: AppRouter.onGenerateRoute,
     );

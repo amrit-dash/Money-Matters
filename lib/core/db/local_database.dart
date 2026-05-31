@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
@@ -8,7 +9,7 @@ class LocalDatabase {
   LocalDatabase();
 
   static const _dbName = 'money_matters.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   Database? _db;
 
@@ -77,6 +78,11 @@ class LocalDatabase {
         unmatched INTEGER NOT NULL DEFAULT 0,
         ambiguous INTEGER NOT NULL DEFAULT 0,
         type TEXT NOT NULL,
+        needs_classification INTEGER NOT NULL DEFAULT 0,
+        merchant_normalized TEXT,
+        user_notes TEXT,
+        shopping_items TEXT,
+        classified_by TEXT,
         synced_at TEXT NOT NULL,
         FOREIGN KEY (raw_ingest_id) REFERENCES raw_ingests(idempotency_key)
       )
@@ -85,10 +91,44 @@ class LocalDatabase {
     await db.execute('''
       CREATE INDEX idx_transactions_timestamp ON transactions(timestamp)
     ''');
+    await db.execute('''
+      CREATE INDEX idx_transactions_payment_source
+        ON transactions(payment_source_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX idx_transactions_needs_classification
+        ON transactions(needs_classification)
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Future migrations handled by coordinator.
+    if (oldVersion < 2) {
+      // v2: classification + LLM/HITL fields on transactions.
+      const columns = <String, String>{
+        'needs_classification': 'INTEGER NOT NULL DEFAULT 0',
+        'merchant_normalized': 'TEXT',
+        'user_notes': 'TEXT',
+        'shopping_items': 'TEXT',
+        'classified_by': 'TEXT',
+      };
+      for (final entry in columns.entries) {
+        try {
+          await db.execute(
+            'ALTER TABLE transactions ADD COLUMN ${entry.key} ${entry.value}',
+          );
+        } catch (_) {
+          // Column already present (idempotent upgrade) — ignore.
+        }
+      }
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_transactions_payment_source '
+        'ON transactions(payment_source_id)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_transactions_needs_classification '
+        'ON transactions(needs_classification)',
+      );
+    }
   }
 
   // --- raw_ingests ---
@@ -230,9 +270,51 @@ class LocalDatabase {
     final db = await database;
     return db.query(
       'transactions',
-      where: 'ambiguous = 1 OR unmatched = 1',
+      where: 'ambiguous = 1 OR unmatched = 1 OR needs_classification = 1',
       orderBy: 'timestamp DESC',
     );
+  }
+
+  Future<Map<String, dynamic>?> getTransaction(String id) async {
+    final db = await database;
+    final rows = await db.query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<List<Map<String, dynamic>>> getTransactionsForSource(
+    String? paymentSourceId,
+  ) async {
+    final db = await database;
+    if (paymentSourceId == null) {
+      return db.query(
+        'transactions',
+        where: 'payment_source_id IS NULL',
+        orderBy: 'timestamp DESC',
+      );
+    }
+    return db.query(
+      'transactions',
+      where: 'payment_source_id = ?',
+      whereArgs: [paymentSourceId],
+      orderBy: 'timestamp DESC',
+    );
+  }
+
+  /// Transactions still awaiting user/LLM categorization (uncategorized,
+  /// ambiguous, or unmatched) — powers the in-app "Needs your input" inbox.
+  Future<int> countNeedsClassification() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) AS c FROM transactions '
+      'WHERE needs_classification = 1 OR ambiguous = 1 OR unmatched = 1',
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
   }
 
   Future<void> updateTransactionFlags(
@@ -246,6 +328,41 @@ class LocalDatabase {
     if (categoryId != null) updates['category_id'] = categoryId;
     if (ambiguous != null) updates['ambiguous'] = ambiguous ? 1 : 0;
     if (unmatched != null) updates['unmatched'] = unmatched ? 1 : 0;
+    if (updates.isEmpty) return;
+    await db.update(
+      'transactions',
+      updates,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Applies a classification result (from user relabel or LLM) locally.
+  Future<void> updateTransactionClassification(
+    String id, {
+    String? categoryId,
+    String? merchantNormalized,
+    String? userNotes,
+    List<String>? shoppingItems,
+    String? classifiedBy,
+    bool? needsClassification,
+    bool? ambiguous,
+  }) async {
+    final db = await database;
+    final updates = <String, Object?>{};
+    if (categoryId != null) updates['category_id'] = categoryId;
+    if (merchantNormalized != null) {
+      updates['merchant_normalized'] = merchantNormalized;
+    }
+    if (userNotes != null) updates['user_notes'] = userNotes;
+    if (shoppingItems != null) {
+      updates['shopping_items'] = jsonEncode(shoppingItems);
+    }
+    if (classifiedBy != null) updates['classified_by'] = classifiedBy;
+    if (needsClassification != null) {
+      updates['needs_classification'] = needsClassification ? 1 : 0;
+    }
+    if (ambiguous != null) updates['ambiguous'] = ambiguous ? 1 : 0;
     if (updates.isEmpty) return;
     await db.update(
       'transactions',

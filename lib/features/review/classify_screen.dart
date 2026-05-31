@@ -1,0 +1,298 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import 'package:money_matters/models/category.dart';
+import 'package:money_matters/models/transaction.dart';
+
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
+import 'review_repository.dart';
+
+/// Full-screen classify flow. Reached from the Review inbox, transaction
+/// detail "Reclassify", or a tapped FCM notification (deep link by id).
+class ClassifyScreen extends StatefulWidget {
+  const ClassifyScreen({
+    super.key,
+    required this.repository,
+    this.transaction,
+    this.transactionId,
+  }) : assert(
+          transaction != null || transactionId != null,
+          'Provide a transaction or a transactionId',
+        );
+
+  final ReviewRepository repository;
+  final Transaction? transaction;
+  final String? transactionId;
+
+  @override
+  State<ClassifyScreen> createState() => _ClassifyScreenState();
+}
+
+class _ClassifyScreenState extends State<ClassifyScreen> {
+  final _notesController = TextEditingController();
+  final _itemController = TextEditingController();
+
+  Transaction? _tx;
+  List<Category> _categories = [];
+  final List<String> _shoppingItems = [];
+  String? _selectedCategoryId;
+  bool _saveRule = false;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
+  final _dateFormat = DateFormat('d MMM yyyy, h:mm a');
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    _itemController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final categories = await widget.repository.availableCategories();
+      final tx = widget.transaction ??
+          await widget.repository.transactionById(widget.transactionId!);
+      if (!mounted) return;
+      if (tx == null) {
+        setState(() {
+          _loading = false;
+          _error = 'Transaction not found. It may not have synced yet.';
+        });
+        return;
+      }
+      _notesController.text = tx.userNotes ?? '';
+      _shoppingItems.addAll(tx.shoppingItems);
+      setState(() {
+        _tx = tx;
+        _categories = categories;
+        _selectedCategoryId = tx.categoryId ??
+            (categories.isNotEmpty ? categories.first.id : null);
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  void _addItem() {
+    final value = _itemController.text.trim();
+    if (value.isEmpty) return;
+    setState(() {
+      _shoppingItems.add(value);
+      _itemController.clear();
+    });
+  }
+
+  Future<void> _save() async {
+    final tx = _tx;
+    final categoryId = _selectedCategoryId;
+    if (tx == null || categoryId == null) return;
+
+    setState(() => _saving = true);
+    try {
+      await widget.repository.classify(
+        transaction: tx,
+        input: ClassifyInput(
+          categoryId: categoryId,
+          userNotes: _notesController.text.trim().isEmpty
+              ? null
+              : _notesController.text.trim(),
+          shoppingItems: List<String>.from(_shoppingItems),
+          saveMerchantRule: _saveRule,
+        ),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saved')),
+      );
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save: $e')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Classify')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Padding(
+                  padding: const EdgeInsets.all(AppSpacing.page),
+                  child: Center(
+                    child: Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                )
+              : _buildForm(context),
+    );
+  }
+
+  Widget _buildForm(BuildContext context) {
+    final tx = _tx!;
+    final scheme = Theme.of(context).colorScheme;
+    final flags = <String>[
+      if (tx.unmatched) 'Unmatched',
+      if (tx.ambiguous) 'Ambiguous',
+      if (tx.needsClassification) 'Needs category',
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.page),
+      children: [
+        Card(
+          color: scheme.primaryContainer.withValues(alpha: 0.3),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        tx.displayMerchant ?? 'Unknown merchant',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    Text(
+                      _currency.format(tx.amount),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${tx.type.name.toUpperCase()} · ${_dateFormat.format(tx.timestamp)}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                ),
+                if (flags.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.tight),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: flags
+                        .map((f) => AppStatusChip(
+                              label: f,
+                              tone: AppStatTone.warning,
+                            ))
+                        .toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(title: 'Category'),
+        DropdownButtonFormField<String>(
+          initialValue: _selectedCategoryId,
+          decoration: const InputDecoration(labelText: 'Category'),
+          items: _categories
+              .map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
+              .toList(),
+          onChanged: (v) => setState(() => _selectedCategoryId = v),
+        ),
+        if (tx.merchant != null) ...[
+          const SizedBox(height: AppSpacing.tight),
+          CheckboxListTile(
+            value: _saveRule,
+            onChanged: (v) => setState(() => _saveRule = v ?? false),
+            title: Text('Remember "${tx.merchant}" → this category'),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ],
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(
+          title: 'Notes',
+          subtitle: 'What was this for? (optional)',
+        ),
+        TextField(
+          controller: _notesController,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            hintText: 'e.g. weekly groceries, gift for mom',
+          ),
+        ),
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(
+          title: 'Shopping list',
+          subtitle: 'Add items bought (optional)',
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _itemController,
+                decoration: const InputDecoration(hintText: 'Add an item'),
+                onSubmitted: (_) => _addItem(),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.tight),
+            IconButton.filledTonal(
+              onPressed: _addItem,
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        ),
+        if (_shoppingItems.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.item),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _shoppingItems
+                .map(
+                  (item) => InputChip(
+                    label: Text(item),
+                    onDeleted: () =>
+                        setState(() => _shoppingItems.remove(item)),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.section),
+        FilledButton(
+          onPressed: _saving || _selectedCategoryId == null ? null : _save,
+          child: _saving
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Save classification'),
+        ),
+      ],
+    );
+  }
+}

@@ -6,6 +6,7 @@ import 'features/onboarding/connect_sms_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/recovery/recovery_screen.dart';
+import 'features/review/classify_screen.dart';
 import 'features/review/review_screen.dart';
 import 'services/app_services.dart';
 
@@ -15,6 +16,7 @@ class AppRoutes {
   static const connectSms = '/connect-sms';
   static const dashboard = '/dashboard';
   static const review = '/review';
+  static const classify = '/classify';
   static const recovery = '/recovery';
   static const profile = '/profile';
   static const accounts = '/accounts';
@@ -62,6 +64,8 @@ class AppRouter {
             final services = AppScope.of(ctx);
             return DashboardScreen(
               repository: services.dashboardRepository,
+              reviewRepository: services.reviewRepository,
+              categoryService: services.categoryService,
               queueDrain: services.queueDrain,
             );
           },
@@ -72,6 +76,22 @@ class AppRouter {
           builder: (ctx) => ReviewScreen(
             repository: AppScope.of(ctx).reviewRepository,
           ),
+        );
+      case AppRoutes.classify:
+        final txId = settings.arguments is String
+            ? settings.arguments as String
+            : null;
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (ctx) {
+            if (txId == null) {
+              return ReviewScreen(repository: AppScope.of(ctx).reviewRepository);
+            }
+            return ClassifyScreen(
+              repository: AppScope.of(ctx).reviewRepository,
+              transactionId: txId,
+            );
+          },
         );
       case AppRoutes.recovery:
         return MaterialPageRoute<void>(
@@ -108,12 +128,15 @@ class AppRouter {
     }
   }
 
-  /// Deep link handler for `moneymatters://recovery` (Shortcut B).
+  /// Deep link handler for `moneymatters://recovery` (Shortcut B) and
+  /// `moneymatters://classify?txId=...` (tapped FCM classify prompt).
   static String? routeFromUri(Uri uri) {
     if (uri.scheme != 'moneymatters') return null;
     switch (uri.host) {
       case 'recovery':
         return AppRoutes.recovery;
+      case 'classify':
+        return AppRoutes.classify;
       case 'ingest':
         return AppRoutes.dashboard;
       default:
