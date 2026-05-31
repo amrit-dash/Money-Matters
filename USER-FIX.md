@@ -18,6 +18,18 @@ The app only downloaded **parse jobs** into the phone, not the SMS bodies, becau
    - Expand **`payment_sources`** (10 docs) — scroll subcollections under the user doc, not only the top-level fields.
    - After sync: **`parse_jobs`** → `status: done`, **`raw_ingests`** → `processedAt` set, **`transactions`** populated.
 
+## Optional: enable LLM auto-classify
+
+Rules + the in-app **Review** inbox classify transactions without any API key. If you want the cloud function to auto-suggest categories for ambiguous spends:
+
+```bash
+cd firebase/functions
+firebase functions:secrets:set OPENROUTER_API_KEY
+firebase deploy --only functions:classifyTransaction
+```
+
+Free-tier model default: `google/gemma-2-9b-it:free` ([OpenRouter](https://openrouter.ai)). No paid Apple account needed — sideload IPA and use Review inbox as primary.
+
 ## If sync still fails
 
 - Snackbar mentions **permission denied** → sign out and sign in again.

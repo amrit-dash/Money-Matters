@@ -75,7 +75,7 @@ Alternatively: Firebase Console → **Functions** → grant permissions when pro
 
 ## Environment variables
 
-The Cloud Function uses the **Firebase Admin SDK** with default application credentials — no extra env vars are required at runtime.
+The Cloud Function uses the **Firebase Admin SDK** with default application credentials — no extra env vars are required at runtime for `ingestSms`.
 
 | Variable / config | Where | Notes |
 |-------------------|-------|-------|
@@ -83,6 +83,26 @@ The Cloud Function uses the **Firebase Admin SDK** with default application cred
 | `INGEST_URL` | Shortcuts + app onboarding | Function URL from deploy output |
 | Device ingest token | Keychain + Shortcuts | Created by app onboarding; stored as `sha256` in Firestore |
 | `deviceId` | App onboarding | UUID sent in POST body; must match `device_tokens` doc ID |
+| `OPENROUTER_API_KEY` | Functions secret | **Optional.** Enables LLM auto-classify via OpenRouter. Set with `firebase functions:secrets:set OPENROUTER_API_KEY`. Without it, `classifyTransaction` returns `needsConfig` and the app uses rules + in-app classify. |
+| `OPENROUTER_MODEL` | Functions param / env | **Optional.** Default `google/gemma-2-9b-it:free`. Other free-tier slugs: `meta-llama/llama-3.2-3b-instruct:free`. See [OpenRouter models](https://openrouter.ai/models). |
+
+### LLM classify (`classifyTransaction`)
+
+Rules-first parsing runs on-device; the callable CF only handles uncategorized/ambiguous debits. **No API key is required** for normal use — merchant rules and the in-app "Needs your input" inbox cover everything. To enable automatic LLM categorization:
+
+```bash
+cd firebase/functions
+firebase functions:secrets:set OPENROUTER_API_KEY
+# optional model override — set OPENROUTER_MODEL env/param before deploy
+# (default: google/gemma-2-9b-it:free)
+firebase deploy --only functions:classifyTransaction
+```
+
+Get a key at [openrouter.ai](https://openrouter.ai). Free-tier model slugs end in `:free`.
+
+### Push notifications (optional)
+
+FCM/APNs push for "needs classification" prompts is **optional**. Sideloaded IPA on a free Apple ID works without push — use **Dashboard → Review** (in-app inbox). A paid Apple Developer account is only needed if you want background push delivery.
 
 ### Device token registration (automatic)
 
@@ -207,11 +227,13 @@ All paths under `users/{uid}/**` allow read/write only when `request.auth.uid ==
 
 Shortcuts never write Firestore directly — only the Cloud Function (Admin SDK) creates `raw_ingests` and `parse_jobs`.
 
-## FCM (MVP stub)
+## FCM (optional push)
 
-FCM is **not** used for SMS ingestion. It delivers human-in-the-loop prompts only (unmatched payment source, ambiguous category).
+FCM is **not** used for SMS ingestion. It can deliver human-in-the-loop prompts (unmatched payment source, ambiguous category) when configured with APNs.
 
-Planned data message shape (implemented in Flutter Stream D; send from a future function or Admin script):
+**No paid Apple Developer account is required.** Sideload via Xcode on a free personal team; the in-app Review/classify inbox is the primary path. Push is a nice-to-have only.
+
+Data message shape (implemented in Flutter; sent by `notifyClassification` CF):
 
 ```json
 {
@@ -223,7 +245,11 @@ Planned data message shape (implemented in Flutter Stream D; send from a future 
 }
 ```
 
-Topic or per-device token registration happens during app onboarding. No FCM Cloud Function is deployed in MVP — document hooks only.
+Topic or per-device token registration happens during app onboarding. `notifyClassification` is deployed; real APNs delivery requires a paid Apple account (optional).
+
+## Optional: LLM auto-classify
+
+If transactions stay in "Needs your input" and you want automatic categorization for ambiguous spends, set an OpenRouter API key (see **Environment variables** above). **This is optional** — rules parsing and manual classify in the app work without any key.
 
 ## Collections (reference)
 

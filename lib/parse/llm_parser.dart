@@ -84,7 +84,7 @@ class NoOpTransactionClassifier implements TransactionClassifier {
       null;
 }
 
-/// Calls the `classifyTransaction` Cloud Function (Gemini-backed).
+/// Calls the `classifyTransaction` Cloud Function (OpenRouter-backed).
 ///
 /// Region must match the deployed function (`asia-south1`). On any error or
 /// when the backend reports `needsConfig`, the caller keeps the transaction in
