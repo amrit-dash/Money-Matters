@@ -12,12 +12,12 @@
 - **Unmatched bucket** — transactions matching no saved bank/card are flagged `unmatched`, **excluded from dashboard totals**, and shown in their own bucket + the inbox.
 - **Per-source dashboard** — spend grouped per bank/card; tap a source → its transactions → full detail with reclassify.
 - **Categories** — persisted to `users/{uid}/categories` (seeded defaults + user merchant rules); replaced the in-memory list.
-- **LLM classify** — `classifyTransaction` callable CF (OpenRouter, `asia-south1`, nodejs22) categorizes only uncategorized/ambiguous spends. Missing `OPENROUTER_API_KEY` → `needsConfig` fallback, no crash. Rules + manual classify work without any API key.
+- **LLM classify** — `classifyTransaction` callable CF (Gemini `gemini-2.0-flash`, `asia-south1`, nodejs22) categorizes only uncategorized/ambiguous spends. Missing `GEMINI_API_KEY` → `needsConfig` fallback, no crash. Rules + manual classify work without any API key.
 - **Push (optional) + in-app primary** — `FcmService` registers tokens; `notifyClassification` CF can push on need. **No paid Apple Developer account is required** for sideloaded IPA — the **in-app Review/classify inbox and badge are the primary path** and work on a free personal team. Real APNs push is optional and needs a paid Apple account.
 
 ### USER ACTIONS required to fully enable
 
-1. **OpenRouter key (optional, for auto-LLM classify):** `cd firebase/functions && firebase functions:secrets:set OPENROUTER_API_KEY` ([openrouter.ai](https://openrouter.ai) — free tier works with models like `google/gemma-2-9b-it:free` or `meta-llama/llama-3.2-3b-instruct:free`). Until set, LLM returns `needsConfig` and the app uses rules + the in-app inbox. Optional model override: set env/param `OPENROUTER_MODEL` (default `google/gemma-2-9b-it:free`).
+1. **Gemini key (optional, for auto-LLM classify):** `cd firebase/functions && firebase functions:secrets:set GEMINI_API_KEY` then `firebase deploy --only functions:classifyTransaction,functions:notifyClassification`. Get a free key at [Google AI Studio](https://aistudio.google.com/apikey). **Never paste API keys in chat or Cursor** — only Firebase secrets. Until set, LLM returns `needsConfig` and the app uses rules + the in-app inbox.
 2. **Deploy functions:** `firebase deploy --only functions` (adds `classifyTransaction` + `notifyClassification`; Blaze plan required).
 3. **Real push (optional):** a **paid Apple Developer account** + APNs key in Firebase to deliver classify notifications. **Not required** — sideload via Xcode works fine; use the in-app inbox instead.
 
@@ -49,7 +49,7 @@
 
 ## Next implementation passes
 
-- Set `OPENROUTER_API_KEY` + deploy the two new functions (see USER ACTIONS above) — **optional**; rules + in-app classify work without it
+- Set `GEMINI_API_KEY` + deploy the two new functions (see USER ACTIONS above) — **optional**; rules + in-app classify work without it
 - Redacted real SMS samples to expand rules beyond HDFC/ICICI/Federal templates
 - Category management UI (add/rename/delete) — currently seeded defaults + implicit merchant-rule learning
 - Paid Apple account → optional real APNs push for classify prompts (in-app inbox is primary)

@@ -83,8 +83,7 @@ The Cloud Function uses the **Firebase Admin SDK** with default application cred
 | `INGEST_URL` | Shortcuts + app onboarding | Function URL from deploy output |
 | Device ingest token | Keychain + Shortcuts | Created by app onboarding; stored as `sha256` in Firestore |
 | `deviceId` | App onboarding | UUID sent in POST body; must match `device_tokens` doc ID |
-| `OPENROUTER_API_KEY` | Functions secret | **Optional.** Enables LLM auto-classify via OpenRouter. Set with `firebase functions:secrets:set OPENROUTER_API_KEY`. Without it, `classifyTransaction` returns `needsConfig` and the app uses rules + in-app classify. |
-| `OPENROUTER_MODEL` | Functions param / env | **Optional.** Default `google/gemma-2-9b-it:free`. Other free-tier slugs: `meta-llama/llama-3.2-3b-instruct:free`. See [OpenRouter models](https://openrouter.ai/models). |
+| `GEMINI_API_KEY` | Functions secret | **Optional.** Enables LLM auto-classify via Gemini (`gemini-2.0-flash`). Set with `firebase functions:secrets:set GEMINI_API_KEY`. **Never paste keys in chat/Cursor** — only Firebase secrets. Without it, `classifyTransaction` returns `needsConfig` and the app uses rules + in-app classify. |
 
 ### LLM classify (`classifyTransaction`)
 
@@ -92,13 +91,11 @@ Rules-first parsing runs on-device; the callable CF only handles uncategorized/a
 
 ```bash
 cd firebase/functions
-firebase functions:secrets:set OPENROUTER_API_KEY
-# optional model override — set OPENROUTER_MODEL env/param before deploy
-# (default: google/gemma-2-9b-it:free)
-firebase deploy --only functions:classifyTransaction
+firebase functions:secrets:set GEMINI_API_KEY
+firebase deploy --only functions:classifyTransaction,functions:notifyClassification
 ```
 
-Get a key at [openrouter.ai](https://openrouter.ai). Free-tier model slugs end in `:free`.
+Get a free key at [Google AI Studio](https://aistudio.google.com/apikey). **Never paste API keys in chat or Cursor** — only set them via Firebase secrets as above.
 
 ### Push notifications (optional)
 
@@ -249,7 +246,7 @@ Topic or per-device token registration happens during app onboarding. `notifyCla
 
 ## Optional: LLM auto-classify
 
-If transactions stay in "Needs your input" and you want automatic categorization for ambiguous spends, set an OpenRouter API key (see **Environment variables** above). **This is optional** — rules parsing and manual classify in the app work without any key.
+If transactions stay in "Needs your input" and you want automatic categorization for ambiguous spends, set a Gemini API key (see **Environment variables** above). **This is optional** — rules parsing and manual classify in the app work without any key.
 
 ## Collections (reference)
 

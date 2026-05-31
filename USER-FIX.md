@@ -24,11 +24,13 @@ Rules + the in-app **Review** inbox classify transactions without any API key. I
 
 ```bash
 cd firebase/functions
-firebase functions:secrets:set OPENROUTER_API_KEY
-firebase deploy --only functions:classifyTransaction
+firebase functions:secrets:set GEMINI_API_KEY
+firebase deploy --only functions:classifyTransaction,functions:notifyClassification
 ```
 
-Free-tier model default: `google/gemma-2-9b-it:free` ([OpenRouter](https://openrouter.ai)). No paid Apple account needed — sideload IPA and use Review inbox as primary.
+Get a free key at [Google AI Studio](https://aistudio.google.com/apikey). **Never paste API keys in chat or Cursor** — only set them via Firebase secrets as above.
+
+No paid Apple account needed — sideload IPA and use Review inbox as primary.
 
 ## If sync still fails
 

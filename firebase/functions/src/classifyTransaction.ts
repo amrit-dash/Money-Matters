@@ -1,20 +1,17 @@
 import {onCall, HttpsError} from "firebase-functions/v2/https";
-import {defineSecret, defineString} from "firebase-functions/params";
+import {defineSecret} from "firebase-functions/params";
 import {logger} from "firebase-functions";
 
-// OpenRouter API key lives in a Functions secret, never in source. Set it with:
-//   firebase functions:secrets:set OPENROUTER_API_KEY
-// Optional model override (Functions param / env):
-//   OPENROUTER_MODEL=meta-llama/llama-3.2-3b-instruct:free
-// Default uses a free-tier slug — see docs/HANDOFF.md for alternatives.
+// Gemini API key lives in a Functions secret, never in source. Set it with:
+//   firebase functions:secrets:set GEMINI_API_KEY
+// Get a key at https://aistudio.google.com/apikey — NEVER paste keys in chat/Cursor.
 // When the secret is absent the function returns {needsConfig: true} so the app
 // falls back to its in-app "Needs your input" inbox instead of crashing.
-const openrouterApiKey = defineSecret("OPENROUTER_API_KEY");
-const openrouterModel = defineString("OPENROUTER_MODEL", {
-  default: "google/gemma-2-9b-it:free",
-});
+const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const MODEL = "gemini-2.0-flash";
+const ENDPOINT = (key: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`;
 
 interface ClassifyRequest {
   merchant?: string | null;
@@ -65,53 +62,54 @@ function buildPrompt(data: ClassifyRequest): string {
     "- merchantNormalized: a clean human name (e.g. 'zepto-stores@ybl' -> 'Zepto').",
     "- type: a short spend kind (food, shopping, transfer, bills, ...).",
     "- needsUserInput: true only if you cannot confidently categorize.",
-    "",
-    "Respond with JSON only, no markdown, matching this shape:",
-    '{"categoryId": string|null, "merchantNormalized": string|null, "type": string|null, "needsUserInput": boolean}',
   ].join("\n");
 }
 
-async function callOpenRouter(
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    categoryId: {type: "STRING", nullable: true},
+    merchantNormalized: {type: "STRING", nullable: true},
+    type: {type: "STRING", nullable: true},
+    needsUserInput: {type: "BOOLEAN"},
+  },
+  required: ["needsUserInput"],
+};
+
+async function callGemini(
   key: string,
-  model: string,
   data: ClassifyRequest,
 ): Promise<ClassifyResult> {
-  const res = await fetch(ENDPOINT, {
+  const res = await fetch(ENDPOINT(key), {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${key}`,
-    },
+    headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      response_format: {type: "json_object"},
-      messages: [
-        {
-          role: "user",
-          content: buildPrompt(data),
-        },
-      ],
+      contents: [{role: "user", parts: [{text: buildPrompt(data)}]}],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+      },
     }),
   });
 
   if (!res.ok) {
     const body = await res.text();
-    logger.error("OpenRouter call failed", {status: res.status, body, model});
+    logger.error("Gemini call failed", {status: res.status, body});
     return fallback(false);
   }
 
   const json = (await res.json()) as {
-    choices?: Array<{message?: {content?: string}}>;
+    candidates?: Array<{content?: {parts?: Array<{text?: string}>}}>;
   };
-  const text = json.choices?.[0]?.message?.content;
+  const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) return fallback(false);
 
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(text) as Record<string, unknown>;
   } catch (err) {
-    logger.error("OpenRouter returned non-JSON", {text, err});
+    logger.error("Gemini returned non-JSON", {text, err});
     return fallback(false);
   }
 
@@ -141,7 +139,7 @@ async function callOpenRouter(
 export const classifyTransaction = onCall(
   {
     region: "asia-south1",
-    secrets: [openrouterApiKey],
+    secrets: [geminiApiKey],
     maxInstances: 5,
   },
   async (request): Promise<ClassifyResult> => {
@@ -149,16 +147,15 @@ export const classifyTransaction = onCall(
       throw new HttpsError("unauthenticated", "Sign-in required");
     }
 
-    const key = openrouterApiKey.value();
+    const key = geminiApiKey.value();
     if (!key) {
-      logger.warn("OPENROUTER_API_KEY not configured — returning needsConfig");
+      logger.warn("GEMINI_API_KEY not configured — returning needsConfig");
       return fallback(true);
     }
 
     const data = (request.data ?? {}) as ClassifyRequest;
-    const model = openrouterModel.value();
     try {
-      return await callOpenRouter(key, model, data);
+      return await callGemini(key, data);
     } catch (err) {
       logger.error("classifyTransaction error", err);
       return fallback(false);
