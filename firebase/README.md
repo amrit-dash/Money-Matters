@@ -292,7 +292,7 @@ If transactions stay in "Needs your input" and you want automatic categorization
 | `users/{uid}/parse_jobs/{auto}` | auto | Parse queue (`pending` → `done`/`failed`) |
 | `users/{uid}/transactions/{auto}` | auto | Parsed ledger rows (app-written) |
 | `users/{uid}/payment_sources/{auto}` | auto | Banks/cards (app-written) |
-| *(none)* | — | Categories are in-app defaults only — see `CategoryService` |
+| `users/{uid}/categories/{id}` | category id | Seeded from app defaults; merged on upgrade |
 
 ## TODOs for project owner
 

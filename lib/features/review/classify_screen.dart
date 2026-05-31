@@ -5,6 +5,7 @@ import 'package:money_matters/models/category.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../services/category_service.dart';
 import '../../core/widgets/app_ui.dart';
 import 'review_repository.dart';
 
@@ -76,8 +77,9 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       setState(() {
         _tx = tx;
         _categories = categories;
-        _selectedCategoryId = tx.categoryId ??
-            (categories.isNotEmpty ? categories.first.id : null);
+        // Never default to the first category (was Food & Dining) — leave unset
+        // until the user or LLM picks one.
+        _selectedCategoryId = tx.categoryId;
         _loading = false;
       });
     } catch (e) {
@@ -112,7 +114,9 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           userNotes: _notesController.text.trim().isEmpty
               ? null
               : _notesController.text.trim(),
-          shoppingItems: List<String>.from(_shoppingItems),
+          shoppingItems: _showShoppingList
+              ? List<String>.from(_shoppingItems)
+              : const [],
           saveMerchantRule: _saveRule,
         ),
       );
@@ -150,6 +154,15 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
                   ),
                 )
               : _buildForm(context),
+    );
+  }
+
+  bool get _showShoppingList {
+    final tx = _tx;
+    if (tx == null) return false;
+    return CategoryService.showShoppingList(
+      transaction: tx,
+      selectedCategoryId: _selectedCategoryId,
     );
   }
 
@@ -214,9 +227,11 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         ),
         const SizedBox(height: AppSpacing.section),
         AppSectionHeader(title: 'Category'),
-        DropdownButtonFormField<String>(
+        DropdownButtonFormField<String?>(
+          key: ValueKey(_selectedCategoryId),
           initialValue: _selectedCategoryId,
           decoration: const InputDecoration(labelText: 'Category'),
+          hint: const Text('Choose a category'),
           items: _categories
               .map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
               .toList(),
@@ -244,42 +259,44 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             hintText: 'e.g. weekly groceries, gift for mom',
           ),
         ),
-        const SizedBox(height: AppSpacing.section),
-        AppSectionHeader(
-          title: 'Shopping list',
-          subtitle: 'Add items bought (optional)',
-        ),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _itemController,
-                decoration: const InputDecoration(hintText: 'Add an item'),
-                onSubmitted: (_) => _addItem(),
+        if (_showShoppingList) ...[
+          const SizedBox(height: AppSpacing.section),
+          AppSectionHeader(
+            title: 'Shopping list',
+            subtitle: 'Add items bought (optional)',
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _itemController,
+                  decoration: const InputDecoration(hintText: 'Add an item'),
+                  onSubmitted: (_) => _addItem(),
+                ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.tight),
-            IconButton.filledTonal(
-              onPressed: _addItem,
-              icon: const Icon(Icons.add),
+              const SizedBox(width: AppSpacing.tight),
+              IconButton.filledTonal(
+                onPressed: _addItem,
+                icon: const Icon(Icons.add),
+              ),
+            ],
+          ),
+          if (_shoppingItems.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.item),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _shoppingItems
+                  .map(
+                    (item) => InputChip(
+                      label: Text(item),
+                      onDeleted: () =>
+                          setState(() => _shoppingItems.remove(item)),
+                    ),
+                  )
+                  .toList(),
             ),
           ],
-        ),
-        if (_shoppingItems.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.item),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _shoppingItems
-                .map(
-                  (item) => InputChip(
-                    label: Text(item),
-                    onDeleted: () =>
-                        setState(() => _shoppingItems.remove(item)),
-                  ),
-                )
-                .toList(),
-          ),
         ],
         const SizedBox(height: AppSpacing.section),
         FilledButton(

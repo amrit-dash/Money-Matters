@@ -199,7 +199,13 @@ class IngestParsePipeline {
   }
 
   /// Rules-first LLM gate for category and payment-source assignment.
-  /// Any failure or missing config keeps the transaction in the in-app inbox.
+  ///
+  /// Invoked when a debit still [needsClassification], is [ambiguous], or the
+  /// payment source is unmatched. Calls [TransactionClassifier] (typically
+  /// [CloudFunctionsClassifier] → `classifyTransaction` / Gemini). When the
+  /// backend returns `needsConfig: true` (no `GEMINI_API_KEY` secret), the
+  /// transaction stays in the in-app Review inbox — redeploy after setting the
+  /// secret: `firebase functions:secrets:set GEMINI_API_KEY`.
   Future<Transaction> _maybeClassify(
     Transaction tx,
     RawIngest ingest,

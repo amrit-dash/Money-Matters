@@ -56,8 +56,9 @@ function buildPrompt(data: ClassifyRequest): string {
   const categoryIds = (data.categoryIds ?? []).filter((c) => !!c);
   const allowed = categoryIds.length > 0 ?
     categoryIds.join(", ") :
-    "food, groceries, transport, shopping, bills, entertainment, health, " +
-      "transfer, other";
+    "groceries, food, transport, shopping, bills, subscriptions, " +
+      "entertainment, health, travel, education, savings, income, transfer, " +
+      "fees, gifts, personal, other";
 
   const sources = data.paymentSources ?? [];
   const sourceLines = sources.length > 0 ?
