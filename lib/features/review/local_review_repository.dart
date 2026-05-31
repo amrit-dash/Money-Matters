@@ -113,4 +113,35 @@ class LocalReviewRepository implements ReviewRepository {
       ),
     );
   }
+
+  DocumentReference<Map<String, dynamic>> _transactionDoc(String id) {
+    final uid = _authService.requireUid();
+    return _firestore.collection('users').doc(uid).collection('transactions').doc(id);
+  }
+
+  @override
+  Future<void> excludeTransaction(String transactionId) async {
+    await _db.updateTransactionExcluded(transactionId, excluded: true);
+
+    try {
+      await _transactionDoc(transactionId).set({
+        'excluded': true,
+        'needsClassification': false,
+        'ambiguous': false,
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // Offline or unsigned — local exclusion still applies.
+    }
+  }
+
+  @override
+  Future<void> deleteTransaction(String transactionId) async {
+    await _db.deleteTransaction(transactionId);
+
+    try {
+      await _transactionDoc(transactionId).delete();
+    } catch (_) {
+      // Offline or unsigned — local delete still applies.
+    }
+  }
 }

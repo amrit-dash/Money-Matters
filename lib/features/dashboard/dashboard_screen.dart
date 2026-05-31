@@ -98,7 +98,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _sourceSubtitle(SourceBreakdown row) {
     final source = row.source;
-    if (source == null) return '${row.transactionCount} transactions';
     final type = source.type.name;
     final last4 = source.last4;
     final suffix = last4 != null ? ' ···· $last4' : '';
@@ -264,19 +263,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           amount: _currency.format(row.amount),
                           share: row.shareOf(_summary!.totalSpend),
                           count: row.transactionCount,
-                          onTap: row.source == null
-                              ? null
-                              : () => _openSource(
-                                    row.source!.id,
-                                    row.displayName,
-                                  ),
+                          onTap: () => _openSource(
+                            row.source.id,
+                            row.displayName,
+                          ),
                         ),
                       ),
                       if (_summary!.unmatchedCount > 0)
                         _SourceRow(
-                          name: 'Unmatched · not counted',
+                          name: 'Unmatched',
                           subtitle:
-                              'No saved bank/card matched — add one in Accounts',
+                              '${_summary!.unmatchedCount} transactions · '
+                              'not linked to a saved account',
                           amount: _currency.format(_summary!.unmatchedSpend),
                           share: 0,
                           count: _summary!.unmatchedCount,

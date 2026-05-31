@@ -38,6 +38,12 @@ class LocalDashboardRepository implements DashboardRepository {
     return _sourceCache!;
   }
 
+  /// True when a debit has no linked, known payment source.
+  static bool isUnmatched(Transaction tx, Set<String> knownSourceIds) {
+    if (tx.unmatched || tx.paymentSourceId == null) return true;
+    return !knownSourceIds.contains(tx.paymentSourceId!);
+  }
+
   @override
   Future<PeriodSummary> weeklySummary({DateTime? anchor}) async {
     final end = _endOfDay(anchor ?? DateTime.now());
@@ -97,6 +103,7 @@ class LocalDashboardRepository implements DashboardRepository {
     required Category uncategorized,
   }) {
     final sourcesById = {for (final s in sources) s.id: s};
+    final knownSourceIds = sourcesById.keys.toSet();
 
     var totalSpend = 0.0;
     var totalIncome = 0.0;
@@ -106,13 +113,14 @@ class LocalDashboardRepository implements DashboardRepository {
     final bySource = <String, ({double amount, int count})>{};
 
     for (final tx in transactions) {
+      if (tx.excluded) continue;
+
       if (tx.type == TransactionType.credit) {
         totalIncome += tx.amount;
         continue;
       }
 
-      // Unmatched debits are surfaced separately and never counted in totals.
-      if (tx.unmatched || tx.paymentSourceId == null) {
+      if (isUnmatched(tx, knownSourceIds)) {
         unmatchedSpend += tx.amount;
         unmatchedCount += 1;
         continue;
@@ -148,9 +156,11 @@ class LocalDashboardRepository implements DashboardRepository {
     }).toList()
       ..sort((a, b) => b.amount.compareTo(a.amount));
 
-    final sourceBreakdown = bySource.entries.map((entry) {
+    final sourceBreakdown = bySource.entries
+        .where((entry) => sourcesById.containsKey(entry.key))
+        .map((entry) {
       return SourceBreakdown(
-        source: sourcesById[entry.key],
+        source: sourcesById[entry.key]!,
         amount: entry.value.amount,
         transactionCount: entry.value.count,
       );
@@ -172,8 +182,16 @@ class LocalDashboardRepository implements DashboardRepository {
 
   @override
   Future<List<Transaction>> sourceTransactions(String? paymentSourceId) async {
+    final sources = await _loadSources();
+    final knownSourceIds = sources.map((s) => s.id).toSet();
     final rows = await _db.getTransactionsForSource(paymentSourceId);
-    return rows.map(Transaction.fromSqlite).toList();
+    return rows.map(Transaction.fromSqlite).where((tx) {
+      if (paymentSourceId == null) {
+        return isUnmatched(tx, knownSourceIds);
+      }
+      return !isUnmatched(tx, knownSourceIds) &&
+          tx.paymentSourceId == paymentSourceId;
+    }).toList();
   }
 
   @override

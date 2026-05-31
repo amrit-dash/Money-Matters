@@ -9,7 +9,7 @@ class LocalDatabase {
   LocalDatabase();
 
   static const _dbName = 'money_matters.db';
-  static const _dbVersion = 2;
+  static const _dbVersion = 3;
 
   Database? _db;
 
@@ -77,6 +77,7 @@ class LocalDatabase {
         payment_source_id TEXT,
         unmatched INTEGER NOT NULL DEFAULT 0,
         ambiguous INTEGER NOT NULL DEFAULT 0,
+        excluded INTEGER NOT NULL DEFAULT 0,
         type TEXT NOT NULL,
         needs_classification INTEGER NOT NULL DEFAULT 0,
         merchant_normalized TEXT,
@@ -128,6 +129,15 @@ class LocalDatabase {
         'CREATE INDEX IF NOT EXISTS idx_transactions_needs_classification '
         'ON transactions(needs_classification)',
       );
+    }
+    if (oldVersion < 3) {
+      try {
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (_) {
+        // Column already present (idempotent upgrade) — ignore.
+      }
     }
   }
 
@@ -270,7 +280,8 @@ class LocalDatabase {
     final db = await database;
     return db.query(
       'transactions',
-      where: 'ambiguous = 1 OR unmatched = 1 OR needs_classification = 1',
+      where:
+          'excluded = 0 AND (ambiguous = 1 OR unmatched = 1 OR needs_classification = 1)',
       orderBy: 'timestamp DESC',
     );
   }
@@ -294,15 +305,40 @@ class LocalDatabase {
     if (paymentSourceId == null) {
       return db.query(
         'transactions',
-        where: 'payment_source_id IS NULL',
+        where: 'excluded = 0 AND (unmatched = 1 OR payment_source_id IS NULL)',
         orderBy: 'timestamp DESC',
       );
     }
     return db.query(
       'transactions',
-      where: 'payment_source_id = ?',
+      where: 'excluded = 0 AND payment_source_id = ?',
       whereArgs: [paymentSourceId],
       orderBy: 'timestamp DESC',
+    );
+  }
+
+  Future<void> deleteTransaction(String id) async {
+    final db = await database;
+    await db.delete(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> updateTransactionExcluded(String id, {required bool excluded}) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {
+        'excluded': excluded ? 1 : 0,
+        if (excluded) ...{
+          'needs_classification': 0,
+          'ambiguous': 0,
+        },
+      },
+      where: 'id = ?',
+      whereArgs: [id],
     );
   }
 
@@ -312,7 +348,7 @@ class LocalDatabase {
     final db = await database;
     final result = await db.rawQuery(
       'SELECT COUNT(*) AS c FROM transactions '
-      'WHERE needs_classification = 1 OR ambiguous = 1 OR unmatched = 1',
+      'WHERE excluded = 0 AND (needs_classification = 1 OR ambiguous = 1 OR unmatched = 1)',
     );
     return Sqflite.firstIntValue(result) ?? 0;
   }

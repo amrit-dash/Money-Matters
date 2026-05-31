@@ -38,6 +38,7 @@ void main() {
       required double amount,
       String? sourceId,
       bool unmatched = false,
+      bool excluded = false,
       String? categoryId,
       TransactionType type = TransactionType.debit,
     }) {
@@ -49,6 +50,7 @@ void main() {
         type: type,
         paymentSourceId: sourceId,
         unmatched: unmatched,
+        excluded: excluded,
         categoryId: categoryId,
       );
     }
@@ -61,9 +63,8 @@ void main() {
         transactions: [
           tx(id: '1', amount: 100, sourceId: 'card-1', categoryId: 'food'),
           tx(id: '2', amount: 50, sourceId: 'bank-1', categoryId: 'shopping'),
-          // Unmatched: no saved bank/card matched (e.g. promo leak / unknown).
           tx(id: '3', amount: 600130, unmatched: true),
-          tx(id: '4', amount: 25), // null source also counts as unmatched
+          tx(id: '4', amount: 25),
         ],
         sources: sources,
         categories: categories,
@@ -73,6 +74,48 @@ void main() {
       expect(summary.totalSpend, 150);
       expect(summary.unmatchedSpend, 600155);
       expect(summary.unmatchedCount, 2);
+      expect(summary.sources.every((s) => s.source.id != ''), isTrue);
+    });
+
+    test('orphaned source refs roll into unmatched, not a second row', () {
+      final summary = LocalDashboardRepository.summarize(
+        label: 'May',
+        start: start,
+        end: end,
+        transactions: [
+          tx(id: '1', amount: 100, sourceId: 'card-1', categoryId: 'food'),
+          // Source id no longer exists — should not appear as a matched account row.
+          tx(id: '2', amount: 130, sourceId: 'deleted-card', categoryId: 'food'),
+        ],
+        sources: sources,
+        categories: categories,
+        uncategorized: uncategorized,
+      );
+
+      expect(summary.totalSpend, 100);
+      expect(summary.unmatchedSpend, 130);
+      expect(summary.unmatchedCount, 1);
+      expect(summary.sources.length, 1);
+      expect(summary.sources.first.source.id, 'card-1');
+    });
+
+    test('excluded transactions are omitted from all buckets', () {
+      final summary = LocalDashboardRepository.summarize(
+        label: 'May',
+        start: start,
+        end: end,
+        transactions: [
+          tx(id: '1', amount: 100, sourceId: 'card-1', categoryId: 'food'),
+          tx(id: '2', amount: 600000, unmatched: true, excluded: true),
+        ],
+        sources: sources,
+        categories: categories,
+        uncategorized: uncategorized,
+      );
+
+      expect(summary.totalSpend, 100);
+      expect(summary.unmatchedSpend, 0);
+      expect(summary.unmatchedCount, 0);
     });
 
     test('groups matched spend per payment source', () {
@@ -91,11 +134,10 @@ void main() {
       );
 
       expect(summary.sources.length, 2);
-      // Sorted by amount desc → card-1 first.
-      expect(summary.sources.first.source?.id, 'card-1');
+      expect(summary.sources.first.source.id, 'card-1');
       expect(summary.sources.first.amount, 140);
       expect(summary.sources.first.transactionCount, 2);
-      expect(summary.sources[1].source?.id, 'bank-1');
+      expect(summary.sources[1].source.id, 'bank-1');
       expect(summary.sources[1].amount, 50);
     });
 
@@ -121,6 +163,23 @@ void main() {
       expect(summary.totalSpend, 100);
       expect(summary.totalIncome, 5000);
       expect(summary.net, 4900);
+    });
+
+    test('isUnmatched treats missing sources as unmatched', () {
+      expect(
+        LocalDashboardRepository.isUnmatched(
+          tx(id: '1', amount: 10, sourceId: 'gone'),
+          {'card-1'},
+        ),
+        isTrue,
+      );
+      expect(
+        LocalDashboardRepository.isUnmatched(
+          tx(id: '2', amount: 10, sourceId: 'card-1'),
+          {'card-1'},
+        ),
+        isFalse,
+      );
     });
   });
 }

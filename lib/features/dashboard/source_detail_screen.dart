@@ -65,7 +65,7 @@ class _SourceDetailScreenState extends State<SourceDetailScreen> {
       .fold(0.0, (sum, t) => sum + t.amount);
 
   Future<void> _openTransaction(Transaction tx) async {
-    await Navigator.push<bool>(
+    final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TransactionDetailScreen(
@@ -76,7 +76,7 @@ class _SourceDetailScreenState extends State<SourceDetailScreen> {
         ),
       ),
     );
-    _load();
+    if (changed == true) _load();
   }
 
   @override
@@ -89,7 +89,9 @@ class _SourceDetailScreenState extends State<SourceDetailScreen> {
               ? AppEmptyState(
                   icon: Icons.receipt_long_outlined,
                   title: 'No transactions',
-                  message: 'Nothing recorded for this source yet.',
+                  message: widget.paymentSourceId == null
+                      ? 'No unmatched transactions right now.'
+                      : 'Nothing recorded for this account yet.',
                 )
               : RefreshIndicator(
                   onRefresh: _load,

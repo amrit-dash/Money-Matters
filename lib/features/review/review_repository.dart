@@ -37,4 +37,10 @@ abstract class ReviewRepository {
     required String categoryId,
     String? merchantRuleHint,
   });
+
+  /// Marks a false-positive transaction (promo, not real spend) as excluded.
+  Future<void> excludeTransaction(String transactionId);
+
+  /// Permanently removes a transaction locally and from Firestore when synced.
+  Future<void> deleteTransaction(String transactionId);
 }

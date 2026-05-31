@@ -18,9 +18,6 @@ class CategoryBreakdown {
 }
 
 /// Aggregated spend for a time window, grouped by payment source.
-///
-/// A null [source] means the spend did not match any saved bank/card and is
-/// therefore excluded from headline totals (the "unmatched" bucket).
 class SourceBreakdown {
   const SourceBreakdown({
     required this.source,
@@ -28,12 +25,11 @@ class SourceBreakdown {
     required this.transactionCount,
   });
 
-  final PaymentSource? source;
+  final PaymentSource source;
   final double amount;
   final int transactionCount;
 
-  bool get isUnmatched => source == null;
-  String get displayName => source?.name ?? 'Unmatched (not counted)';
+  String get displayName => source.name;
 
   double shareOf(double total) => total <= 0 ? 0 : amount / total;
 }

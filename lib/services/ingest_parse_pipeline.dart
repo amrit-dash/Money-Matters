@@ -182,6 +182,7 @@ class IngestParsePipeline {
       'payment_source_id': tx.paymentSourceId,
       'unmatched': tx.unmatched ? 1 : 0,
       'ambiguous': tx.ambiguous ? 1 : 0,
+      'excluded': tx.excluded ? 1 : 0,
       'type': tx.type.name,
       'needs_classification': tx.needsClassification ? 1 : 0,
       'merchant_normalized': tx.merchantNormalized,

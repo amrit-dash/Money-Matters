@@ -39,6 +39,7 @@ class Transaction {
     this.paymentSourceId,
     this.unmatched = false,
     this.ambiguous = false,
+    this.excluded = false,
     required this.type,
     this.needsClassification = false,
     this.merchantNormalized,
@@ -57,6 +58,10 @@ class Transaction {
   final String? paymentSourceId;
   final bool unmatched;
   final bool ambiguous;
+
+  /// User-marked false positive (promo, not a real spend) — hidden from totals.
+  final bool excluded;
+
   final TransactionType type;
 
   /// True when the transaction still needs a category from the user or LLM.
@@ -89,6 +94,7 @@ class Transaction {
         if (paymentSourceId != null) 'paymentSourceId': paymentSourceId,
         'unmatched': unmatched,
         'ambiguous': ambiguous,
+        'excluded': excluded,
         'type': type.name,
         'needsClassification': needsClassification,
         if (merchantNormalized != null) 'merchantNormalized': merchantNormalized,
@@ -109,6 +115,7 @@ class Transaction {
       paymentSourceId: json['paymentSourceId'] as String?,
       unmatched: json['unmatched'] as bool? ?? false,
       ambiguous: json['ambiguous'] as bool? ?? false,
+      excluded: json['excluded'] as bool? ?? false,
       type: TransactionType.fromString(json['type'] as String? ?? 'debit'),
       needsClassification: json['needsClassification'] as bool? ?? false,
       merchantNormalized: json['merchantNormalized'] as String?,
@@ -145,6 +152,7 @@ class Transaction {
       paymentSourceId: row['payment_source_id'] as String?,
       unmatched: (row['unmatched'] as int? ?? 0) == 1,
       ambiguous: (row['ambiguous'] as int? ?? 0) == 1,
+      excluded: (row['excluded'] as int? ?? 0) == 1,
       type: TransactionType.fromString(row['type'] as String? ?? 'debit'),
       needsClassification: (row['needs_classification'] as int? ?? 0) == 1,
       merchantNormalized: row['merchant_normalized'] as String?,
@@ -165,6 +173,7 @@ class Transaction {
     String? paymentSourceId,
     bool? unmatched,
     bool? ambiguous,
+    bool? excluded,
     TransactionType? type,
     bool? needsClassification,
     String? merchantNormalized,
@@ -183,6 +192,7 @@ class Transaction {
       paymentSourceId: paymentSourceId ?? this.paymentSourceId,
       unmatched: unmatched ?? this.unmatched,
       ambiguous: ambiguous ?? this.ambiguous,
+      excluded: excluded ?? this.excluded,
       type: type ?? this.type,
       needsClassification: needsClassification ?? this.needsClassification,
       merchantNormalized: merchantNormalized ?? this.merchantNormalized,

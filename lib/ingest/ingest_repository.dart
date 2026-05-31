@@ -330,6 +330,7 @@ class IngestRepository {
       paymentSourceId: data['paymentSourceId'] as String?,
       unmatched: data['unmatched'] as bool? ?? false,
       ambiguous: data['ambiguous'] as bool? ?? false,
+      excluded: data['excluded'] as bool? ?? false,
       type: ledger.TransactionType.fromString(
         data['type'] as String? ?? 'debit',
       ),
@@ -361,6 +362,7 @@ class IngestRepository {
       'payment_source_id': tx.paymentSourceId,
       'unmatched': tx.unmatched ? 1 : 0,
       'ambiguous': tx.ambiguous ? 1 : 0,
+      'excluded': tx.excluded ? 1 : 0,
       'type': tx.type.name,
       'needs_classification': tx.needsClassification ? 1 : 0,
       'merchant_normalized': tx.merchantNormalized,

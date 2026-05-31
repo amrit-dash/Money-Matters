@@ -59,6 +59,77 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     }
   }
 
+  Future<void> _exclude() async {
+    final id = _tx.id;
+    if (id == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Not a real transaction?'),
+        content: const Text(
+          'This will remove the transaction from your totals and dashboard. '
+          'Use this for promos, loan offers, or other false positives.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Exclude'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await widget.reviewRepository.excludeTransaction(id);
+    if (!mounted) return;
+    Navigator.pop(context, true);
+  }
+
+  Future<void> _delete() async {
+    final id = _tx.id;
+    if (id == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete transaction?'),
+        content: const Text(
+          'This permanently removes the transaction from your records.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await widget.reviewRepository.deleteTransaction(id);
+    if (!mounted) return;
+    Navigator.pop(context, true);
+  }
+
+  String _paymentSourceLabel() {
+    if (_tx.excluded) return 'Excluded from totals';
+    if (widget.paymentSourceName != null) return widget.paymentSourceName!;
+    if (_tx.unmatched) return 'No linked account';
+    return '—';
+  }
+
   String _categoryName() {
     final cat = widget.categoryService.findById(_tx.categoryId);
     return cat?.name ?? (_tx.categoryId ?? 'Uncategorized');
@@ -102,8 +173,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           _DetailRow(label: 'Category', value: _categoryName()),
           _DetailRow(
             label: 'Payment source',
-            value: widget.paymentSourceName ??
-                (_tx.unmatched ? 'Unmatched (not counted)' : '—'),
+            value: _paymentSourceLabel(),
           ),
           _DetailRow(label: 'When', value: _dateFormat.format(_tx.timestamp)),
           if (_tx.merchant != null)
@@ -133,9 +203,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                 AppStatusChip(label: 'Ambiguous', tone: AppStatTone.warning),
               if (_tx.unmatched)
                 AppStatusChip(label: 'Unmatched', tone: AppStatTone.warning),
+              if (_tx.excluded)
+                AppStatusChip(label: 'Excluded', tone: AppStatTone.neutral),
               if (!_tx.needsClassification &&
                   !_tx.ambiguous &&
-                  !_tx.unmatched)
+                  !_tx.unmatched &&
+                  !_tx.excluded)
                 AppStatusChip(label: 'Classified', tone: AppStatTone.success),
             ],
           ),
@@ -144,6 +217,23 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             onPressed: _reclassify,
             icon: const Icon(Icons.edit_outlined),
             label: const Text('Reclassify'),
+          ),
+          if (!_tx.excluded) ...[
+            const SizedBox(height: AppSpacing.tight),
+            OutlinedButton.icon(
+              onPressed: _exclude,
+              icon: const Icon(Icons.block_outlined),
+              label: const Text('Not a real transaction'),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.tight),
+          TextButton.icon(
+            onPressed: _delete,
+            icon: Icon(Icons.delete_outline, color: scheme.error),
+            label: Text(
+              'Delete',
+              style: TextStyle(color: scheme.error),
+            ),
           ),
         ],
       ),
