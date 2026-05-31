@@ -32,6 +32,42 @@ Get a free key at [Google AI Studio](https://aistudio.google.com/apikey). **Neve
 
 No paid Apple account needed — sideload IPA and use Review inbox as primary.
 
+## `notifyClassification` deploy failed (Eventarc 400)
+
+If deploy shows **`classifyTransaction` SUCCESS** but **`notifyClassification` FAILED** with:
+
+> Permission denied while using the Eventarc Service Agent … verify that it has Eventarc Service Agent role
+
+**You can keep using the app.** `classifyTransaction` (LLM auto-suggest) is independent. Classification prompts come from **Dashboard → Review** (“Needs your input”) — not from push. On a free Apple personal team, FCM/APNs push usually does not work anyway; the in-app inbox is the primary path.
+
+### Fix (try in order)
+
+1. **Wait 5–10 minutes** — first v2 Firestore trigger on a project often needs Eventarc IAM to propagate. Then redeploy only the push function:
+
+   ```bash
+   cd firebase
+   firebase deploy --only functions:notifyClassification
+   ```
+
+2. **Verify Eventarc Service Agent IAM** (if retry still fails):
+
+   - Open [IAM for money-matters-amrit](https://console.cloud.google.com/iam-admin/iam?project=money-matters-amrit).
+   - Enable **Include Google-provided role grants**.
+   - Find principal: `service-960400349210@gcp-sa-eventarc.iam.gserviceaccount.com`  
+     (replace `960400349210` with your project number if the error shows a different one).
+   - Ensure role **Eventarc Service Agent** (`roles/eventarc.serviceAgent`). Grant it if missing.
+   - Retry step 1.
+
+   Official troubleshooting: [Eventarc permission denied](https://cloud.google.com/eventarc/docs/troubleshooting#permission-denied-errors).
+
+3. **Optional workaround — skip push for now:** deploy only what you need:
+
+   ```bash
+   firebase deploy --only functions:classifyTransaction
+   ```
+
+   Push stays off until `notifyClassification` deploys successfully. No app rebuild required.
+
 ## If sync still fails
 
 - Snackbar mentions **permission denied** → sign out and sign in again.

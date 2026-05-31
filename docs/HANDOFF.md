@@ -1,6 +1,6 @@
 # Handoff: Money Matters
 
-**Status:** MVP skeleton **built** (2026-05-29). Production feature pass **complete** (2026-05-31): false-positive hardening, per-source dashboard, real Firestore-backed categories, LLM classify Cloud Function + FCM trigger, and in-app "Needs your input" inbox. Not deployed or device-tested by agent.
+**Status:** MVP skeleton **built** (2026-05-29). Production feature pass **complete** (2026-05-31): false-positive hardening, per-source dashboard, real Firestore-backed categories, LLM classify Cloud Function + FCM trigger, and in-app "Needs your input" inbox. **`classifyTransaction` deployed live** on `money-matters-amrit` (2026-05-31); **`notifyClassification` optional** — Eventarc IAM may fail on first deploy (see `USER-FIX.md`); in-app Review inbox is primary. Not device-tested by agent.
 
 **Selected direction:** S1 Cloud-handoff-first — Shortcuts POST → Firebase `ingestSms` → Flutter drain → rules parse → (LLM gate for ambiguous) → ledger UI + in-app classify.
 
@@ -18,7 +18,7 @@
 ### USER ACTIONS required to fully enable
 
 1. **Gemini key (optional, for auto-LLM classify):** `cd firebase/functions && firebase functions:secrets:set GEMINI_API_KEY` then `firebase deploy --only functions:classifyTransaction,functions:notifyClassification`. Get a free key at [Google AI Studio](https://aistudio.google.com/apikey). **Never paste API keys in chat or Cursor** — only Firebase secrets. Until set, LLM returns `needsConfig` and the app uses rules + the in-app inbox.
-2. **Deploy functions:** `firebase deploy --only functions` (adds `classifyTransaction` + `notifyClassification`; Blaze plan required).
+2. **Deploy functions:** `firebase deploy --only functions` (adds `classifyTransaction` + `notifyClassification`; Blaze plan required). If only `notifyClassification` fails with Eventarc 400, **`classifyTransaction` is already enough** — retry push later per `USER-FIX.md`.
 3. **Real push (optional):** a **paid Apple Developer account** + APNs key in Firebase to deliver classify notifications. **Not required** — sideload via Xcode works fine; use the in-app inbox instead.
 
 ---

@@ -73,6 +73,40 @@ If `firebase deploy` fails creating `ingestSms` in `asia-south1`:
 
 Alternatively: Firebase Console → **Functions** → grant permissions when prompted after first deploy attempt.
 
+### Deploy failed: Eventarc Service Agent permission denied (HTTP 400)
+
+Firestore-triggered v2 functions (e.g. `notifyClassification`) use **Eventarc**. On first deploy you may see:
+
+> Permission denied while using the Eventarc Service Agent … verify that it has Eventarc Service Agent role
+
+**Impact:** `classifyTransaction` and `ingestSms` can deploy and work without `notifyClassification`. Push is optional; the Flutter **Review** inbox is the primary classify path (especially on a free Apple team without APNs).
+
+**Recovery:**
+
+1. Wait **5–10 minutes** for service-agent propagation, then:
+
+   ```bash
+   cd firebase && firebase deploy --only functions:notifyClassification
+   ```
+
+2. In [GCP IAM](https://console.cloud.google.com/iam-admin/iam?project=money-matters-amrit), enable **Include Google-provided role grants**, find:
+
+   `service-960400349210@gcp-sa-eventarc.iam.gserviceaccount.com`
+
+   (use the project number from your error), and grant **Eventarc Service Agent** (`roles/eventarc.serviceAgent`) if absent. Retry the deploy.
+
+   See [Eventarc troubleshooting — permission denied](https://cloud.google.com/eventarc/docs/troubleshooting#permission-denied-errors).
+
+3. **Split deploy (workaround):** deploy callables first, push later:
+
+   ```bash
+   firebase deploy --only functions:ingestSms,functions:classifyTransaction
+   # later, when Eventarc is ready:
+   firebase deploy --only functions:notifyClassification
+   ```
+
+Do not remove `notifyClassification` from source unless you intentionally want to defer push indefinitely.
+
 ## Environment variables
 
 The Cloud Function uses the **Firebase Admin SDK** with default application credentials — no extra env vars are required at runtime for `ingestSms`.
