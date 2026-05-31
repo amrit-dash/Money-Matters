@@ -122,6 +122,8 @@ class RulesParser {
     RegExp(r'\bsent\b', caseSensitive: false),
     RegExp(r'\bwithdrawn\b', caseSensitive: false),
     RegExp(r'\bpurchase\b', caseSensitive: false),
+    // Federal/Scapia card: "txn of Rs 61.83 at MERCHANT on your ... credit card".
+    RegExp(r'\btxn\s+of\b', caseSensitive: false),
     // Card-spend alerts: "Thank you for using ... Card ending 1234 for Rs ...".
     RegExp(r'using\b[\w\s]*\bcard\b', caseSensitive: false),
     RegExp(r'\bdr\b', caseSensitive: false),

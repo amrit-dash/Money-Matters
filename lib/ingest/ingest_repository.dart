@@ -216,7 +216,11 @@ class IngestRepository {
 
     var count = 0;
     for (final doc in snapshot.docs) {
-      final tx = _transactionFromFirestore(doc.id, doc.data());
+      if (await _localDatabase.isTransactionDeleted(doc.id)) continue;
+      final data = doc.data();
+      if (data['deleted'] == true) continue;
+
+      final tx = _transactionFromFirestore(doc.id, data);
       await _localDatabase.upsertTransaction(_transactionToSqlite(tx, syncedAt));
       count++;
     }

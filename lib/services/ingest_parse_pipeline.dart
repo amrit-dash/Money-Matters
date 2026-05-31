@@ -9,6 +9,7 @@ import '../models/category.dart';
 import '../models/payment_source.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart';
+import '../features/dashboard/local_dashboard_repository.dart';
 import '../parse/llm_parser.dart';
 import '../parse/parse_service.dart';
 import '../services/category_service.dart';
@@ -95,7 +96,8 @@ class IngestParsePipeline {
         if (outcome.transaction != null) {
           // Stable id = raw ingest id (one SMS → one transaction, idempotent retries).
           var tx = outcome.transaction!.copyWith(id: ingest.id);
-          tx = await _maybeClassify(tx, ingest, cats);
+          tx = await _maybeMatchPaymentSource(tx, ingest, sources);
+          tx = await _maybeClassify(tx, ingest, cats, sources);
           await _persistTransaction(tx);
           transactionsCreated++;
         } else {
@@ -122,35 +124,79 @@ class IngestParsePipeline {
     );
   }
 
-  /// Rules-first LLM gate: only uncategorized/ambiguous transactions are sent
-  /// to the classifier. Any failure or missing config keeps the transaction in
-  /// the in-app "Needs your input" inbox — never crashes the drain.
+  /// Rules-first match using sender hints and SMS body before any LLM call.
+  Future<Transaction> _maybeMatchPaymentSource(
+    Transaction tx,
+    RawIngest ingest,
+    List<PaymentSource> sources,
+  ) async {
+    final knownIds = sources.map((s) => s.id).toSet();
+    if (!LocalDashboardRepository.isUnmatched(tx, knownIds)) return tx;
+
+    final rulesMatch = matchPaymentSourceFromIngest(
+      sender: ingest.sender,
+      body: ingest.body,
+      sources: sources,
+    );
+    if (rulesMatch == null) return tx;
+
+    return tx.copyWith(paymentSourceId: rulesMatch, unmatched: false);
+  }
+
+  /// Rules-first LLM gate for category and payment-source assignment.
+  /// Any failure or missing config keeps the transaction in the in-app inbox.
   Future<Transaction> _maybeClassify(
     Transaction tx,
     RawIngest ingest,
     List<Category> categories,
+    List<PaymentSource> sources,
   ) async {
-    if (!tx.needsClassification && !tx.ambiguous) return tx;
+    final knownIds = sources.map((s) => s.id).toSet();
+    final needsCategory = tx.needsClassification || tx.ambiguous;
+    final needsSource =
+        LocalDashboardRepository.isUnmatched(tx, knownIds) && sources.isNotEmpty;
+    if (!needsCategory && !needsSource) return tx;
 
     final result = await _classifier.classify(
       transaction: tx,
       smsBody: ingest.body,
       categoryIds: categories.map((c) => c.id).toList(),
+      paymentSources: sources,
     );
     if (result == null || result.needsConfig) return tx;
 
-    final validCategory = result.categoryId != null &&
-        categories.any((c) => c.id == result.categoryId);
-    final categoryId = validCategory ? result.categoryId : tx.categoryId;
-    final resolved = categoryId != null && !result.needsUserInput;
+    var updated = tx;
 
-    return tx.copyWith(
-      categoryId: categoryId,
-      merchantNormalized: result.merchantNormalized,
-      needsClassification: resolved ? false : tx.needsClassification,
-      ambiguous: resolved ? false : tx.ambiguous,
-      classifiedBy: resolved ? ClassifiedBy.llm : tx.classifiedBy,
-    );
+    if (needsSource &&
+        result.paymentSourceId != null &&
+        knownIds.contains(result.paymentSourceId) &&
+        (result.paymentSourceConfidence ?? 0) >=
+            ClassificationResult.paymentSourceConfidenceThreshold) {
+      updated = updated.copyWith(
+        paymentSourceId: result.paymentSourceId,
+        unmatched: false,
+      );
+    }
+
+    if (needsCategory) {
+      final validCategory = result.categoryId != null &&
+          categories.any((c) => c.id == result.categoryId);
+      final categoryId = validCategory ? result.categoryId : updated.categoryId;
+      final resolved = categoryId != null && !result.needsUserInput;
+
+      updated = updated.copyWith(
+        categoryId: categoryId,
+        merchantNormalized: result.merchantNormalized ?? updated.merchantNormalized,
+        needsClassification:
+            resolved ? false : updated.needsClassification,
+        ambiguous: resolved ? false : updated.ambiguous,
+        classifiedBy: resolved ? ClassifiedBy.llm : updated.classifiedBy,
+      );
+    } else if (result.merchantNormalized != null) {
+      updated = updated.copyWith(merchantNormalized: result.merchantNormalized);
+    }
+
+    return updated;
   }
 
   RawIngest _rawIngestFromRow(Map<String, dynamic> row) {

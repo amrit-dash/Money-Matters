@@ -69,29 +69,12 @@ class ParseService {
     ParsedTransactionCandidate candidate,
     List<PaymentSource> sources,
   ) {
-    if (sources.isEmpty) return null;
-
-    if (candidate.instrumentLast4 != null) {
-      for (final source in sources) {
-        if (source.matchesInstrumentHint(candidate.instrumentLast4)) {
-          return source.id;
-        }
-      }
-    }
-
-    for (final source in sources) {
-      if (source.matchesSender(ingest.sender)) {
-        return source.id;
-      }
-    }
-
-    for (final source in sources) {
-      if (source.matchesBody(ingest.body)) {
-        return source.id;
-      }
-    }
-
-    return null;
+    return matchPaymentSourceFromIngest(
+      sender: ingest.sender,
+      body: ingest.body,
+      instrumentLast4: candidate.instrumentLast4,
+      sources: sources,
+    );
   }
 
   String? _matchCategory(

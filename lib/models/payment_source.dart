@@ -71,3 +71,35 @@ class PaymentSource {
     return body.toLowerCase().contains(normalizedName);
   }
 }
+
+/// Rules-first payment source resolution from SMS sender and body text.
+String? matchPaymentSourceFromIngest({
+  required String sender,
+  required String body,
+  String? instrumentLast4,
+  required List<PaymentSource> sources,
+}) {
+  if (sources.isEmpty) return null;
+
+  if (instrumentLast4 != null) {
+    for (final source in sources) {
+      if (source.matchesInstrumentHint(instrumentLast4)) {
+        return source.id;
+      }
+    }
+  }
+
+  for (final source in sources) {
+    if (source.matchesSender(sender)) {
+      return source.id;
+    }
+  }
+
+  for (final source in sources) {
+    if (source.matchesBody(body)) {
+      return source.id;
+    }
+  }
+
+  return null;
+}

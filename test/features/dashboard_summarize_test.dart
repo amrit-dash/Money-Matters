@@ -181,5 +181,41 @@ void main() {
         isFalse,
       );
     });
+
+    test('filterSourceTransactions matches summarize unmatched bucket', () {
+      final known = sources.map((s) => s.id).toSet();
+      final rows = [
+        tx(id: '1', amount: 100, sourceId: 'card-1', categoryId: 'food'),
+        tx(id: '2', amount: 130, sourceId: 'deleted-card', categoryId: 'food'),
+        tx(id: '3', amount: 25, unmatched: true),
+        tx(
+          id: '4',
+          amount: 500,
+          sourceId: 'bank-1',
+          type: TransactionType.credit,
+        ),
+        tx(id: '5', amount: 999, sourceId: 'deleted-card', excluded: true),
+      ];
+
+      final unmatched = LocalDashboardRepository.filterSourceTransactions(
+        transactions: rows,
+        paymentSourceId: null,
+        knownSourceIds: known,
+      );
+
+      expect(unmatched.map((t) => t.id).toList(), ['2', '3']);
+
+      final summary = LocalDashboardRepository.summarize(
+        label: 'May',
+        start: start,
+        end: end,
+        transactions: rows,
+        sources: sources,
+        categories: categories,
+        uncategorized: uncategorized,
+      );
+      expect(summary.unmatchedCount, unmatched.length);
+      expect(summary.unmatchedSpend, unmatched.fold(0.0, (s, t) => s + t.amount));
+    });
   });
 }

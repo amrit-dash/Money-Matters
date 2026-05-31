@@ -9,7 +9,7 @@ class LocalDatabase {
   LocalDatabase();
 
   static const _dbName = 'money_matters.db';
-  static const _dbVersion = 3;
+  static const _dbVersion = 4;
 
   Database? _db;
 
@@ -100,6 +100,13 @@ class LocalDatabase {
       CREATE INDEX idx_transactions_needs_classification
         ON transactions(needs_classification)
     ''');
+
+    await db.execute('''
+      CREATE TABLE deleted_transactions (
+        id TEXT PRIMARY KEY,
+        deleted_at TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -138,6 +145,14 @@ class LocalDatabase {
       } catch (_) {
         // Column already present (idempotent upgrade) — ignore.
       }
+    }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS deleted_transactions (
+          id TEXT PRIMARY KEY,
+          deleted_at TEXT NOT NULL
+        )
+      ''');
     }
   }
 
@@ -303,9 +318,11 @@ class LocalDatabase {
   ) async {
     final db = await database;
     if (paymentSourceId == null) {
+      // Unmatched bucket is filtered in Dart via [LocalDashboardRepository.isUnmatched]
+      // so orphaned payment_source_id refs (deleted accounts) are included.
       return db.query(
         'transactions',
-        where: 'excluded = 0 AND (unmatched = 1 OR payment_source_id IS NULL)',
+        where: 'excluded = 0',
         orderBy: 'timestamp DESC',
       );
     }
@@ -319,11 +336,31 @@ class LocalDatabase {
 
   Future<void> deleteTransaction(String id) async {
     final db = await database;
-    await db.delete(
-      'transactions',
+    final deletedAt = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      await txn.delete(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await txn.insert(
+        'deleted_transactions',
+        {'id': id, 'deleted_at': deletedAt},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+  }
+
+  Future<bool> isTransactionDeleted(String id) async {
+    final db = await database;
+    final rows = await db.query(
+      'deleted_transactions',
+      columns: ['id'],
       where: 'id = ?',
       whereArgs: [id],
+      limit: 1,
     );
+    return rows.isNotEmpty;
   }
 
   Future<void> updateTransactionExcluded(String id, {required bool excluded}) async {

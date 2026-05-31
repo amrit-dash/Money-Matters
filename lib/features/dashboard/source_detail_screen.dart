@@ -86,12 +86,14 @@ class _SourceDetailScreenState extends State<SourceDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
-              ? AppEmptyState(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'No transactions',
-                  message: widget.paymentSourceId == null
-                      ? 'No unmatched transactions right now.'
-                      : 'Nothing recorded for this account yet.',
+              ? Center(
+                  child: AppEmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'No transactions',
+                    message: widget.paymentSourceId == null
+                        ? 'No unmatched transactions right now.'
+                        : 'Nothing recorded for this account yet.',
+                  ),
                 )
               : RefreshIndicator(
                   onRefresh: _load,

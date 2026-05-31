@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/payment_source.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart';
 import 'parse_result.dart';
@@ -31,6 +32,8 @@ class ClassificationResult {
     this.type,
     this.needsUserInput = false,
     this.needsConfig = false,
+    this.paymentSourceId,
+    this.paymentSourceConfidence,
   });
 
   /// One of the known category ids (e.g. `food`, `shopping`, `transfer`).
@@ -48,7 +51,16 @@ class ClassificationResult {
   /// Backend is missing its API key — caller should fall back to in-app HITL.
   final bool needsConfig;
 
+  /// Matched saved bank/card id when the model is confident from SMS context.
+  final String? paymentSourceId;
+
+  /// Model confidence for [paymentSourceId] in 0.0–1.0.
+  final double? paymentSourceConfidence;
+
+  static const paymentSourceConfidenceThreshold = 0.85;
+
   factory ClassificationResult.fromMap(Map<String, dynamic> map) {
+    final rawConfidence = map['paymentSourceConfidence'];
     return ClassificationResult(
       categoryId: (map['categoryId'] as String?)?.trim().isEmpty ?? true
           ? null
@@ -57,6 +69,12 @@ class ClassificationResult {
       type: map['type'] as String?,
       needsUserInput: map['needsUserInput'] as bool? ?? false,
       needsConfig: map['needsConfig'] as bool? ?? false,
+      paymentSourceId: (map['paymentSourceId'] as String?)?.trim().isEmpty ?? true
+          ? null
+          : map['paymentSourceId'] as String?,
+      paymentSourceConfidence: rawConfidence is num
+          ? rawConfidence.toDouble()
+          : null,
     );
   }
 }
@@ -68,6 +86,7 @@ abstract class TransactionClassifier {
     required Transaction transaction,
     String? smsBody,
     List<String> categoryIds = const [],
+    List<PaymentSource> paymentSources = const [],
   });
 }
 
@@ -80,6 +99,7 @@ class NoOpTransactionClassifier implements TransactionClassifier {
     required Transaction transaction,
     String? smsBody,
     List<String> categoryIds = const [],
+    List<PaymentSource> paymentSources = const [],
   }) async =>
       null;
 }
@@ -103,6 +123,7 @@ class CloudFunctionsClassifier implements TransactionClassifier {
     required Transaction transaction,
     String? smsBody,
     List<String> categoryIds = const [],
+    List<PaymentSource> paymentSources = const [],
   }) async {
     try {
       final callable = _functions.httpsCallable('classifyTransaction');
@@ -112,6 +133,18 @@ class CloudFunctionsClassifier implements TransactionClassifier {
         'type': transaction.type.name,
         'smsBody': smsBody,
         'categoryIds': categoryIds,
+        if (paymentSources.isNotEmpty)
+          'paymentSources': paymentSources
+              .map(
+                (s) => {
+                  'id': s.id,
+                  'displayName': s.name,
+                  'type': s.type.name,
+                  'senderHints': s.senderHints,
+                  if (s.last4 != null) 'last4': s.last4,
+                },
+              )
+              .toList(),
       });
       final data = Map<String, dynamic>.from(response.data);
       return ClassificationResult.fromMap(data);

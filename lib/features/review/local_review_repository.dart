@@ -139,9 +139,14 @@ class LocalReviewRepository implements ReviewRepository {
     await _db.deleteTransaction(transactionId);
 
     try {
+      // Tombstone so Firestore drain does not resurrect this transaction.
+      await _transactionDoc(transactionId).set({
+        'deleted': true,
+        'deletedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       await _transactionDoc(transactionId).delete();
     } catch (_) {
-      // Offline or unsigned — local delete still applies.
+      // Offline or unsigned — local delete + deleted_transactions still apply.
     }
   }
 }

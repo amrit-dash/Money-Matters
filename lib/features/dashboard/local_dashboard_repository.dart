@@ -180,18 +180,33 @@ class LocalDashboardRepository implements DashboardRepository {
     );
   }
 
+  /// Filters transactions for a source drill-down (null = unmatched bucket).
+  static List<Transaction> filterSourceTransactions({
+    required List<Transaction> transactions,
+    required String? paymentSourceId,
+    required Set<String> knownSourceIds,
+  }) {
+    return transactions.where((tx) {
+      if (tx.excluded) return false;
+      if (paymentSourceId == null) {
+        return tx.type == TransactionType.debit &&
+            isUnmatched(tx, knownSourceIds);
+      }
+      return !isUnmatched(tx, knownSourceIds) &&
+          tx.paymentSourceId == paymentSourceId;
+    }).toList();
+  }
+
   @override
   Future<List<Transaction>> sourceTransactions(String? paymentSourceId) async {
     final sources = await _loadSources();
     final knownSourceIds = sources.map((s) => s.id).toSet();
     final rows = await _db.getTransactionsForSource(paymentSourceId);
-    return rows.map(Transaction.fromSqlite).where((tx) {
-      if (paymentSourceId == null) {
-        return isUnmatched(tx, knownSourceIds);
-      }
-      return !isUnmatched(tx, knownSourceIds) &&
-          tx.paymentSourceId == paymentSourceId;
-    }).toList();
+    return filterSourceTransactions(
+      transactions: rows.map(Transaction.fromSqlite).toList(),
+      paymentSourceId: paymentSourceId,
+      knownSourceIds: knownSourceIds,
+    );
   }
 
   @override

@@ -222,13 +222,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                   const SizedBox(height: AppSpacing.section),
                   if (_summary != null && _isEmpty)
-                    _EmptyState(
-                      rawIngestCount: _rawIngestCount,
-                      transactionCount: _transactionCount,
-                      onConnectSms: () =>
-                          Navigator.pushNamed(context, AppRoutes.connectSms),
-                      onRecovery: () =>
-                          Navigator.pushNamed(context, AppRoutes.recovery),
+                    Center(
+                      child: _EmptyState(
+                        rawIngestCount: _rawIngestCount,
+                        transactionCount: _transactionCount,
+                        onConnectSms: () =>
+                            Navigator.pushNamed(context, AppRoutes.connectSms),
+                        onRecovery: () =>
+                            Navigator.pushNamed(context, AppRoutes.recovery),
+                      ),
                     )
                   else if (_summary != null) ...[
                     Text(

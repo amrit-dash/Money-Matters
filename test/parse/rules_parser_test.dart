@@ -283,6 +283,35 @@ void main() {
       expect(outcome.transaction!.amount, 899);
     });
 
+    test('Scapia Federal card SMS links via FEDSCP-S sender hint', () async {
+      final sources = [
+        PaymentSource(
+          id: 'scapia-card',
+          name: 'Scapia Federal RuPay',
+          type: PaymentSourceType.card,
+          senderHints: ['fedscp-s'],
+          createdAt: DateTime.parse('2026-05-01T00:00:00Z'),
+        ),
+      ];
+
+      final outcome = await service.parse(
+        RawIngest(
+          id: 'scapia-sms-1',
+          body:
+              'txn of ₹61.83 at Uber on 31-05-2026 on your Scapia Federal RuPay credit card. Not you? Call 1800',
+          sender: 'FEDSCP-S',
+          receivedAt: DateTime.parse('2026-05-31T12:00:00+05:30'),
+          deviceId: 'device-1',
+          source: 'shortcuts-automation-v1',
+          createdAt: DateTime.parse('2026-05-31T12:00:00+05:30'),
+        ),
+        paymentSources: sources,
+      );
+
+      expect(outcome.transaction!.paymentSourceId, 'scapia-card');
+      expect(outcome.transaction!.unmatched, isFalse);
+    });
+
     test('Federal Bank SMS links to payment source via FEDBNK-S sender hint', () async {
       final sources = [
         PaymentSource(

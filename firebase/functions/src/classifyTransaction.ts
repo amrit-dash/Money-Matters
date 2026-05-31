@@ -13,12 +13,21 @@ const MODEL = "gemini-2.0-flash";
 const ENDPOINT = (key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`;
 
+interface PaymentSourceHint {
+  id: string;
+  displayName: string;
+  type: string;
+  senderHints?: string[];
+  last4?: string | null;
+}
+
 interface ClassifyRequest {
   merchant?: string | null;
   amount?: number | null;
   type?: string | null;
   smsBody?: string | null;
   categoryIds?: string[];
+  paymentSources?: PaymentSourceHint[];
 }
 
 export interface ClassifyResult {
@@ -27,6 +36,8 @@ export interface ClassifyResult {
   type: string | null;
   needsUserInput: boolean;
   needsConfig: boolean;
+  paymentSourceId: string | null;
+  paymentSourceConfidence: number | null;
 }
 
 function fallback(needsConfig: boolean): ClassifyResult {
@@ -36,6 +47,8 @@ function fallback(needsConfig: boolean): ClassifyResult {
     type: null,
     needsUserInput: true,
     needsConfig,
+    paymentSourceId: null,
+    paymentSourceConfidence: null,
   };
 }
 
@@ -46,22 +59,39 @@ function buildPrompt(data: ClassifyRequest): string {
     "food, groceries, transport, shopping, bills, entertainment, health, " +
       "transfer, other";
 
+  const sources = data.paymentSources ?? [];
+  const sourceLines = sources.length > 0 ?
+    sources.map((s) => {
+      const hints = (s.senderHints ?? []).filter(Boolean).join(", ") || "none";
+      const last4 = s.last4 ? ` · last4 ${s.last4}` : "";
+      return `- id=${s.id} · ${s.displayName} (${s.type}) · senderHints: ${hints}${last4}`;
+    }).join("\n") :
+    "(none — skip payment source assignment)";
+
   return [
-    "You categorize a single Indian bank/UPI transaction.",
+    "You analyze a single Indian bank/UPI/credit-card SMS transaction.",
+    "",
     "Pick the best categoryId from this allowed list ONLY:",
     allowed,
+    "",
+    "Saved payment accounts (banks/cards/wallets):",
+    sourceLines,
     "",
     "Transaction:",
     `- merchant: ${data.merchant ?? "unknown"}`,
     `- amount: ${data.amount ?? "unknown"}`,
     `- type: ${data.type ?? "debit"}`,
-    `- raw SMS: ${(data.smsBody ?? "").slice(0, 600)}`,
+    `- raw SMS: ${(data.smsBody ?? "").slice(0, 800)}`,
     "",
     "Rules:",
     "- categoryId MUST be one of the allowed ids, or null if genuinely unclear.",
     "- merchantNormalized: a clean human name (e.g. 'zepto-stores@ybl' -> 'Zepto').",
     "- type: a short spend kind (food, shopping, transfer, bills, ...).",
     "- needsUserInput: true only if you cannot confidently categorize.",
+    "- paymentSourceId: pick an account id ONLY when the SMS clearly indicates that",
+    "  account (sender id like FEDBNK-S / FEDSCP-S, bank name in footer, card",
+    "  product name, or last4). Prefer senderHints when present. null if unclear.",
+    "- paymentSourceConfidence: 0.0–1.0; use >= 0.85 only when very confident.",
   ].join("\n");
 }
 
@@ -72,6 +102,8 @@ const RESPONSE_SCHEMA = {
     merchantNormalized: {type: "STRING", nullable: true},
     type: {type: "STRING", nullable: true},
     needsUserInput: {type: "BOOLEAN"},
+    paymentSourceId: {type: "STRING", nullable: true},
+    paymentSourceConfidence: {type: "NUMBER", nullable: true},
   },
   required: ["needsUserInput"],
 };
@@ -113,13 +145,28 @@ async function callGemini(
     return fallback(false);
   }
 
-  const allowed = new Set(data.categoryIds ?? []);
+  const allowedCategories = new Set(data.categoryIds ?? []);
   const rawCategory =
     typeof parsed.categoryId === "string" ? parsed.categoryId : null;
   const categoryId =
-    rawCategory && (allowed.size === 0 || allowed.has(rawCategory)) ?
+    rawCategory && (allowedCategories.size === 0 || allowedCategories.has(rawCategory)) ?
       rawCategory :
       null;
+
+  const allowedSourceIds = new Set(
+    (data.paymentSources ?? []).map((s) => s.id),
+  );
+  const rawSourceId =
+    typeof parsed.paymentSourceId === "string" ? parsed.paymentSourceId : null;
+  const paymentSourceId =
+    rawSourceId && allowedSourceIds.has(rawSourceId) ?
+      rawSourceId :
+      null;
+
+  let paymentSourceConfidence: number | null = null;
+  if (typeof parsed.paymentSourceConfidence === "number") {
+    paymentSourceConfidence = parsed.paymentSourceConfidence;
+  }
 
   return {
     categoryId,
@@ -131,11 +178,13 @@ async function callGemini(
     needsUserInput:
       categoryId === null || parsed.needsUserInput === true,
     needsConfig: false,
+    paymentSourceId,
+    paymentSourceConfidence,
   };
 }
 
-// Rules-first: the app only calls this for uncategorized/ambiguous spends.
-// App Check is intentionally NOT enforced (parity with ingestSms path).
+// Rules-first: the app only calls this for uncategorized/ambiguous spends and
+// unmatched payment-source assignment. App Check is intentionally NOT enforced.
 export const classifyTransaction = onCall(
   {
     region: "asia-south1",
