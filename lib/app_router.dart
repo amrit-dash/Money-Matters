@@ -115,6 +115,7 @@ class AppRouter {
           settings: settings,
           builder: (ctx) => AccountsScreen(
             paymentSourceService: AppScope.of(ctx).paymentSourceService,
+            parsePipeline: AppScope.of(ctx).parsePipeline,
           ),
         );
       default:

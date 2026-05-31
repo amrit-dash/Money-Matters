@@ -26,6 +26,7 @@ interface ClassifyRequest {
   amount?: number | null;
   type?: string | null;
   smsBody?: string | null;
+  sender?: string | null;
   categoryIds?: string[];
   paymentSources?: PaymentSourceHint[];
 }
@@ -82,6 +83,7 @@ function buildPrompt(data: ClassifyRequest): string {
     `- merchant: ${data.merchant ?? "unknown"}`,
     `- amount: ${data.amount ?? "unknown"}`,
     `- type: ${data.type ?? "debit"}`,
+    `- SMS sender id: ${(data.sender ?? "").trim() || "unknown"}`,
     `- raw SMS: ${(data.smsBody ?? "").slice(0, 800)}`,
     "",
     "Rules:",
@@ -90,8 +92,8 @@ function buildPrompt(data: ClassifyRequest): string {
     "- type: a short spend kind (food, shopping, transfer, bills, ...).",
     "- needsUserInput: true only if you cannot confidently categorize.",
     "- paymentSourceId: pick an account id ONLY when the SMS clearly indicates that",
-    "  account (sender id like FEDBNK-S / FEDSCP-S, bank name in footer, card",
-    "  product name, or last4). Prefer senderHints when present. null if unclear.",
+    "  account (SMS sender id like FEDBNK-S / FEDSCP-S, bank name in footer, card",
+    "  product name, or last4). Match sender id to senderHints first. null if unclear.",
     "- paymentSourceConfidence: 0.0–1.0; use >= 0.85 only when very confident.",
   ].join("\n");
 }

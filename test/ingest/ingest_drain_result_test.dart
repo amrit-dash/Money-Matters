@@ -62,6 +62,41 @@ void main() {
         upToDate.formatSyncMessage(),
         'Nothing new to sync — cloud queue may already be empty',
       );
+
+      const withLlm = IngestDrainResult(
+        rawIngestsSynced: 0,
+        parseJobsSynced: 0,
+        transactionsSynced: 0,
+        parseResult: ParsePipelineResult(
+          processed: 0,
+          transactionsCreated: 0,
+          skipped: 0,
+          failed: 0,
+          rematched: 2,
+          reclassified: 3,
+        ),
+      );
+      expect(
+        withLlm.formatSyncMessage(),
+        '2 account(s) matched, 3 auto-classified',
+      );
+
+      const needsConfig = IngestDrainResult(
+        rawIngestsSynced: 0,
+        parseJobsSynced: 0,
+        transactionsSynced: 0,
+        parseResult: ParsePipelineResult(
+          processed: 0,
+          transactionsCreated: 0,
+          skipped: 0,
+          failed: 0,
+          classifyNeedsConfig: true,
+        ),
+      );
+      expect(
+        needsConfig.formatSyncMessage(),
+        'LLM needs GEMINI_API_KEY secret',
+      );
     });
   });
 }

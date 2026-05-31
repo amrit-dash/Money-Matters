@@ -24,6 +24,27 @@ class NoOpLlmParser implements LlmParser {
   }
 }
 
+/// Last classify call outcome — for Recovery sync messages and debug logs.
+class ClassifierDiagnostics {
+  ClassifierDiagnostics._();
+
+  static String? lastError;
+  static bool lastNeedsConfig = false;
+  static DateTime? lastAttemptAt;
+  static int lastSuccessCount = 0;
+
+  static void recordAttempt({
+    String? error,
+    bool needsConfig = false,
+    int successCount = 0,
+  }) {
+    lastAttemptAt = DateTime.now().toUtc();
+    lastError = error;
+    lastNeedsConfig = needsConfig;
+    lastSuccessCount = successCount;
+  }
+}
+
 /// Structured output of the LLM classification step.
 class ClassificationResult {
   const ClassificationResult({
@@ -34,6 +55,7 @@ class ClassificationResult {
     this.needsConfig = false,
     this.paymentSourceId,
     this.paymentSourceConfidence,
+    this.errorMessage,
   });
 
   /// One of the known category ids (e.g. `food`, `shopping`, `transfer`).
@@ -56,6 +78,9 @@ class ClassificationResult {
 
   /// Model confidence for [paymentSourceId] in 0.0–1.0.
   final double? paymentSourceConfidence;
+
+  /// Callable/network failure — distinct from [needsConfig] (missing backend key).
+  final String? errorMessage;
 
   static const paymentSourceConfidenceThreshold = 0.85;
 
@@ -85,6 +110,7 @@ abstract class TransactionClassifier {
   Future<ClassificationResult?> classify({
     required Transaction transaction,
     String? smsBody,
+    String? smsSender,
     List<String> categoryIds = const [],
     List<PaymentSource> paymentSources = const [],
   });
@@ -98,6 +124,7 @@ class NoOpTransactionClassifier implements TransactionClassifier {
   Future<ClassificationResult?> classify({
     required Transaction transaction,
     String? smsBody,
+    String? smsSender,
     List<String> categoryIds = const [],
     List<PaymentSource> paymentSources = const [],
   }) async =>
@@ -122,6 +149,7 @@ class CloudFunctionsClassifier implements TransactionClassifier {
   Future<ClassificationResult?> classify({
     required Transaction transaction,
     String? smsBody,
+    String? smsSender,
     List<String> categoryIds = const [],
     List<PaymentSource> paymentSources = const [],
   }) async {
@@ -132,6 +160,7 @@ class CloudFunctionsClassifier implements TransactionClassifier {
         'amount': transaction.amount,
         'type': transaction.type.name,
         'smsBody': smsBody,
+        if (smsSender != null && smsSender.isNotEmpty) 'sender': smsSender,
         'categoryIds': categoryIds,
         if (paymentSources.isNotEmpty)
           'paymentSources': paymentSources
@@ -147,13 +176,27 @@ class CloudFunctionsClassifier implements TransactionClassifier {
               .toList(),
       });
       final data = Map<String, dynamic>.from(response.data);
-      return ClassificationResult.fromMap(data);
+      final result = ClassificationResult.fromMap(data);
+      if (result.needsConfig) {
+        ClassifierDiagnostics.recordAttempt(
+          needsConfig: true,
+          error: 'GEMINI_API_KEY not set on Cloud Functions',
+        );
+        debugPrint(
+          'CloudFunctionsClassifier: needsConfig — set secret with '
+          'firebase functions:secrets:set GEMINI_API_KEY',
+        );
+      }
+      return result;
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('CloudFunctionsClassifier: ${e.code} ${e.message}');
-      return null;
+      final msg = '${e.code}: ${e.message ?? "classify failed"}';
+      debugPrint('CloudFunctionsClassifier: $msg');
+      ClassifierDiagnostics.recordAttempt(error: msg);
+      return ClassificationResult(errorMessage: msg);
     } catch (e) {
       debugPrint('CloudFunctionsClassifier: $e');
-      return null;
+      ClassifierDiagnostics.recordAttempt(error: e.toString());
+      return ClassificationResult(errorMessage: e.toString());
     }
   }
 }

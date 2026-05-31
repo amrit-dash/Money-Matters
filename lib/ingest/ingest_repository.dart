@@ -33,7 +33,17 @@ class IngestDrainResult {
     final parsed = transactionsParsed;
     final processed = parseResult?.processed ?? 0;
     final failed = parseResult?.failed ?? 0;
-    if (totalSynced == 0 && processed == 0 && failed == 0) {
+    final rematched = parseResult?.rematched ?? 0;
+    final reclassified = parseResult?.reclassified ?? 0;
+    final hasBacklogWork =
+        rematched > 0 ||
+        reclassified > 0 ||
+        parseResult?.classifyNeedsConfig == true ||
+        parseResult?.classifyError != null;
+    if (totalSynced == 0 &&
+        processed == 0 &&
+        failed == 0 &&
+        !hasBacklogWork) {
       return 'Nothing new to sync — cloud queue may already be empty';
     }
     final parts = <String>[];
@@ -52,6 +62,18 @@ class IngestDrainResult {
     }
     if (failed > 0) {
       parts.add('$failed parse(s) failed');
+    }
+    if (rematched > 0) {
+      parts.add('$rematched account(s) matched');
+    }
+    if (reclassified > 0) {
+      parts.add('$reclassified auto-classified');
+    }
+    if (parseResult?.classifyNeedsConfig == true) {
+      parts.add('LLM needs GEMINI_API_KEY secret');
+    } else if (parseResult?.classifyError != null &&
+        (parseResult?.reclassified ?? 0) == 0) {
+      parts.add('LLM classify error — check Review inbox');
     }
     if (parts.isEmpty) {
       return 'Already up to date';

@@ -110,13 +110,7 @@ class IngestQueueDrain {
     ParsePipelineResult current,
   ) {
     if (previous == null) return current;
-    return ParsePipelineResult(
-      processed: previous.processed + current.processed,
-      transactionsCreated:
-          previous.transactionsCreated + current.transactionsCreated,
-      skipped: previous.skipped + current.skipped,
-      failed: previous.failed + current.failed,
-    );
+    return previous.merge(current);
   }
 
   /// Returns combined local pending counts for status UI.

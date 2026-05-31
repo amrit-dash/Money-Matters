@@ -23,12 +23,41 @@ class ParsePipelineResult {
     required this.transactionsCreated,
     required this.skipped,
     required this.failed,
+    this.rematched = 0,
+    this.reclassified = 0,
+    this.classifyNeedsConfig = false,
+    this.classifyError,
   });
 
   final int processed;
   final int transactionsCreated;
   final int skipped;
   final int failed;
+
+  /// Existing unmatched rows linked to a saved bank/card on this sync.
+  final int rematched;
+
+  /// Backlog rows auto-categorized or source-linked via LLM on this sync.
+  final int reclassified;
+
+  /// True when the backend reported missing GEMINI_API_KEY.
+  final bool classifyNeedsConfig;
+
+  /// Last callable/network error from LLM classify (if any).
+  final String? classifyError;
+
+  ParsePipelineResult merge(ParsePipelineResult other) {
+    return ParsePipelineResult(
+      processed: processed + other.processed,
+      transactionsCreated: transactionsCreated + other.transactionsCreated,
+      skipped: skipped + other.skipped,
+      failed: failed + other.failed,
+      rematched: rematched + other.rematched,
+      reclassified: reclassified + other.reclassified,
+      classifyNeedsConfig: classifyNeedsConfig || other.classifyNeedsConfig,
+      classifyError: other.classifyError ?? classifyError,
+    );
+  }
 }
 
 /// Drains local SQLite queue: parse → persist → mark processed (Coordinator-owned).
@@ -104,7 +133,13 @@ class IngestParsePipeline {
             sources,
             instrumentLast4: outcome.result.candidate?.instrumentLast4,
           );
-          tx = await _maybeClassify(tx, ingest, cats, sources);
+          tx = await _maybeClassify(
+            tx,
+            body: ingest.body,
+            sender: ingest.sender,
+            categories: cats,
+            sources: sources,
+          );
           await _persistTransaction(tx);
           transactionsCreated++;
         } else {
@@ -123,13 +158,52 @@ class IngestParsePipeline {
       }
     }
 
-    await _rematchUnmatchedTransactions(sources);
+    final rematched = await _rematchUnmatchedTransactions(sources);
+    final backlog = await _reclassifyPendingTransactions(sources, cats);
 
     return ParsePipelineResult(
       processed: processed,
       transactionsCreated: transactionsCreated,
       skipped: skipped,
       failed: failed,
+      rematched: rematched,
+      reclassified: backlog.reclassified,
+      classifyNeedsConfig: backlog.classifyNeedsConfig,
+      classifyError: backlog.classifyError,
+    );
+  }
+
+  /// Runs rematch + LLM backlog without processing new ingests (e.g. after
+  /// saving Accounts). Safe to call from UI after payment source edits.
+  Future<ParsePipelineResult> processBacklog({
+    List<PaymentSource>? paymentSources,
+    List<Category>? categories,
+  }) async {
+    if (!_authService.isSignedIn) {
+      return const ParsePipelineResult(
+        processed: 0,
+        transactionsCreated: 0,
+        skipped: 0,
+        failed: 0,
+      );
+    }
+
+    final sources = paymentSources ??
+        await _paymentSourceService?.loadAll() ??
+        const <PaymentSource>[];
+    final cats = categories ?? await _categoryService.loadCategories();
+
+    final rematched = await _rematchUnmatchedTransactions(sources);
+    final backlog = await _reclassifyPendingTransactions(sources, cats);
+    return ParsePipelineResult(
+      processed: 0,
+      transactionsCreated: 0,
+      skipped: 0,
+      failed: 0,
+      rematched: rematched,
+      reclassified: backlog.reclassified,
+      classifyNeedsConfig: backlog.classifyNeedsConfig,
+      classifyError: backlog.classifyError,
     );
   }
 
@@ -158,14 +232,15 @@ class IngestParsePipeline {
 
   /// Re-applies payment-source rules to existing unmatched rows (e.g. after
   /// the user saves last4 in Accounts, or on Recovery re-sync).
-  Future<void> _rematchUnmatchedTransactions(
+  Future<int> _rematchUnmatchedTransactions(
     List<PaymentSource> sources,
   ) async {
-    if (sources.isEmpty || !_authService.isSignedIn) return;
+    if (sources.isEmpty || !_authService.isSignedIn) return 0;
 
     final knownIds = sources.map((s) => s.id).toSet();
     final rows = await _localDatabase.getTransactionsNeedingSourceMatch();
     final uid = _authService.requireUid();
+    var rematched = 0;
 
     for (final row in rows) {
       final tx = Transaction.fromSqlite(row);
@@ -195,7 +270,87 @@ class IngestParsePipeline {
         'paymentSourceId': matchId,
         'unmatched': false,
       }, SetOptions(merge: true));
+      rematched++;
     }
+    if (rematched > 0) {
+      debugPrint('IngestParsePipeline: rematched $rematched transaction(s)');
+    }
+    return rematched;
+  }
+
+  /// Re-runs LLM classify on backlog rows still in Review (e.g. after Gemini
+  /// secret is set, or when payment sources were added after first parse).
+  Future<ParsePipelineResult> _reclassifyPendingTransactions(
+    List<PaymentSource> sources,
+    List<Category> categories,
+  ) async {
+    if (!_authService.isSignedIn) {
+      return const ParsePipelineResult(
+        processed: 0,
+        transactionsCreated: 0,
+        skipped: 0,
+        failed: 0,
+      );
+    }
+
+    final knownIds = sources.map((s) => s.id).toSet();
+    final rows = await _localDatabase.getFlaggedTransactions();
+    var reclassified = 0;
+    var classifyNeedsConfig = false;
+    String? classifyError;
+
+    for (final row in rows) {
+      final tx = Transaction.fromSqlite(row);
+      if (tx.classifiedBy == ClassifiedBy.user) continue;
+
+      final needsCategory = tx.needsClassification || tx.ambiguous;
+      final needsSource =
+          LocalDashboardRepository.isUnmatched(tx, knownIds) &&
+              sources.isNotEmpty;
+      if (!needsCategory && !needsSource) continue;
+
+      final ingestRow = await _localDatabase.getRawIngest(tx.rawIngestId);
+      if (ingestRow == null) continue;
+
+      final body = ingestRow['body'] as String? ?? '';
+      final sender = ingestRow['sender'] as String? ?? '';
+      final updated = await _maybeClassify(
+        tx,
+        body: body,
+        sender: sender,
+        categories: categories,
+        sources: sources,
+      );
+
+      if (updated == tx) {
+        final diag = ClassifierDiagnostics.lastNeedsConfig;
+        if (diag) classifyNeedsConfig = true;
+        classifyError ??= ClassifierDiagnostics.lastError;
+        continue;
+      }
+
+      await _persistTransaction(updated);
+      reclassified++;
+    }
+
+    if (reclassified > 0) {
+      debugPrint('IngestParsePipeline: LLM reclassified $reclassified row(s)');
+    }
+    ClassifierDiagnostics.recordAttempt(
+      needsConfig: classifyNeedsConfig,
+      error: classifyError,
+      successCount: reclassified,
+    );
+
+    return ParsePipelineResult(
+      processed: 0,
+      transactionsCreated: 0,
+      skipped: 0,
+      failed: 0,
+      reclassified: reclassified,
+      classifyNeedsConfig: classifyNeedsConfig,
+      classifyError: classifyError,
+    );
   }
 
   /// Rules-first LLM gate for category and payment-source assignment.
@@ -207,11 +362,12 @@ class IngestParsePipeline {
   /// transaction stays in the in-app Review inbox — redeploy after setting the
   /// secret: `firebase functions:secrets:set GEMINI_API_KEY`.
   Future<Transaction> _maybeClassify(
-    Transaction tx,
-    RawIngest ingest,
-    List<Category> categories,
-    List<PaymentSource> sources,
-  ) async {
+    Transaction tx, {
+    required String body,
+    required String sender,
+    required List<Category> categories,
+    required List<PaymentSource> sources,
+  }) async {
     final knownIds = sources.map((s) => s.id).toSet();
     final needsCategory = tx.needsClassification || tx.ambiguous;
     final needsSource =
@@ -220,17 +376,43 @@ class IngestParsePipeline {
 
     final result = await _classifier.classify(
       transaction: tx,
-      smsBody: ingest.body,
+      smsBody: body,
+      smsSender: sender,
       categoryIds: categories.map((c) => c.id).toList(),
       paymentSources: sources,
     );
-    if (result == null || result.needsConfig) return tx;
+    if (result == null) return tx;
+    if (result.errorMessage != null) {
+      debugPrint(
+        'IngestParsePipeline: classify failed for ${tx.id}: ${result.errorMessage}',
+      );
+      return tx;
+    }
+    if (result.needsConfig) return tx;
 
+    return _applyClassificationResult(
+      tx,
+      result,
+      categories: categories,
+      knownSourceIds: knownIds,
+      needsCategory: needsCategory,
+      needsSource: needsSource,
+    );
+  }
+
+  Transaction _applyClassificationResult(
+    Transaction tx,
+    ClassificationResult result, {
+    required List<Category> categories,
+    required Set<String> knownSourceIds,
+    required bool needsCategory,
+    required bool needsSource,
+  }) {
     var updated = tx;
 
     if (needsSource &&
         result.paymentSourceId != null &&
-        knownIds.contains(result.paymentSourceId) &&
+        knownSourceIds.contains(result.paymentSourceId) &&
         (result.paymentSourceConfidence ?? 0) >=
             ClassificationResult.paymentSourceConfidenceThreshold) {
       updated = updated.copyWith(
