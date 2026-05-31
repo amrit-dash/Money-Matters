@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../core/auth/auth_service.dart';
 import '../services/ingest_parse_pipeline.dart';
 import 'ingest_repository.dart';
@@ -46,6 +48,13 @@ class IngestQueueDrain {
     _inFlight = _runDrainCycle();
     try {
       return await _inFlight;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        throw StateError(
+          'Firestore permission denied — sign out and back in, or check Firebase rules',
+        );
+      }
+      rethrow;
     } finally {
       _inFlight = null;
     }

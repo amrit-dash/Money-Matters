@@ -140,7 +140,8 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                 children: [
                   AppSectionHeader(
                     title: 'Queue status',
-                    subtitle: 'Synced SMS on device vs items waiting to parse',
+                    subtitle:
+                        'On this phone vs still waiting in Firebase cloud',
                   ),
                   if (_status != null) ...[
                     Row(
@@ -174,7 +175,8 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                       ],
                     ),
                     if (_status!.pendingMessageCount > 0 ||
-                        _status!.pendingParseJobCount > 0) ...[
+                        _status!.pendingParseJobCount > 0 ||
+                        _status!.cloudPendingParseJobCount > 0) ...[
                       const SizedBox(height: AppSpacing.item),
                       Card(
                         child: Padding(
@@ -187,17 +189,76 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                                 style: Theme.of(context).textTheme.titleSmall,
                               ),
                               const SizedBox(height: AppSpacing.tight),
+                              Text(
+                                'On this phone',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
                               if (_status!.pendingMessageCount > 0)
                                 _BreakdownRow(
-                                  label: 'Messages awaiting parse',
+                                  label: 'SMS waiting to parse',
                                   count: _status!.pendingMessageCount,
                                 ),
                               if (_status!.pendingParseJobCount > 0)
                                 _BreakdownRow(
-                                  label: 'Parse jobs in queue',
+                                  label: 'Parse jobs (local mirror)',
                                   count: _status!.pendingParseJobCount,
                                 ),
+                              if (_status!.pendingMessageCount == 0 &&
+                                  _status!.pendingParseJobCount == 0)
+                                Text(
+                                  'Nothing queued locally',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              const SizedBox(height: AppSpacing.tight),
+                              Text(
+                                'In Firebase cloud',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
+                              if (_status!.cloudPendingParseJobCount > 0)
+                                _BreakdownRow(
+                                  label: 'Parse jobs not yet parsed',
+                                  count: _status!.cloudPendingParseJobCount,
+                                )
+                              else
+                                Text(
+                                  'Cloud queue empty',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
                             ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (_status!.hasCloudLocalMismatch) ...[
+                      const SizedBox(height: AppSpacing.item),
+                      Card(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .tertiaryContainer
+                            .withValues(alpha: 0.35),
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.cloud_sync_outlined,
+                            color: Theme.of(context).colorScheme.tertiary,
+                          ),
+                          title: const Text('Cloud queue needs a sync'),
+                          subtitle: Text(
+                            '${_status!.cloudPendingParseJobCount} SMS in Firebase; '
+                            'tap Sync and parse now to download and run the parser.',
                           ),
                         ),
                       ),

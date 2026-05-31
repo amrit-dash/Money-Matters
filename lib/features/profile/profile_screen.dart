@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_router.dart';
 import '../../core/auth/auth_service.dart';
+import '../../core/config/firebase_options.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 
@@ -41,6 +42,10 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final email = authService.currentUser?.email;
+    final uid = authService.currentUser?.uid;
+    final projectId = DefaultFirebaseOptions.isConfigured
+        ? DefaultFirebaseOptions.currentPlatform.projectId
+        : null;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -79,6 +84,20 @@ class ProfileScreen extends StatelessWidget {
                           label: 'Active session',
                           tone: AppStatTone.success,
                         ),
+                        if (uid != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'UID: $uid',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                        if (projectId != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Firebase: $projectId',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ],
                     ),
                   ),

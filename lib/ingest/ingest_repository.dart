@@ -32,7 +32,7 @@ class IngestDrainResult {
     final processed = parseResult?.processed ?? 0;
     final failed = parseResult?.failed ?? 0;
     if (totalSynced == 0 && processed == 0 && failed == 0) {
-      return 'Already up to date';
+      return 'Nothing new to sync — cloud queue may already be empty';
     }
     final parts = <String>[];
     if (rawIngestsSynced > 0) {
@@ -96,8 +96,8 @@ class IngestRepository {
     var jobCount = 0;
     var txCount = 0;
 
-    rawCount = await _drainUnprocessedRawIngests(syncedAt);
     jobCount = await _drainPendingParseJobs(syncedAt);
+    rawCount = await _drainUnprocessedRawIngests(syncedAt);
     txCount = await _drainRecentTransactions(syncedAt);
 
     return IngestDrainResult(
@@ -107,25 +107,60 @@ class IngestRepository {
     );
   }
 
+  /// True when [data] has no [processedAt] or it is explicitly null.
+  static bool isUnprocessedRawIngest(Map<String, dynamic> data) {
+    if (!data.containsKey('processedAt')) return true;
+    final value = data['processedAt'];
+    return value == null;
+  }
+
   Future<int> _drainUnprocessedRawIngests(String syncedAt) async {
-    final snapshot = await _userCollection(_rawIngestsCollection)
+    var count = 0;
+
+    // Matches docs with processedAt: null (new ingests after CF fix).
+    final nullProcessed = await _userCollection(_rawIngestsCollection)
         .where('processedAt', isNull: true)
         .orderBy('createdAt')
         .limit(_drainBatchSize)
         .get();
 
-    var count = 0;
-    for (final doc in snapshot.docs) {
-      final ingest = _rawIngestFromFirestore(doc.id, doc.data());
-      final row = _rawIngestToSqlite(ingest, syncedAt);
-      final existing = await _localDatabase.getRawIngest(ingest.id);
-      if (existing?['processed_at'] != null) {
-        row['processed_at'] = existing!['processed_at'];
-      }
-      await _localDatabase.upsertRawIngest(row);
-      count++;
+    for (final doc in nullProcessed.docs) {
+      count += await _upsertRawIngestDoc(doc.id, doc.data(), syncedAt) ? 1 : 0;
     }
+
+    // Legacy ingests omit processedAt entirely; isNull does not match missing fields.
+    if (count < _drainBatchSize) {
+      final legacy = await _userCollection(_rawIngestsCollection)
+          .orderBy('createdAt', descending: true)
+          .limit(_drainBatchSize)
+          .get();
+
+      for (final doc in legacy.docs) {
+        if (!isUnprocessedRawIngest(doc.data())) continue;
+        if (nullProcessed.docs.any((d) => d.id == doc.id)) continue;
+        count += await _upsertRawIngestDoc(doc.id, doc.data(), syncedAt) ? 1 : 0;
+        if (count >= _drainBatchSize) break;
+      }
+    }
+
     return count;
+  }
+
+  Future<bool> _upsertRawIngestDoc(
+    String id,
+    Map<String, dynamic> data,
+    String syncedAt,
+  ) async {
+    if (!isUnprocessedRawIngest(data)) return false;
+
+    final ingest = _rawIngestFromFirestore(id, data);
+    final row = _rawIngestToSqlite(ingest, syncedAt);
+    final existing = await _localDatabase.getRawIngest(ingest.id);
+    if (existing?['processed_at'] != null) {
+      row['processed_at'] = existing!['processed_at'];
+    }
+    await _localDatabase.upsertRawIngest(row);
+    return true;
   }
 
   Future<int> _drainPendingParseJobs(String syncedAt) async {
@@ -138,6 +173,7 @@ class IngestRepository {
     var count = 0;
     for (final doc in snapshot.docs) {
       final job = _parseJobFromFirestore(doc.id, doc.data());
+      await _drainRawIngestForJob(job.rawIngestId, syncedAt);
       final row = _parseJobToSqlite(job, syncedAt);
       final existing = await _localDatabase.getParseJob(job.id);
       final existingStatus = existing?['status'] as String?;
@@ -150,6 +186,19 @@ class IngestRepository {
       count++;
     }
     return count;
+  }
+
+  /// Ensures the SMS body for a pending parse job exists locally (orphan-job fix).
+  Future<void> _drainRawIngestForJob(String rawIngestId, String syncedAt) async {
+    if (rawIngestId.isEmpty) return;
+
+    final local = await _localDatabase.getRawIngest(rawIngestId);
+    if (local != null && local['processed_at'] == null) return;
+
+    final doc =
+        await _userCollection(_rawIngestsCollection).doc(rawIngestId).get();
+    if (!doc.exists) return;
+    await _upsertRawIngestDoc(doc.id, doc.data()!, syncedAt);
   }
 
   /// Mirrors transactions updated since last local sync watermark.
@@ -184,6 +233,29 @@ class IngestRepository {
       'parseJobs': parseJobs,
       'awaitingParse': rawIngests,
     };
+  }
+
+  /// Pending queue depth in Firestore (not yet mirrored or parsed on device).
+  Future<Map<String, int>> cloudPendingCounts() async {
+    final jobs = await _userCollection(_parseJobsCollection)
+        .where('status', isEqualTo: _pendingStatus)
+        .count()
+        .get();
+    final pendingJobs = jobs.count ?? 0;
+    return {
+      'parseJobs': pendingJobs,
+      'awaitingParse': pendingJobs,
+    };
+  }
+
+  /// Most recent SMS received in cloud (for Recovery "Last ingest" when local is empty).
+  Future<DateTime?> cloudLatestIngestTime() async {
+    final snapshot = await _userCollection(_rawIngestsCollection)
+        .orderBy('receivedAt', descending: true)
+        .limit(1)
+        .get();
+    if (snapshot.docs.isEmpty) return null;
+    return _toDateTime(snapshot.docs.first.data()['receivedAt']);
   }
 
   RawIngest _rawIngestFromFirestore(String id, Map<String, dynamic> data) {

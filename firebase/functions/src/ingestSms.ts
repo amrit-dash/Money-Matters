@@ -183,6 +183,8 @@ export const ingestSms = onRequest(
           batchHint: payload.batchHint,
           createdAt: now,
           duplicate: false,
+          // Explicit null so client drain queries (processedAt == null) match.
+          processedAt: null,
         });
 
         const parseJobRef = db

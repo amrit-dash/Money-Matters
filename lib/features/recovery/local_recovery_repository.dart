@@ -43,9 +43,15 @@ class LocalRecoveryRepository implements RecoveryRepository {
   @override
   Future<IngestStatus> status() async {
     final counts = await _ingestRepository.pendingCounts();
+    final cloudCounts = await _ingestRepository.cloudPendingCounts();
     final pendingMessages = counts['awaitingParse'] ?? counts['rawIngests'] ?? 0;
     final pendingJobs = counts['parseJobs'] ?? 0;
-    final lastIngest = await _db.getLatestRawIngestTime();
+    final cloudPending =
+        cloudCounts['awaitingParse'] ?? cloudCounts['parseJobs'] ?? 0;
+    final cloudJobs = cloudCounts['parseJobs'] ?? cloudPending;
+    final lastLocalIngest = await _db.getLatestRawIngestTime();
+    final lastCloudIngest = await _ingestRepository.cloudLatestIngestTime();
+    final lastIngest = _latestTime(lastLocalIngest, lastCloudIngest);
     return IngestStatus(
       lastSyncAt: _lastSyncAt ?? _queueDrain.lastSyncAt,
       pendingCount: pendingMessages,
@@ -54,8 +60,16 @@ class LocalRecoveryRepository implements RecoveryRepository {
       syncedMessageCount: await _db.countRawIngests(),
       pendingMessageCount: pendingMessages,
       pendingParseJobCount: pendingJobs,
+      cloudPendingMessageCount: cloudPending,
+      cloudPendingParseJobCount: cloudJobs,
       parsedTransactionCount: await _db.countTransactions(),
     );
+  }
+
+  DateTime? _latestTime(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isAfter(b) ? a : b;
   }
 
   @override
@@ -112,7 +126,10 @@ class LocalRecoveryRepository implements RecoveryRepository {
 
   @override
   Future<void> triggerSync() async {
-    await _queueDrain.drainIfAuthenticated();
+    final result = await _queueDrain.drainIfAuthenticated();
+    if (result == null) {
+      throw StateError('Sign in required to sync and parse');
+    }
     _lastSyncAt = DateTime.now();
   }
 }

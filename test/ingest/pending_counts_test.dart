@@ -20,7 +20,8 @@ void main() {
       );
       const outOfSync = IngestStatus(
         pendingMessageCount: 0,
-        pendingParseJobCount: 2,
+        pendingParseJobCount: 13,
+        cloudPendingParseJobCount: 13,
       );
       expect(
         inSync.pendingParseJobsCount != inSync.awaitingParseCount,
@@ -30,6 +31,7 @@ void main() {
         outOfSync.pendingParseJobsCount != outOfSync.awaitingParseCount,
         isTrue,
       );
+      expect(outOfSync.hasCloudLocalMismatch, isTrue);
     });
   });
 }

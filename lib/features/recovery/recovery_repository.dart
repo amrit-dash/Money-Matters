@@ -13,6 +13,8 @@ class IngestStatus {
     this.pendingMessageCount = 0,
     this.pendingParseJobCount = 0,
     this.parsedTransactionCount = 0,
+    this.cloudPendingMessageCount = 0,
+    this.cloudPendingParseJobCount = 0,
   });
 
   final DateTime? lastSyncAt;
@@ -29,6 +31,12 @@ class IngestStatus {
   /// Parse jobs still pending in the local Firestore mirror.
   final int pendingParseJobCount;
 
+  /// SMS still pending in Firestore (cloud queue).
+  final int cloudPendingMessageCount;
+
+  /// Parse jobs still pending in Firestore.
+  final int cloudPendingParseJobCount;
+
   /// Transactions created from parsed SMS.
   final int parsedTransactionCount;
 
@@ -39,6 +47,10 @@ class IngestStatus {
 
   /// @deprecated Prefer [awaitingParseCount].
   int get totalPending => pendingMessageCount;
+
+  bool get hasCloudLocalMismatch =>
+      cloudPendingParseJobCount > 0 &&
+      (pendingMessageCount == 0 || pendingParseJobCount != pendingMessageCount);
 }
 
 /// Manual recovery: multi-paste ingest + queue status.

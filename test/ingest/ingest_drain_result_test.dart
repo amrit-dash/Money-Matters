@@ -58,7 +58,10 @@ void main() {
         parseJobsSynced: 0,
         transactionsSynced: 0,
       );
-      expect(upToDate.formatSyncMessage(), 'Already up to date');
+      expect(
+        upToDate.formatSyncMessage(),
+        'Nothing new to sync — cloud queue may already be empty',
+      );
     });
   });
 }
