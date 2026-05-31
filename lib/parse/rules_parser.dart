@@ -14,8 +14,12 @@ class RulesParser {
   );
 
   static final RegExp _last4Pattern = RegExp(
-    r'\*\*(\d{4})|(?:ending|ends)\s+(?:XX)?(\d{4})|A/c\s+(?:XX)?(\d{4})|'
-    r'Acct\s+XX(\d{3,4})|Card\s+(?:XX)?(\d{4})',
+    r'\*\*(\d{4})|'
+    r'(?:ending|ends)\s+(?:with\s+)?(?:\*{1,2}|X{1,4})*(\d{4})|'
+    r'(?:A[/\\]c|Acct|Account)\.?\s*(?:no\.?\s*)?(?:\*{1,2}|X{1,4})*(\d{4})|'
+    r'(?:Card|card)\s+(?:no\.?\s*)?(?:\*{1,2}|X{1,4})*(\d{4})|'
+    r'Acct\s+XX(\d{3,4})|'
+    r'(?:wallet)\s+(?:XX)?(\d{4})',
     caseSensitive: false,
   );
 
@@ -135,6 +139,9 @@ class RulesParser {
     RegExp(r'\brefund\b', caseSensitive: false),
     RegExp(r'\bcr\b', caseSensitive: false),
   ];
+
+  /// Last-4 account/card digits from SMS body (no transaction classification).
+  String? extractInstrumentLast4(String body) => _extractLast4(body);
 
   ParseResult parse(RawIngest ingest) {
     final body = ingest.body.trim();

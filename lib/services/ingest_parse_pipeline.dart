@@ -12,6 +12,7 @@ import '../models/transaction.dart';
 import '../features/dashboard/local_dashboard_repository.dart';
 import '../parse/llm_parser.dart';
 import '../parse/parse_service.dart';
+import '../parse/rules_parser.dart';
 import '../services/category_service.dart';
 import '../services/payment_source_service.dart';
 
@@ -57,6 +58,7 @@ class IngestParsePipeline {
   final FirebaseFirestore _firestore;
 
   static const _rulesVersion = 'rules-v1';
+  static const _rulesParser = RulesParser();
   static const _parseJobsCollection = 'parse_jobs';
   static const _transactionsCollection = 'transactions';
 
@@ -96,7 +98,12 @@ class IngestParsePipeline {
         if (outcome.transaction != null) {
           // Stable id = raw ingest id (one SMS → one transaction, idempotent retries).
           var tx = outcome.transaction!.copyWith(id: ingest.id);
-          tx = await _maybeMatchPaymentSource(tx, ingest, sources);
+          tx = await _maybeMatchPaymentSource(
+            tx,
+            ingest,
+            sources,
+            instrumentLast4: outcome.result.candidate?.instrumentLast4,
+          );
           tx = await _maybeClassify(tx, ingest, cats, sources);
           await _persistTransaction(tx);
           transactionsCreated++;
@@ -116,6 +123,8 @@ class IngestParsePipeline {
       }
     }
 
+    await _rematchUnmatchedTransactions(sources);
+
     return ParsePipelineResult(
       processed: processed,
       transactionsCreated: transactionsCreated,
@@ -124,23 +133,69 @@ class IngestParsePipeline {
     );
   }
 
-  /// Rules-first match using sender hints and SMS body before any LLM call.
+  /// Rules-first match using last4, sender hints, and SMS body before any LLM call.
   Future<Transaction> _maybeMatchPaymentSource(
     Transaction tx,
     RawIngest ingest,
-    List<PaymentSource> sources,
-  ) async {
+    List<PaymentSource> sources, {
+    String? instrumentLast4,
+  }) async {
     final knownIds = sources.map((s) => s.id).toSet();
     if (!LocalDashboardRepository.isUnmatched(tx, knownIds)) return tx;
 
+    final last4 =
+        instrumentLast4 ?? _rulesParser.extractInstrumentLast4(ingest.body);
     final rulesMatch = matchPaymentSourceFromIngest(
       sender: ingest.sender,
       body: ingest.body,
+      instrumentLast4: last4,
       sources: sources,
     );
     if (rulesMatch == null) return tx;
 
     return tx.copyWith(paymentSourceId: rulesMatch, unmatched: false);
+  }
+
+  /// Re-applies payment-source rules to existing unmatched rows (e.g. after
+  /// the user saves last4 in Accounts, or on Recovery re-sync).
+  Future<void> _rematchUnmatchedTransactions(
+    List<PaymentSource> sources,
+  ) async {
+    if (sources.isEmpty || !_authService.isSignedIn) return;
+
+    final knownIds = sources.map((s) => s.id).toSet();
+    final rows = await _localDatabase.getTransactionsNeedingSourceMatch();
+    final uid = _authService.requireUid();
+
+    for (final row in rows) {
+      final tx = Transaction.fromSqlite(row);
+      if (!LocalDashboardRepository.isUnmatched(tx, knownIds)) continue;
+
+      final ingestRow = await _localDatabase.getRawIngest(tx.rawIngestId);
+      if (ingestRow == null) continue;
+
+      final body = ingestRow['body'] as String? ?? '';
+      final sender = ingestRow['sender'] as String? ?? '';
+      final last4 = _rulesParser.extractInstrumentLast4(body);
+      final matchId = matchPaymentSourceFromIngest(
+        sender: sender,
+        body: body,
+        instrumentLast4: last4,
+        sources: sources,
+      );
+      if (matchId == null || tx.id == null) continue;
+
+      await _localDatabase.updateTransactionPaymentSource(tx.id!, matchId);
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection(_transactionsCollection)
+          .doc(tx.id)
+          .set({
+        'paymentSourceId': matchId,
+        'unmatched': false,
+      }, SetOptions(merge: true));
+    }
   }
 
   /// Rules-first LLM gate for category and payment-source assignment.

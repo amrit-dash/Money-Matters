@@ -37,6 +37,25 @@ void main() {
       expect(source.matchesInstrumentHint('1234'), isFalse);
     });
 
+    test('normalizeLast4 strips non-digits and pads short values', () {
+      expect(normalizeLast4('123'), '0123');
+      expect(normalizeLast4('XX 4567'), '4567');
+      expect(normalizeLast4(' 9012 '), '9012');
+    });
+
+    test('matches instrument hint with normalized last4', () {
+      final source = PaymentSource(
+        id: 'ps-1',
+        name: 'SBI Savings',
+        type: PaymentSourceType.bank,
+        last4: ' 9012 ',
+        createdAt: _createdAt,
+      );
+
+      expect(source.matchesInstrumentHint('9012'), isTrue);
+      expect(source.matchesInstrumentHint('XX9012'), isTrue);
+    });
+
     test('matches sender hints case-insensitively', () {
       final source = PaymentSource(
         id: 'ps-1',

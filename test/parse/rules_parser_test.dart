@@ -159,6 +159,49 @@ void main() {
       expect(result.candidate!.instrumentLast4, '0000');
     });
 
+    test('extracts last4 from A/c X1234 with single X mask', () {
+      final result = parser.parse(sampleIngest(
+        'Rs.250 debited from A/c X1234 at MERCHANT on 29-05-26.',
+      ));
+
+      expect(result.candidate!.instrumentLast4, '1234');
+    });
+
+    test('extracts last4 from A/c no. XX1234 (Axis-style)', () {
+      final result = parser.parse(sampleIngest(
+        'INR 500.00 debited from A/c no. XX5678 on 29-05-26. Info: MERCHANT.',
+        sender: 'AXISBK',
+      ));
+
+      expect(result.candidate!.instrumentLast4, '5678');
+    });
+
+    test('extracts last4 from ending with 9012 (SBI-style)', () {
+      final result = parser.parse(sampleIngest(
+        'Dear Customer, Rs.100 debited from your account ending with 9012 on 29-05-26.',
+        sender: 'SBIINB',
+      ));
+
+      expect(result.candidate!.instrumentLast4, '9012');
+    });
+
+    test('extracts last4 from A/cNo.XX3456 without space (Kotak-style)', () {
+      final result = parser.parse(sampleIngest(
+        'Rs.300 debited from A/cNo.XX3456 on 29-05-26 at SWIGGY.',
+        sender: 'KOTAKB',
+      ));
+
+      expect(result.candidate!.instrumentLast4, '3456');
+    });
+
+    test('extracts last4 from Account XX7890', () {
+      final result = parser.parse(sampleIngest(
+        'Account XX7890 debited INR 150.00 on 29-05-26. Merchant: ZOMATO.',
+      ));
+
+      expect(result.candidate!.instrumentLast4, '7890');
+    });
+
     test('parses Federal Bank UPI sent SMS with amount, debit, date, and VPA', () {
       final result = parser.parse(
         sampleIngest(
@@ -225,6 +268,59 @@ void main() {
       expect(outcome.transaction!.amount, 899);
       expect(outcome.transaction!.merchant, 'ZUDIO');
       expect(outcome.transaction!.paymentSourceId, 'card-zudio');
+      expect(outcome.transaction!.unmatched, isFalse);
+    });
+
+    test('links by last4 when saved account uses spaced digits', () async {
+      final sources = [
+        PaymentSource(
+          id: 'sbi-savings',
+          name: 'SBI Savings',
+          type: PaymentSourceType.bank,
+          last4: ' 9012 ',
+          createdAt: DateTime.parse('2026-05-01T00:00:00Z'),
+        ),
+      ];
+
+      final outcome = await service.parse(
+        sampleIngest(
+          'Dear Customer, Rs.100 debited from your account ending with 9012 on 29-05-26.',
+        ),
+        paymentSources: sources,
+      );
+
+      expect(outcome.transaction!.paymentSourceId, 'sbi-savings');
+      expect(outcome.transaction!.unmatched, isFalse);
+    });
+
+    test('last4 match wins over sender hint when both present', () async {
+      final sources = [
+        PaymentSource(
+          id: 'hdfc-card',
+          name: 'HDFC Card',
+          type: PaymentSourceType.card,
+          last4: '4567',
+          senderHints: ['hdfcbk'],
+          createdAt: DateTime.parse('2026-05-01T00:00:00Z'),
+        ),
+        PaymentSource(
+          id: 'hdfc-savings',
+          name: 'HDFC Savings',
+          type: PaymentSourceType.bank,
+          last4: '1234',
+          senderHints: ['hdfcbk'],
+          createdAt: DateTime.parse('2026-05-01T00:00:00Z'),
+        ),
+      ];
+
+      final outcome = await service.parse(
+        sampleIngest(
+          'Rs.899 debited from A/c **1234 at ZUDIO on 29-05-26.',
+        ),
+        paymentSources: sources,
+      );
+
+      expect(outcome.transaction!.paymentSourceId, 'hdfc-savings');
       expect(outcome.transaction!.unmatched, isFalse);
     });
 

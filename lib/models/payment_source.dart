@@ -53,7 +53,7 @@ class PaymentSource {
 
   bool matchesInstrumentHint(String? hint) {
     if (hint == null || hint.isEmpty || last4 == null) return false;
-    return last4 == hint;
+    return normalizeLast4(last4) == normalizeLast4(hint);
   }
 
   bool matchesSender(String sender) {
@@ -70,6 +70,15 @@ class PaymentSource {
     if (normalizedName.isEmpty) return false;
     return body.toLowerCase().contains(normalizedName);
   }
+}
+
+/// Strips non-digits and compares the trailing four digits (e.g. "XX 1234" → "1234").
+String normalizeLast4(String? value) {
+  if (value == null || value.isEmpty) return '';
+  final digits = value.replaceAll(RegExp(r'\D'), '');
+  if (digits.isEmpty) return '';
+  if (digits.length <= 4) return digits.padLeft(4, '0');
+  return digits.substring(digits.length - 4);
 }
 
 /// Rules-first payment source resolution from SMS sender and body text.

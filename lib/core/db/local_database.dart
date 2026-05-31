@@ -301,6 +301,32 @@ class LocalDatabase {
     );
   }
 
+  /// Unmatched or source-less transactions eligible for payment-source rematch.
+  Future<List<Map<String, dynamic>>> getTransactionsNeedingSourceMatch() async {
+    final db = await database;
+    return db.query(
+      'transactions',
+      where: 'excluded = 0 AND (unmatched = 1 OR payment_source_id IS NULL)',
+      orderBy: 'timestamp DESC',
+    );
+  }
+
+  Future<void> updateTransactionPaymentSource(
+    String id,
+    String paymentSourceId,
+  ) async {
+    final db = await database;
+    await db.update(
+      'transactions',
+      {
+        'payment_source_id': paymentSourceId,
+        'unmatched': 0,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<Map<String, dynamic>?> getTransaction(String id) async {
     final db = await database;
     final rows = await db.query(
