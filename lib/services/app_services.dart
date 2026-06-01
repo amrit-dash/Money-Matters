@@ -27,10 +27,11 @@ class AppServices {
     DashboardRepository? dashboardRepository,
     ReviewRepository? reviewRepository,
     RecoveryRepository? recoveryRepository,
-  })  : dashboardRepository = dashboardRepository ??
+  })  :         dashboardRepository = dashboardRepository ??
             LocalDashboardRepository(
               localDatabase: localDatabase,
               categoryService: categoryService,
+              paymentSourceService: paymentSourceService,
             ),
         reviewRepository = reviewRepository ??
             LocalReviewRepository(

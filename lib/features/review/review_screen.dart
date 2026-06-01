@@ -5,6 +5,7 @@ import 'package:money_matters/models/transaction.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
+import '../../services/app_services.dart';
 import 'classify_screen.dart';
 import 'review_repository.dart';
 
@@ -46,8 +47,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => ClassifyScreen(
+        builder: (ctx) => ClassifyScreen(
           repository: widget.repository,
+          paymentSourceService: AppScope.of(ctx).paymentSourceService,
           transaction: tx,
         ),
       ),

@@ -5,7 +5,9 @@ import 'package:money_matters/models/transaction.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
+import '../../services/app_services.dart';
 import '../../services/category_service.dart';
+import '../../services/payment_source_service.dart';
 import '../review/classify_screen.dart';
 import '../review/review_repository.dart';
 
@@ -16,12 +18,14 @@ class TransactionDetailScreen extends StatefulWidget {
     required this.transaction,
     required this.reviewRepository,
     required this.categoryService,
+    required this.paymentSourceService,
     this.paymentSourceName,
   });
 
   final Transaction transaction;
   final ReviewRepository reviewRepository;
   final CategoryService categoryService;
+  final PaymentSourceService paymentSourceService;
   final String? paymentSourceName;
 
   @override
@@ -31,6 +35,7 @@ class TransactionDetailScreen extends StatefulWidget {
 
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   late Transaction _tx;
+  String? _resolvedPaymentSourceName;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
   final _dateFormat = DateFormat('EEE, d MMM yyyy · h:mm:ss a');
@@ -39,14 +44,32 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   void initState() {
     super.initState();
     _tx = widget.transaction;
+    _resolvePaymentSourceName();
+  }
+
+  Future<void> _resolvePaymentSourceName() async {
+    if (widget.paymentSourceName != null) {
+      _resolvedPaymentSourceName = widget.paymentSourceName;
+      return;
+    }
+    final sourceId = _tx.paymentSourceId;
+    if (sourceId == null) return;
+    try {
+      final sources = await widget.paymentSourceService.loadAll();
+      final matches = sources.where((s) => s.id == sourceId);
+      if (!mounted || matches.isEmpty) return;
+      final match = matches.first;
+      setState(() => _resolvedPaymentSourceName = match.name);
+    } catch (_) {}
   }
 
   Future<void> _reclassify() async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => ClassifyScreen(
+        builder: (ctx) => ClassifyScreen(
           repository: widget.reviewRepository,
+          paymentSourceService: AppScope.of(ctx).paymentSourceService,
           transaction: _tx,
         ),
       ),
@@ -54,7 +77,13 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     if (changed == true && _tx.id != null) {
       final updated = await widget.reviewRepository.transactionById(_tx.id!);
       if (updated != null && mounted) {
-        setState(() => _tx = updated);
+        setState(() {
+          _tx = updated;
+          if (widget.paymentSourceName == null) {
+            _resolvedPaymentSourceName = null;
+          }
+        });
+        await _resolvePaymentSourceName();
       }
     }
   }
@@ -125,8 +154,10 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
 
   String _paymentSourceLabel() {
     if (_tx.excluded) return 'Excluded from totals';
-    if (widget.paymentSourceName != null) return widget.paymentSourceName!;
+    final name = _resolvedPaymentSourceName ?? widget.paymentSourceName;
+    if (name != null) return name;
     if (_tx.unmatched) return 'No linked account';
+    if (_tx.paymentSourceId != null) return 'Unknown account';
     return '—';
   }
 

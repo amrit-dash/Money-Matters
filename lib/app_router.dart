@@ -66,6 +66,8 @@ class AppRouter {
               repository: services.dashboardRepository,
               reviewRepository: services.reviewRepository,
               categoryService: services.categoryService,
+              paymentSourceService: services.paymentSourceService,
+              recoveryRepository: services.recoveryRepository,
               queueDrain: services.queueDrain,
             );
           },
@@ -89,6 +91,7 @@ class AppRouter {
             }
             return ClassifyScreen(
               repository: AppScope.of(ctx).reviewRepository,
+              paymentSourceService: AppScope.of(ctx).paymentSourceService,
               transactionId: txId,
             );
           },

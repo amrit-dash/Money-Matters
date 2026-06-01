@@ -63,6 +63,11 @@ class LocalReviewRepository implements ReviewRepository {
       ambiguous: false,
     );
 
+    final paymentSourceId = input.paymentSourceId;
+    if (paymentSourceId != null) {
+      await _db.updateTransactionPaymentSource(id, paymentSourceId);
+    }
+
     final uid = _authService.requireUid();
     await _firestore
         .collection('users')
@@ -76,6 +81,10 @@ class LocalReviewRepository implements ReviewRepository {
       'classifiedBy': ClassifiedBy.user.name,
       if (input.userNotes != null) 'userNotes': input.userNotes,
       if (input.shoppingItems.isNotEmpty) 'shoppingItems': input.shoppingItems,
+      if (paymentSourceId != null) ...{
+        'paymentSourceId': paymentSourceId,
+        'unmatched': false,
+      },
     }, SetOptions(merge: true));
 
     // Teach a user-specific merchant rule so future SMS auto-categorize.

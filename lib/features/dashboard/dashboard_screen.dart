@@ -9,7 +9,9 @@ import '../../core/widgets/app_ui.dart';
 import '../../ingest/ingest_queue_drain.dart';
 import '../../ingest/ingest_repository.dart';
 import '../../services/category_service.dart';
+import '../recovery/recovery_repository.dart';
 import '../review/review_repository.dart';
+import '../../services/payment_source_service.dart';
 import 'dashboard_repository.dart';
 import 'source_detail_screen.dart';
 
@@ -21,12 +23,16 @@ class DashboardScreen extends StatefulWidget {
     required this.repository,
     required this.reviewRepository,
     required this.categoryService,
+    required this.paymentSourceService,
+    this.recoveryRepository,
     this.queueDrain,
   });
 
   final DashboardRepository repository;
   final ReviewRepository reviewRepository;
   final CategoryService categoryService;
+  final PaymentSourceService paymentSourceService;
+  final RecoveryRepository? recoveryRepository;
   final IngestQueueDrain? queueDrain;
 
   @override
@@ -41,6 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _rawIngestCount = 0;
   int _transactionCount = 0;
   int _needsInputCount = 0;
+  bool _showPipelineSummary = false;
   StreamSubscription<IngestDrainResult>? _drainSubscription;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
@@ -78,12 +85,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : await widget.repository.monthlySummary();
     final counts = await widget.repository.localCounts();
     final needsInput = await widget.reviewRepository.needsInputCount();
+    var showPipeline = false;
+    final recovery = widget.recoveryRepository;
+    if (recovery != null) {
+      try {
+        final status = await recovery.status();
+        showPipeline = status.pendingMessageCount > 0 ||
+            status.pendingParseJobCount > 0 ||
+            status.failedParseCount > 0;
+      } catch (_) {
+        showPipeline = counts.rawIngests > counts.transactions;
+      }
+    } else {
+      showPipeline = counts.rawIngests > counts.transactions;
+    }
     if (!mounted) return;
     setState(() {
       _summary = summary;
       _rawIngestCount = counts.rawIngests;
       _transactionCount = counts.transactions;
       _needsInputCount = needsInput;
+      _showPipelineSummary = showPipeline;
       _loading = false;
       if (!syncQueue) _syncMessage = null;
     });
@@ -116,6 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           dashboardRepository: widget.repository,
           reviewRepository: widget.reviewRepository,
           categoryService: widget.categoryService,
+          paymentSourceService: widget.paymentSourceService,
           paymentSourceId: sourceId,
           title: title,
           source: source,
@@ -211,7 +234,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ],
-                  if (_rawIngestCount > 0 || _transactionCount > 0) ...[
+                  if (_showPipelineSummary) ...[
                     const SizedBox(height: AppSpacing.item),
                     _PipelineSummary(
                       synced: _rawIngestCount,

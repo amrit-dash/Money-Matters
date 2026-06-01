@@ -7,6 +7,7 @@ import 'package:money_matters/models/transaction.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../services/category_service.dart';
+import '../../services/payment_source_service.dart';
 import '../review/review_repository.dart';
 import '../transactions/transaction_detail_screen.dart';
 import 'dashboard_repository.dart';
@@ -18,6 +19,7 @@ class SourceDetailScreen extends StatefulWidget {
     required this.dashboardRepository,
     required this.reviewRepository,
     required this.categoryService,
+    required this.paymentSourceService,
     required this.paymentSourceId,
     required this.title,
     this.source,
@@ -26,6 +28,7 @@ class SourceDetailScreen extends StatefulWidget {
   final DashboardRepository dashboardRepository;
   final ReviewRepository reviewRepository;
   final CategoryService categoryService;
+  final PaymentSourceService paymentSourceService;
 
   /// Null means the unmatched bucket.
   final String? paymentSourceId;
@@ -72,6 +75,7 @@ class _SourceDetailScreenState extends State<SourceDetailScreen> {
           transaction: tx,
           reviewRepository: widget.reviewRepository,
           categoryService: widget.categoryService,
+          paymentSourceService: widget.paymentSourceService,
           paymentSourceName: widget.source?.name,
         ),
       ),

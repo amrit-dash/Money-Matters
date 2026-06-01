@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:money_matters/models/category.dart';
+import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../accounts/payment_source_widgets.dart';
 import '../../services/category_service.dart';
+import '../../services/payment_source_service.dart';
 import '../../core/widgets/app_ui.dart';
 import 'review_repository.dart';
 
@@ -15,6 +18,7 @@ class ClassifyScreen extends StatefulWidget {
   const ClassifyScreen({
     super.key,
     required this.repository,
+    required this.paymentSourceService,
     this.transaction,
     this.transactionId,
   }) : assert(
@@ -23,6 +27,7 @@ class ClassifyScreen extends StatefulWidget {
         );
 
   final ReviewRepository repository;
+  final PaymentSourceService paymentSourceService;
   final Transaction? transaction;
   final String? transactionId;
 
@@ -36,8 +41,10 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
 
   Transaction? _tx;
   List<Category> _categories = [];
+  List<PaymentSource> _paymentSources = [];
   final List<String> _shoppingItems = [];
   String? _selectedCategoryId;
+  String? _selectedPaymentSourceId;
   bool _saveRule = false;
   bool _loading = true;
   bool _saving = false;
@@ -62,6 +69,9 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   Future<void> _load() async {
     try {
       final categories = await widget.repository.availableCategories();
+      final sources = visiblePaymentSources(
+        await widget.paymentSourceService.loadAll(),
+      );
       final tx = widget.transaction ??
           await widget.repository.transactionById(widget.transactionId!);
       if (!mounted) return;
@@ -77,9 +87,12 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       setState(() {
         _tx = tx;
         _categories = categories;
+        _paymentSources = sources;
         // Never default to the first category (was Food & Dining) — leave unset
         // until the user or LLM picks one.
         _selectedCategoryId = tx.categoryId;
+        _selectedPaymentSourceId =
+            tx.unmatched ? null : tx.paymentSourceId;
         _loading = false;
       });
     } catch (e) {
@@ -104,6 +117,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     final tx = _tx;
     final categoryId = _selectedCategoryId;
     if (tx == null || categoryId == null) return;
+    if (tx.unmatched && _selectedPaymentSourceId == null) return;
 
     setState(() => _saving = true);
     try {
@@ -118,6 +132,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
               ? List<String>.from(_shoppingItems)
               : const [],
           saveMerchantRule: _saveRule,
+          paymentSourceId: tx.unmatched ? _selectedPaymentSourceId : null,
         ),
       );
       if (!mounted) return;
@@ -225,6 +240,40 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             ),
           ),
         ),
+        if (tx.unmatched) ...[
+          const SizedBox(height: AppSpacing.section),
+          AppSectionHeader(
+            title: 'Account',
+            subtitle: 'Which bank or card was this charge on?',
+          ),
+          if (_paymentSources.isEmpty)
+            Text(
+              'Add a bank or card in Accounts first.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+            )
+          else
+            DropdownButtonFormField<String?>(
+              key: ValueKey(_selectedPaymentSourceId),
+              initialValue: _selectedPaymentSourceId,
+              decoration: const InputDecoration(labelText: 'Payment source'),
+              hint: const Text('Choose an account'),
+              items: _paymentSources
+                  .map(
+                    (s) => DropdownMenuItem(
+                      value: s.id,
+                      child: Text(
+                        s.last4 != null
+                            ? '${s.name} ···· ${s.last4}'
+                            : s.name,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _selectedPaymentSourceId = v),
+            ),
+        ],
         const SizedBox(height: AppSpacing.section),
         AppSectionHeader(title: 'Category'),
         DropdownButtonFormField<String?>(
@@ -300,7 +349,11 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         ],
         const SizedBox(height: AppSpacing.section),
         FilledButton(
-          onPressed: _saving || _selectedCategoryId == null ? null : _save,
+          onPressed: _saving ||
+                  _selectedCategoryId == null ||
+                  (tx.unmatched && _selectedPaymentSourceId == null)
+              ? null
+              : _save,
           child: _saving
               ? const SizedBox(
                   height: 20,

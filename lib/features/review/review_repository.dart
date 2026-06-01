@@ -8,12 +8,16 @@ class ClassifyInput {
     this.userNotes,
     this.shoppingItems = const [],
     this.saveMerchantRule = false,
+    this.paymentSourceId,
   });
 
   final String categoryId;
   final String? userNotes;
   final List<String> shoppingItems;
   final bool saveMerchantRule;
+
+  /// When set, links an unmatched transaction to a saved bank/card.
+  final String? paymentSourceId;
 }
 
 /// Transactions needing human review (uncategorized, ambiguous, or unmatched).
