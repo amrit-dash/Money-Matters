@@ -4,6 +4,7 @@ import 'package:money_matters/models/transaction.dart';
 
 import '../../core/auth/auth_service.dart';
 import '../../core/db/local_database.dart';
+import '../../core/db/local_data_streams.dart';
 import '../../parse/rules_parser.dart';
 import '../../services/category_service.dart';
 import '../../services/ingest_parse_pipeline.dart';
@@ -42,7 +43,19 @@ class LocalReviewRepository implements ReviewRepository {
   }
 
   @override
+  Stream<List<Transaction>> watchFlaggedTransactions() {
+    return watchLocalData(
+      _db.transactionChanges,
+      flaggedTransactions,
+    );
+  }
+
+  @override
   Future<List<Category>> availableCategories() => _categories.loadCategories();
+
+  @override
+  Stream<List<Category>> watchAvailableCategories() =>
+      _categories.watchCategories();
 
   @override
   Future<Transaction?> transactionById(String id) async {
@@ -52,7 +65,23 @@ class LocalReviewRepository implements ReviewRepository {
   }
 
   @override
+  Stream<Transaction?> watchTransaction(String id) {
+    return watchLocalData(
+      _db.transactionChanges,
+      () => transactionById(id),
+    );
+  }
+
+  @override
   Future<int> needsInputCount() => _db.countNeedsClassification();
+
+  @override
+  Stream<int> watchNeedsInputCount() {
+    return watchLocalData(
+      _db.transactionChanges,
+      needsInputCount,
+    );
+  }
 
   @override
   Future<void> classify({
@@ -67,10 +96,12 @@ class LocalReviewRepository implements ReviewRepository {
     await _db.updateTransactionClassification(
       id,
       categoryId: input.categoryId,
+      subcategoryId: input.subcategoryId,
       merchantNormalized: input.merchantNormalized,
       userNotes: input.userNotes,
       shoppingItems: input.shoppingItems,
       travelProvider: input.travelProvider,
+      transferTo: input.transferTo,
       classifiedBy: ClassifiedBy.user.name,
       needsClassification: false,
       ambiguous: false,
@@ -92,12 +123,20 @@ class LocalReviewRepository implements ReviewRepository {
       'ambiguous': false,
       'needsClassification': false,
       'classifiedBy': ClassifiedBy.user.name,
+      if (input.subcategoryId != null && input.subcategoryId!.isNotEmpty)
+        'subcategoryId': input.subcategoryId,
+      if (input.subcategoryId != null && input.subcategoryId!.isEmpty)
+        'subcategoryId': FieldValue.delete(),
       if (input.merchantNormalized != null)
         'merchantNormalized': input.merchantNormalized,
       if (input.userNotes != null) 'userNotes': input.userNotes,
       if (input.shoppingItems.isNotEmpty) 'shoppingItems': input.shoppingItems,
       if (input.travelProvider != null && input.travelProvider!.isNotEmpty)
         'travelProvider': input.travelProvider,
+      if (input.transferTo != null && input.transferTo!.isEmpty)
+        'transferTo': FieldValue.delete(),
+      if (input.transferTo != null && input.transferTo!.isNotEmpty)
+        'transferTo': input.transferTo,
       if (paymentSourceId != null) ...{
         'paymentSourceId': paymentSourceId,
         'unmatched': false,
@@ -232,10 +271,12 @@ class LocalReviewRepository implements ReviewRepository {
     await _db.updateTransactionClassification(
       id,
       categoryId: transaction.categoryId,
+      subcategoryId: transaction.subcategoryId,
       merchantNormalized: transaction.merchantNormalized,
       userNotes: transaction.userNotes,
       shoppingItems: transaction.shoppingItems,
       travelProvider: transaction.travelProvider,
+      transferTo: transaction.transferTo,
       classifiedBy: ClassifiedBy.llm.name,
       needsClassification: transaction.needsClassification,
       ambiguous: transaction.ambiguous,
@@ -251,6 +292,9 @@ class LocalReviewRepository implements ReviewRepository {
     final uid = _authService.requireUid();
     await _firestore.collection('users').doc(uid).collection('transactions').doc(id).set({
       if (transaction.categoryId != null) 'categoryId': transaction.categoryId,
+      if (transaction.subcategoryId != null &&
+          transaction.subcategoryId!.isNotEmpty)
+        'subcategoryId': transaction.subcategoryId,
       'ambiguous': transaction.ambiguous,
       'needsClassification': transaction.needsClassification,
       'classifiedBy': ClassifiedBy.llm.name,
@@ -262,6 +306,9 @@ class LocalReviewRepository implements ReviewRepository {
       if (transaction.travelProvider != null &&
           transaction.travelProvider!.isNotEmpty)
         'travelProvider': transaction.travelProvider,
+      if (transaction.transferTo != null && transaction.transferTo!.isNotEmpty)
+        'transferTo': transaction.transferTo,
+      if (transaction.merchant != null) 'merchant': transaction.merchant,
       if (transaction.paymentSourceId != null) ...{
         'paymentSourceId': transaction.paymentSourceId,
         'unmatched': transaction.unmatched,

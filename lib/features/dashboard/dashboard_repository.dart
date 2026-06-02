@@ -72,8 +72,12 @@ abstract class DashboardRepository {
   Future<PeriodSummary> weeklySummary({DateTime? anchor});
   Future<PeriodSummary> monthlySummary({DateTime? anchor});
 
+  Stream<PeriodSummary> watchWeeklySummary({DateTime? anchor});
+  Stream<PeriodSummary> watchMonthlySummary({DateTime? anchor});
+
   /// All transactions for a payment source (null = unmatched), newest first.
   Future<List<Transaction>> sourceTransactions(String? paymentSourceId);
+  Stream<List<Transaction>> watchSourceTransactions(String? paymentSourceId);
 
   /// Matched debit transactions for one category in [start, end], newest first.
   Future<List<Transaction>> categoryTransactions({
@@ -81,6 +85,14 @@ abstract class DashboardRepository {
     required DateTime start,
     required DateTime end,
   });
+  Stream<List<Transaction>> watchCategoryTransactions({
+    required String categoryId,
+    required DateTime start,
+    required DateTime end,
+  });
+
+  /// Emits when underlying transaction, category, or payment-source data changes.
+  Stream<void> watchDataChanges();
 
   /// Resolves a payment source by id (for detail screens).
   Future<PaymentSource?> paymentSourceById(String id);

@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:intl/intl.dart';
 import 'package:money_matters/models/category.dart';
 import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/db/local_database.dart';
+import '../../core/db/local_data_streams.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
 import 'dashboard_repository.dart';
@@ -57,6 +60,14 @@ class LocalDashboardRepository implements DashboardRepository {
   }
 
   @override
+  Stream<PeriodSummary> watchWeeklySummary({DateTime? anchor}) {
+    return watchLocalData(
+      watchDataChanges(),
+      () => weeklySummary(anchor: anchor),
+    );
+  }
+
+  @override
   Future<PeriodSummary> monthlySummary({DateTime? anchor}) async {
     final ref = anchor ?? DateTime.now();
     final start = DateTime(ref.year, ref.month);
@@ -68,11 +79,20 @@ class LocalDashboardRepository implements DashboardRepository {
     );
   }
 
+  @override
+  Stream<PeriodSummary> watchMonthlySummary({DateTime? anchor}) {
+    return watchLocalData(
+      watchDataChanges(),
+      () => monthlySummary(anchor: anchor),
+    );
+  }
+
   Future<PeriodSummary> _buildSummary({
     required String label,
     required DateTime start,
     required DateTime end,
   }) async {
+    _sourceCache = null;
     final rows = await _db.getTransactionsBetween(start, end);
     final transactions = rows.map(Transaction.fromSqlite).toList();
     final sources = await _loadSources();
@@ -230,6 +250,22 @@ class LocalDashboardRepository implements DashboardRepository {
   }
 
   @override
+  Stream<List<Transaction>> watchCategoryTransactions({
+    required String categoryId,
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return watchLocalData(
+      watchDataChanges(),
+      () => categoryTransactions(
+        categoryId: categoryId,
+        start: start,
+        end: end,
+      ),
+    );
+  }
+
+  @override
   Future<List<Transaction>> sourceTransactions(String? paymentSourceId) async {
     final sources = await _loadSources();
     final knownSourceIds = sources.map((s) => s.id).toSet();
@@ -238,6 +274,14 @@ class LocalDashboardRepository implements DashboardRepository {
       transactions: rows.map(Transaction.fromSqlite).toList(),
       paymentSourceId: paymentSourceId,
       knownSourceIds: knownSourceIds,
+    );
+  }
+
+  @override
+  Stream<List<Transaction>> watchSourceTransactions(String? paymentSourceId) {
+    return watchLocalData(
+      watchDataChanges(),
+      () => sourceTransactions(paymentSourceId),
     );
   }
 
@@ -252,6 +296,25 @@ class LocalDashboardRepository implements DashboardRepository {
 
   DateTime _endOfDay(DateTime dt) =>
       DateTime(dt.year, dt.month, dt.day, 23, 59, 59, 999);
+
+  @override
+  Stream<void> watchDataChanges() {
+    return Stream<void>.multi((controller) {
+      final subs = <StreamSubscription<void>>[];
+      void emit() => controller.add(null);
+      subs.add(_db.transactionChanges.listen((_) => emit()));
+      subs.add(_categories.categoryChanges.listen((_) => emit()));
+      final sources = _paymentSources;
+      if (sources != null) {
+        subs.add(sources.paymentSourceChanges.listen((_) => emit()));
+      }
+      controller.onCancel = () {
+        for (final sub in subs) {
+          sub.cancel();
+        }
+      };
+    });
+  }
 
   @override
   Future<({int rawIngests, int transactions})> localCounts() async {

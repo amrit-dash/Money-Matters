@@ -8,6 +8,8 @@ class ClassifyInput {
     this.userNotes,
     this.shoppingItems = const [],
     this.travelProvider,
+    this.subcategoryId,
+    this.transferTo,
     this.saveMerchantRule = false,
     this.paymentSourceId,
     this.merchantNormalized,
@@ -17,6 +19,8 @@ class ClassifyInput {
   final String? userNotes;
   final List<String> shoppingItems;
   final String? travelProvider;
+  final String? subcategoryId;
+  final String? transferTo;
   final bool saveMerchantRule;
 
   /// When set, links an unmatched transaction to a saved bank/card.
@@ -29,11 +33,17 @@ class ClassifyInput {
 /// Transactions needing human review (uncategorized, ambiguous, or unmatched).
 abstract class ReviewRepository {
   Future<List<Transaction>> flaggedTransactions();
+  Stream<List<Transaction>> watchFlaggedTransactions();
+
   Future<List<Category>> availableCategories();
+  Stream<List<Category>> watchAvailableCategories();
+
   Future<Transaction?> transactionById(String id);
+  Stream<Transaction?> watchTransaction(String id);
 
   /// Count of items in the "Needs your input" inbox (for badges).
   Future<int> needsInputCount();
+  Stream<int> watchNeedsInputCount();
 
   /// Applies a user classification: category + optional notes / shopping items.
   Future<void> classify({

@@ -61,6 +61,7 @@ Future<void> main() async {
     categoryService: categoryService,
     transactionClassifier: CloudFunctionsClassifier(),
   );
+  appServices.firestoreRealtimeSync.start();
   final themeController = ThemeController();
   await themeController.load();
 

@@ -11,6 +11,7 @@ import '../features/review/review_repository.dart';
 import '../ingest/ingest_queue_drain.dart';
 import '../ingest/ingest_repository.dart';
 import 'category_service.dart';
+import 'firestore_realtime_sync.dart';
 import 'ingest_parse_pipeline.dart';
 import 'ai_classify_service.dart';
 import 'payment_source_service.dart';
@@ -33,6 +34,7 @@ class AppServices {
     TransactionClassifier? transactionClassifier,
     AiClassifyService? aiClassifyService,
     UserDataDeletionService? userDataDeletionService,
+    FirestoreRealtimeSyncService? firestoreRealtimeSync,
   })  : userDataDeletionService = userDataDeletionService ??
             UserDataDeletionService(
               authService: authService,
@@ -66,6 +68,13 @@ class AppServices {
               ingestRepository: ingestRepository,
               queueDrain: queueDrain,
               authService: authService,
+            ),
+        firestoreRealtimeSync = firestoreRealtimeSync ??
+            FirestoreRealtimeSyncService(
+              authService: authService,
+              ingestRepository: ingestRepository,
+              categoryService: categoryService,
+              paymentSourceService: paymentSourceService,
             );
 
   final AuthService authService;
@@ -80,6 +89,7 @@ class AppServices {
   final RecoveryRepository recoveryRepository;
   final AiClassifyService aiClassifyService;
   final UserDataDeletionService userDataDeletionService;
+  final FirestoreRealtimeSyncService firestoreRealtimeSync;
 }
 
 /// InheritedWidget exposing [AppServices] to the widget tree.

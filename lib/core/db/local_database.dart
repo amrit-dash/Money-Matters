@@ -9,9 +9,20 @@ class LocalDatabase {
   LocalDatabase();
 
   static const _dbName = 'money_matters.db';
-  static const _dbVersion = 5;
+  static const _dbVersion = 7;
 
   Database? _db;
+  final StreamController<void> _transactionChanges =
+      StreamController<void>.broadcast();
+
+  /// Fires after any local transaction row is inserted, updated, or deleted.
+  Stream<void> get transactionChanges => _transactionChanges.stream;
+
+  void _notifyTransactionChanged() {
+    if (!_transactionChanges.isClosed) {
+      _transactionChanges.add(null);
+    }
+  }
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -74,6 +85,7 @@ class LocalDatabase {
         merchant TEXT,
         timestamp TEXT NOT NULL,
         category_id TEXT,
+        subcategory_id TEXT,
         payment_source_id TEXT,
         unmatched INTEGER NOT NULL DEFAULT 0,
         ambiguous INTEGER NOT NULL DEFAULT 0,
@@ -84,6 +96,7 @@ class LocalDatabase {
         user_notes TEXT,
         shopping_items TEXT,
         travel_provider TEXT,
+        transfer_to TEXT,
         classified_by TEXT,
         synced_at TEXT NOT NULL,
         FOREIGN KEY (raw_ingest_id) REFERENCES raw_ingests(idempotency_key)
@@ -159,6 +172,24 @@ class LocalDatabase {
       try {
         await db.execute(
           'ALTER TABLE transactions ADD COLUMN travel_provider TEXT',
+        );
+      } catch (_) {
+        // Column already present (idempotent upgrade) — ignore.
+      }
+    }
+    if (oldVersion < 6) {
+      try {
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN transfer_to TEXT',
+        );
+      } catch (_) {
+        // Column already present (idempotent upgrade) — ignore.
+      }
+    }
+    if (oldVersion < 7) {
+      try {
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN subcategory_id TEXT',
         );
       } catch (_) {
         // Column already present (idempotent upgrade) — ignore.
@@ -272,6 +303,7 @@ class LocalDatabase {
       row,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    _notifyTransactionChanged();
   }
 
   Future<List<Map<String, dynamic>>> getAllTransactions() async {
@@ -335,6 +367,7 @@ class LocalDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
+    _notifyTransactionChanged();
   }
 
   Future<Map<String, dynamic>?> getTransaction(String id) async {
@@ -385,6 +418,7 @@ class LocalDatabase {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
+    _notifyTransactionChanged();
   }
 
   Future<bool> isTransactionDeleted(String id) async {
@@ -413,6 +447,7 @@ class LocalDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
+    _notifyTransactionChanged();
   }
 
   /// Transactions still awaiting user/LLM categorization (uncategorized,
@@ -444,16 +479,19 @@ class LocalDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
+    _notifyTransactionChanged();
   }
 
   /// Applies a classification result (from user relabel or LLM) locally.
   Future<void> updateTransactionClassification(
     String id, {
     String? categoryId,
+    String? subcategoryId,
     String? merchantNormalized,
     String? userNotes,
     List<String>? shoppingItems,
     String? travelProvider,
+    String? transferTo,
     String? classifiedBy,
     bool? needsClassification,
     bool? ambiguous,
@@ -461,6 +499,10 @@ class LocalDatabase {
     final db = await database;
     final updates = <String, Object?>{};
     if (categoryId != null) updates['category_id'] = categoryId;
+    if (subcategoryId != null) {
+      updates['subcategory_id'] =
+          subcategoryId.isEmpty ? null : subcategoryId;
+    }
     if (merchantNormalized != null) {
       updates['merchant_normalized'] = merchantNormalized;
     }
@@ -471,6 +513,9 @@ class LocalDatabase {
     if (travelProvider != null) {
       updates['travel_provider'] =
           travelProvider.isEmpty ? null : travelProvider;
+    }
+    if (transferTo != null) {
+      updates['transfer_to'] = transferTo.isEmpty ? null : transferTo;
     }
     if (classifiedBy != null) updates['classified_by'] = classifiedBy;
     if (needsClassification != null) {
@@ -484,6 +529,7 @@ class LocalDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
+    _notifyTransactionChanged();
   }
 
   Future<DateTime?> getLatestRawIngestTime() async {
@@ -506,9 +552,11 @@ class LocalDatabase {
       await txn.delete('parse_jobs');
       await txn.delete('deleted_transactions');
     });
+    _notifyTransactionChanged();
   }
 
   Future<void> close() async {
+    await _transactionChanges.close();
     await _db?.close();
     _db = null;
   }

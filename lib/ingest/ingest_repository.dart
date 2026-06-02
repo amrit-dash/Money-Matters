@@ -353,6 +353,7 @@ class IngestRepository {
       merchant: data['merchant'] as String?,
       timestamp: _toDateTime(data['timestamp']),
       categoryId: data['categoryId'] as String?,
+      subcategoryId: data['subcategoryId'] as String?,
       paymentSourceId: data['paymentSourceId'] as String?,
       unmatched: data['unmatched'] as bool? ?? false,
       ambiguous: data['ambiguous'] as bool? ?? false,
@@ -368,6 +369,7 @@ class IngestRepository {
               .toList() ??
           const [],
       travelProvider: data['travelProvider'] as String?,
+      transferTo: data['transferTo'] as String?,
       classifiedBy: ledger.ClassifiedBy.fromString(
         data['classifiedBy'] as String?,
       ),
@@ -386,6 +388,7 @@ class IngestRepository {
       'merchant': tx.merchant,
       'timestamp': tx.timestamp.toUtc().toIso8601String(),
       'category_id': tx.categoryId,
+      'subcategory_id': tx.subcategoryId,
       'payment_source_id': tx.paymentSourceId,
       'unmatched': tx.unmatched ? 1 : 0,
       'ambiguous': tx.ambiguous ? 1 : 0,
@@ -397,6 +400,7 @@ class IngestRepository {
       'shopping_items':
           tx.shoppingItems.isEmpty ? null : jsonEncode(tx.shoppingItems),
       'travel_provider': tx.travelProvider,
+      'transfer_to': tx.transferTo,
       'classified_by': tx.classifiedBy?.name,
       'synced_at': syncedAt,
     };
@@ -409,5 +413,38 @@ class IngestRepository {
       return DateTime.tryParse(value)?.toUtc() ?? DateTime.now().toUtc();
     }
     return DateTime.now().toUtc();
+  }
+
+  /// Mirrors Firestore transaction snapshot deltas into SQLite for realtime UI.
+  Future<void> mirrorTransactionDocChanges(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) async {
+    if (snapshot.docChanges.isEmpty) return;
+
+    final syncedAt = DateTime.now().toUtc().toIso8601String();
+    for (final change in snapshot.docChanges) {
+      final doc = change.doc;
+      if (change.type == DocumentChangeType.removed) {
+        if (!await _localDatabase.isTransactionDeleted(doc.id)) {
+          await _localDatabase.deleteTransaction(doc.id);
+        }
+        continue;
+      }
+
+      final data = doc.data();
+      if (data == null) continue;
+      if (data['deleted'] == true) {
+        if (!await _localDatabase.isTransactionDeleted(doc.id)) {
+          await _localDatabase.deleteTransaction(doc.id);
+        }
+        continue;
+      }
+      if (await _localDatabase.isTransactionDeleted(doc.id)) continue;
+
+      final tx = _transactionFromFirestore(doc.id, data);
+      await _localDatabase.upsertTransaction(
+        _transactionToSqlite(tx, syncedAt),
+      );
+    }
   }
 }
