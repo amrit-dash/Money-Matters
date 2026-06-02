@@ -7,11 +7,14 @@ import '../../models/payment_source.dart';
 import '../../services/category_service.dart';
 import '../theme/app_theme.dart';
 
-const _bankCollapseLimit = 2;
-const _cardCollapseLimit = 0;
+String _paymentSourceLabel(PaymentSource source) {
+  return source.last4 != null
+      ? '${source.name} ···· ${source.last4}'
+      : source.name;
+}
 
-/// Banks and cards in separate sections for the classify flow.
-class PaymentSourceClassifyPicker extends StatefulWidget {
+/// Banks and cards as dropdowns for the classify / reclassify flow.
+class PaymentSourceClassifyPicker extends StatelessWidget {
   const PaymentSourceClassifyPicker({
     super.key,
     required this.sources,
@@ -24,93 +27,8 @@ class PaymentSourceClassifyPicker extends StatefulWidget {
   final ValueChanged<String?> onSelected;
 
   @override
-  State<PaymentSourceClassifyPicker> createState() =>
-      _PaymentSourceClassifyPickerState();
-}
-
-class _PaymentSourceClassifyPickerState extends State<PaymentSourceClassifyPicker> {
-  bool _banksExpanded = false;
-  bool _cardsExpanded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoExpandGroups());
-  }
-
-  @override
-  void didUpdateWidget(PaymentSourceClassifyPicker oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedId != widget.selectedId) {
-      _maybeAutoExpandGroups();
-    }
-  }
-
-  void _maybeAutoExpandGroups() {
-    final selectedId = widget.selectedId;
-    if (selectedId == null) return;
-
-    final visible = visiblePaymentSources(widget.sources);
-    PaymentSource? selected;
-    for (final source in visible) {
-      if (source.id == selectedId) {
-        selected = source;
-        break;
-      }
-    }
-    if (selected == null) return;
-
-    if (selected.type == PaymentSourceType.bank) {
-      final banks = visible
-          .where((s) => s.type == PaymentSourceType.bank)
-          .toList();
-      final index = banks.indexWhere((s) => s.id == selectedId);
-      if (index >= _bankCollapseLimit && !_banksExpanded) {
-        setState(() => _banksExpanded = true);
-      }
-    } else if (selected.type == PaymentSourceType.card && !_cardsExpanded) {
-      setState(() => _cardsExpanded = true);
-    }
-  }
-
-  List<PaymentSource> _sectionSources({
-    required List<PaymentSource> allInGroup,
-    required bool expanded,
-    required int collapseLimit,
-    required String? pinnedId,
-  }) {
-    final pool = pinnedId == null
-        ? allInGroup
-        : allInGroup.where((s) => s.id != pinnedId).toList();
-    if (expanded || pool.length <= collapseLimit) return pool;
-    return pool.take(collapseLimit).toList();
-  }
-
-  Widget? _loadMoreButton({
-    required int hiddenCount,
-    required VoidCallback onPressed,
-  }) {
-    if (hiddenCount <= 0) return null;
-    return Align(
-      alignment: Alignment.centerRight,
-      child: TextButton(
-        style: TextButton.styleFrom(
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        ),
-        onPressed: onPressed,
-        child: Text(
-          hiddenCount == 1
-              ? 'Load more (1 more)'
-              : 'Load more ($hiddenCount more)',
-        ),
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final visible = visiblePaymentSources(widget.sources);
+    final visible = visiblePaymentSources(sources);
     final scheme = Theme.of(context).colorScheme;
 
     if (visible.isEmpty) {
@@ -122,101 +40,161 @@ class _PaymentSourceClassifyPickerState extends State<PaymentSourceClassifyPicke
       );
     }
 
-    final allBanks =
+    final banks =
         visible.where((s) => s.type == PaymentSourceType.bank).toList();
-    final allCards =
+    final cards =
         visible.where((s) => s.type == PaymentSourceType.card).toList();
-    final pinnedId = widget.selectedId;
 
-    PaymentSource? pinnedSource;
-    if (pinnedId != null) {
+    PaymentSource? selectedSource;
+    if (selectedId != null) {
       for (final source in visible) {
-        if (source.id == pinnedId) {
-          pinnedSource = source;
+        if (source.id == selectedId) {
+          selectedSource = source;
           break;
         }
       }
     }
 
-    final banksPool = pinnedSource?.type == PaymentSourceType.bank
-        ? allBanks.where((s) => s.id != pinnedId).toList()
-        : allBanks;
-    final cardsPool = pinnedSource?.type == PaymentSourceType.card
-        ? allCards.where((s) => s.id != pinnedId).toList()
-        : allCards;
+    final bankLocked =
+        selectedSource?.type == PaymentSourceType.card;
+    final cardLocked =
+        selectedSource?.type == PaymentSourceType.bank;
 
-    final banksShown = _sectionSources(
-      allInGroup: allBanks,
-      expanded: _banksExpanded,
-      collapseLimit: _bankCollapseLimit,
-      pinnedId: pinnedSource?.type == PaymentSourceType.bank ? pinnedId : null,
-    );
-    final cardsShown = _sectionSources(
-      allInGroup: allCards,
-      expanded: _cardsExpanded,
-      collapseLimit: _cardCollapseLimit,
-      pinnedId: pinnedSource?.type == PaymentSourceType.card ? pinnedId : null,
-    );
-
-    final banksHidden = banksPool.length - banksShown.length;
-    final cardsHidden = cardsPool.length - cardsShown.length;
-    final showBankSection = banksShown.isNotEmpty || banksHidden > 0;
-    final showCardSection = cardsShown.isNotEmpty || cardsHidden > 0;
+    final bankValue = selectedSource?.type == PaymentSourceType.bank
+        ? selectedId
+        : null;
+    final cardValue = selectedSource?.type == PaymentSourceType.card
+        ? selectedId
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (pinnedSource != null) ...[
-          _SourceTile(
-            source: pinnedSource,
-            selected: true,
-            onTap: () => widget.onSelected(pinnedSource!.id),
+        if (selectedSource != null) ...[
+          _SectionLabel(
+            icon: Icons.check_circle_outline,
+            title: 'Selected',
           ),
-          if (showBankSection || showCardSection)
+          _SelectedSourceRow(
+            source: selectedSource,
+            onClear: () => onSelected(null),
+          ),
+          if (banks.isNotEmpty || cards.isNotEmpty)
             const SizedBox(height: AppSpacing.item),
         ],
-        if (showBankSection) ...[
+        if (banks.isNotEmpty) ...[
           _SectionLabel(
             icon: Icons.account_balance_outlined,
             title: 'Bank accounts',
           ),
-          ...banksShown.map(
-            (s) => _SourceTile(
-              source: s,
-              selected: s.id == widget.selectedId,
-              onTap: () => widget.onSelected(s.id),
-            ),
+          _PaymentSourceDropdown(
+            fieldKey: 'bank',
+            sources: banks,
+            value: bankValue,
+            hint: 'Select bank account',
+            enabled: !bankLocked,
+            onChanged: onSelected,
           ),
-          if (!_banksExpanded && banksHidden > 0) ...[
-            const SizedBox(height: AppSpacing.tight),
-            _loadMoreButton(
-              hiddenCount: banksHidden,
-              onPressed: () => setState(() => _banksExpanded = true),
-            )!,
-          ],
         ],
-        if (showCardSection) ...[
-          if (showBankSection) const SizedBox(height: AppSpacing.item),
+        if (cards.isNotEmpty) ...[
+          if (banks.isNotEmpty) const SizedBox(height: AppSpacing.item),
           _SectionLabel(
             icon: Icons.credit_card_outlined,
             title: 'Cards',
           ),
-          ...cardsShown.map(
-            (s) => _SourceTile(
-              source: s,
-              selected: s.id == widget.selectedId,
-              onTap: () => widget.onSelected(s.id),
-            ),
+          _PaymentSourceDropdown(
+            fieldKey: 'card',
+            sources: cards,
+            value: cardValue,
+            hint: 'Select card',
+            enabled: !cardLocked,
+            onChanged: onSelected,
           ),
-          if (!_cardsExpanded && cardsHidden > 0) ...[
-            const SizedBox(height: AppSpacing.tight),
-            _loadMoreButton(
-              hiddenCount: cardsHidden,
-              onPressed: () => setState(() => _cardsExpanded = true),
-            )!,
-          ],
         ],
       ],
+    );
+  }
+}
+
+class _PaymentSourceDropdown extends StatelessWidget {
+  const _PaymentSourceDropdown({
+    required this.fieldKey,
+    required this.sources,
+    required this.value,
+    required this.hint,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String fieldKey;
+  final List<PaymentSource> sources;
+  final String? value;
+  final String hint;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      key: ValueKey('$fieldKey-$value'),
+      initialValue: value,
+      decoration: InputDecoration(
+        hintText: hint,
+        enabled: enabled,
+      ),
+      isExpanded: true,
+      items: sources
+          .map(
+            (source) => DropdownMenuItem(
+              value: source.id,
+              child: Text(_paymentSourceLabel(source)),
+            ),
+          )
+          .toList(),
+      onChanged: enabled ? onChanged : null,
+    );
+  }
+}
+
+class _SelectedSourceRow extends StatelessWidget {
+  const _SelectedSourceRow({
+    required this.source,
+    required this.onClear,
+  });
+
+  final PaymentSource source;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final icon = source.type == PaymentSourceType.card
+        ? Icons.credit_card_outlined
+        : Icons.account_balance_outlined;
+
+    return Material(
+      color: scheme.primaryContainer.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+        child: Row(
+          children: [
+            Icon(icon, color: scheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _paymentSourceLabel(source),
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Clear selection',
+              onPressed: onClear,
+              icon: Icon(Icons.close, color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -246,59 +224,6 @@ class _SectionLabel extends StatelessWidget {
                 ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SourceTile extends StatelessWidget {
-  const _SourceTile({
-    required this.source,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final PaymentSource source;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final label = source.last4 != null
-        ? '${source.name} ···· ${source.last4}'
-        : source.name;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.tight),
-      child: Material(
-        color: selected
-            ? scheme.primaryContainer.withValues(alpha: 0.45)
-            : scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Icon(
-                  source.type == PaymentSourceType.card
-                      ? Icons.credit_card_outlined
-                      : Icons.account_balance_outlined,
-                  color: selected ? scheme.primary : scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(label, style: Theme.of(context).textTheme.bodyLarge),
-                ),
-                if (selected)
-                  Icon(Icons.check_circle, color: scheme.primary, size: 22),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

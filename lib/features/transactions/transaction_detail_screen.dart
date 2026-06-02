@@ -188,10 +188,13 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       appBar: AppBar(
         title: const Text('Transaction'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Reclassify',
-            onPressed: () => _openReclassify(tx),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Reclassify',
+              onPressed: () => _openReclassify(tx),
+            ),
           ),
         ],
       ),
