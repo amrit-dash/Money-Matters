@@ -110,17 +110,20 @@ All data syncs to your personal Firebase project and is cached locally in SQLite
 
 ## Screenshots
 
-> Placeholder paths — add real device screenshots to `docs/screenshots/` and update the paths below.
+| Dashboard | Needs your input |
+| :---: | :---: |
+| ![Dashboard](https://i.ibb.co/RkwbYx0P/image-2026-06-02-164708714.png) | ![Needs your input](https://i.ibb.co/fVkKpHhY/image.png) |
+| *Weekly spend, categories, sync* | *Ambiguous transactions queue* |
 
-| Dashboard | Needs your input | Classify |
-| :---: | :---: | :---: |
-| ![Weekly dashboard](docs/screenshots/dashboard-weekly.png) | ![Review inbox](docs/screenshots/review-inbox.png) | ![Classify flow](docs/screenshots/classify-transaction.png) |
-| *Weekly spend, categories, sync* | *Ambiguous transactions queue* | *Category, source, merchant rules* |
+| Classify | Accounts |
+| :---: | :---: |
+| ![Classify](https://i.ibb.co/k28SLVbT/image.png) | ![Accounts](https://i.ibb.co/d0g04m9x/image.png) |
+| *Category, source, merchant rules* | *Banks, cards, sender hints* |
 
-| Accounts | Recovery | Onboarding |
-| :---: | :---: | :---: |
-| ![Accounts](docs/screenshots/accounts.png) | ![Recovery](docs/screenshots/recovery.png) | ![Connect SMS](docs/screenshots/connect-sms.png) |
-| *Banks, cards, sender hints* | *Queue status, manual paste* | *Shortcuts setup checklist* |
+| Recovery |
+| :---: |
+| ![Recovery](https://i.ibb.co/YBJH15Xq/image.png) |
+| *Queue status, manual paste* |
 
 ---
 
@@ -210,7 +213,7 @@ lib/
 └── services/           Auth, categories, payment sources, pipeline
 
 firebase/functions/     ingestSms, classifyTransaction, notifyClassification
-docs/                   Setup guides, specs, shortcuts, screenshots (add images)
+docs/                   Setup guides, specs, shortcuts
 test/                   Parser fixtures and service tests
 ```
 
