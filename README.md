@@ -1,121 +1,221 @@
 # Money Matters
 
-Personal iOS ledger app that turns bank and wallet SMS into categorized spending insights. Built for sideload install (Xcode / Developer Mode), not the App Store.
+**Turn bank and wallet SMS into a personal spending ledger — automatically, on your iPhone.**
 
-**How it works:** iOS Shortcuts Personal Automations capture incoming financial SMS and POST them to a Firebase ingest queue. The Flutter app drains the queue on launch, parses transactions with rules-first logic, and surfaces weekly/monthly analytics.
+[![Flutter](https://img.shields.io/badge/Flutter-3.11+-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
+[![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-lightgrey?logo=apple)](docs/SETUP-IPHONE.md)
+[![Dart](https://img.shields.io/badge/Dart-3.11+-0175C2?logo=dart&logoColor=white)](https://dart.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Status:** MVP skeleton built — see `docs/HANDOFF.md` and `docs/plans/money-matters-build-plan.md`.
+Money Matters is a personal finance ledger built for **stock iOS**. Because sideloaded apps cannot read your Messages inbox, the app uses **iOS Shortcuts automations** to capture incoming financial SMS and hand them off to a Firebase ingest queue. When you open the app, it drains the queue, parses each message with **rules-first logic**, and surfaces weekly and monthly spending insights — with a human-in-the-loop inbox for anything ambiguous.
 
-## Get started on iPhone
+Designed for sideload install via Xcode or GitHub Actions — not the App Store.
 
-**Primary onboarding:** [`docs/SETUP-GITHUB-ACTIONS.md`](docs/SETUP-GITHUB-ACTIONS.md) (IPA via GitHub Actions, no local Xcode) · [`docs/SETUP-IPHONE.md`](docs/SETUP-IPHONE.md) (local Xcode)
+---
 
-**Firebase project:** `money-matters-amrit`
+## Table of contents
 
-Quick verify after setup:
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Platform notes](#platform-notes)
+- [Getting started](#getting-started)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Project structure](#project-structure)
+- [License](#license)
+
+---
+
+## What it does
+
+In India, most day-to-day spending arrives as SMS from banks, UPI apps, and card issuers. Money Matters closes the gap between those messages and a usable ledger:
+
+1. **Capture** — iOS Shortcuts POST each financial SMS to the cloud as it arrives (no need to open the app).
+2. **Parse** — A rules engine extracts amount, merchant, debit/credit type, and payment source; optional Gemini AI assists when rules are unsure.
+3. **Organize** — Transactions link to your saved banks and cards, roll up into categories, and feed weekly/monthly analytics.
+4. **Review** — Ambiguous or unmatched items land in a **Needs your input** inbox where you classify once and teach the app for next time.
+
+All data syncs to your personal Firebase project and is cached locally in SQLite for fast dashboards offline.
+
+---
+
+## How it works
+
+```
+  Bank SMS ──► iOS Shortcuts ──► Firebase ingestSms ──► Firestore queue
+                                                              │
+  You open app ◄── Dashboard / Review ◄── Parse pipeline ◄────┘
+                      ▲
+                      └── SQLite cache + Firestore sync
+```
+
+**Deep links** (`moneymatters://`) open Recovery, Classify, or trigger a queue sync from Shortcuts without navigating manually.
+
+---
+
+## Features
+
+### 📱 SMS ingestion via Shortcuts
+
+- Personal Automation fires on financial keywords (`debited`, `UPI`, `INR`, `Rs`, `payment`, and more).
+- Each SMS POSTs once to a secured Cloud Function — idempotent on exact duplicates.
+- Onboarding walks you through ingest URL, bearer token, and device ID setup.
+
+### 🧠 Rules-first parsing
+
+- Extracts amount, merchant, timestamp, and debit vs credit from Indian bank/card SMS templates.
+- Filters false positives — loan offers, EMI reminders, and balance-only marketing are rejected even when they contain amounts.
+- Matches transactions to saved accounts using SMS sender hints, bank names in the body, and last-four digits.
+
+### 📊 Spending dashboard
+
+- **Weekly** and **monthly** views with period-over-period comparison.
+- Totals, category breakdown charts, and per-source (bank/card) spend.
+- **Unmatched** bucket for SMS that don't map to a saved account — excluded from totals until resolved.
+- Pull-to-sync drains the ingest queue on demand.
+
+### 🏷️ Categories & classification
+
+- Nine default categories (food, groceries, transport, shopping, bills, entertainment, health, transfer, other) synced to Firestore.
+- Merchant rules learned when you classify with "remember this merchant."
+- Optional **Gemini AI** auto-classification via Cloud Functions for ambiguous debits (rules + manual classify work without any API key).
+
+### 📥 Needs your input inbox
+
+- Primary path for unresolved transactions — works without push notifications or a paid Apple Developer account.
+- Full-screen classify flow: pick category, payment source, add notes or shopping items, view original SMS.
+- Optional FCM push prompts when a paid Apple account and APNs are configured.
+
+### 🏦 Accounts
+
+- Add and edit banks and cards with SMS sender ID hints (e.g. `FEDBNK-S`, `VK-HDFCBK`).
+- Saving account changes re-processes the backlog to rematch existing transactions.
+
+### 🔄 Recovery & sync
+
+- Pipeline status: pending ingests, failed parses, queue depth.
+- **Sync now** drains and re-parses the queue.
+- Manual paste for SMS that Shortcuts missed — single or batch.
+- Shortcut B opens the app directly to Recovery via `moneymatters://recovery`.
+
+### 🔐 Account & privacy
+
+- Sign in with **email/password** or **Google**.
+- Profile hub: reconnect SMS setup, manage accounts, view Gemini status.
+- **Delete all data** — permanently removes transactions, ingests, accounts, categories, and device tokens from device and cloud (account kept until you sign out).
+
+---
+
+## Screenshots
+
+> Placeholder paths — add real device screenshots to `docs/screenshots/` and update the paths below.
+
+| Dashboard | Needs your input | Classify |
+| :---: | :---: | :---: |
+| ![Weekly dashboard](docs/screenshots/dashboard-weekly.png) | ![Review inbox](docs/screenshots/review-inbox.png) | ![Classify flow](docs/screenshots/classify-transaction.png) |
+| *Weekly spend, categories, sync* | *Ambiguous transactions queue* | *Category, source, merchant rules* |
+
+| Accounts | Recovery | Onboarding |
+| :---: | :---: | :---: |
+| ![Accounts](docs/screenshots/accounts.png) | ![Recovery](docs/screenshots/recovery.png) | ![Connect SMS](docs/screenshots/connect-sms.png) |
+| *Banks, cards, sender hints* | *Queue status, manual paste* | *Shortcuts setup checklist* |
+
+---
+
+## Platform notes
+
+| | |
+|---|---|
+| **Target** | iPhone, iOS 17+, sideloaded (Developer Mode) |
+| **Not supported** | Android, App Store distribution, direct SMS inbox access |
+| **Backend** | Personal Firebase (Auth, Firestore, Cloud Functions, optional FCM) |
+| **Local storage** | SQLite via sqflite for fast reads and offline cache |
+
+Stock iOS does not expose the Messages database to third-party apps. Shortcuts automations are the supported ingestion path; Recovery covers gaps when automations fail or are disabled.
+
+---
+
+## Getting started
+
+Full setup lives in the docs — the README stays focused on the product.
+
+| Goal | Start here |
+|------|------------|
+| Install on iPhone (no local Xcode) | [`docs/SETUP-GITHUB-ACTIONS.md`](docs/SETUP-GITHUB-ACTIONS.md) |
+| Install on iPhone (local Xcode) | [`docs/SETUP-IPHONE.md`](docs/SETUP-IPHONE.md) |
+| Configure Shortcuts automations | [`docs/shortcuts/setup.md`](docs/shortcuts/setup.md) |
+| Deploy Firebase backend | [`firebase/README.md`](firebase/README.md) |
+
+Quick sanity check after setup:
 
 ```bash
 ./scripts/verify_setup.sh
-./scripts/build_ipa.sh          # or Path A in SETUP-IPHONE.md (Xcode Run)
+flutter analyze && flutter test
 ```
 
-## Prerequisites
+---
 
-- Mac with Xcode 15+ and CocoaPods
-- Flutter SDK 3.11+ (`flutter doctor`)
-- **Paid Apple Developer account** recommended (free 7-day signing requires re-install weekly)
-- iPhone with iOS 17+ and **Developer Mode** enabled
-- Personal Firebase project (Auth, Firestore, Cloud Functions, FCM optional)
+## Documentation
 
-## Setup
+| Document | Description |
+|----------|-------------|
+| [`docs/HANDOFF.md`](docs/HANDOFF.md) | Build status, production pass notes, next steps |
+| [`USER-FIX.md`](USER-FIX.md) | Post-deploy verification (Gemini, sender hints, FCM) |
+| [`docs/plans/money-matters-build-plan.md`](docs/plans/money-matters-build-plan.md) | Architecture, file ownership, integration plan |
+| [`docs/brainstorms/money-matters-sms-ledger-requirements.md`](docs/brainstorms/money-matters-sms-ledger-requirements.md) | Product requirements and acceptance criteria |
+| [`docs/FIRESTORE-DATA-MODEL.md`](docs/FIRESTORE-DATA-MODEL.md) | Firestore collections, fields, and data flow |
+| [`docs/shortcuts/setup.md`](docs/shortcuts/setup.md) | Shortcuts Automation A (ingest) and B (sync) |
+| [`docs/shortcuts/payload-examples.json`](docs/shortcuts/payload-examples.json) | Sample ingest POST bodies for testing |
+| [`docs/ideation/2026-05-29-money-matters-ios-shortcuts-ideation.md`](docs/ideation/2026-05-29-money-matters-ios-shortcuts-ideation.md) | Ideation survivors and architecture selection |
+| [`firebase/README.md`](firebase/README.md) | Cloud Functions, deploy, curl tests, secrets |
+| [`docs/SETUP-IPHONE.md`](docs/SETUP-IPHONE.md) | Primary iPhone install checklist |
+| [`docs/SETUP-GITHUB-ACTIONS.md`](docs/SETUP-GITHUB-ACTIONS.md) | Install IPA via GitHub Actions |
+| [`docs/FIREBASE-BUNDLE-ID.md`](docs/FIREBASE-BUNDLE-ID.md) | Canonical bundle ID (`com.amritdash.moneymatters`) |
+| [`AGENTS.md`](AGENTS.md) | Agent instructions and `docs/solutions/` index |
 
-See [`docs/SETUP-IPHONE.md`](docs/SETUP-IPHONE.md) for the full ordered checklist. Summary:
+Additional setup guides (signing, Xcode, App Check) are in [`docs/`](docs/).
 
-### 1. Firebase
+---
 
-```bash
-cd firebase/functions
-npm ci
-npm run build
-cd ../..
-firebase login
-firebase use --add   # select your project
-firebase deploy --only functions,firestore:rules
+## Contributing
+
+| Resource | Description |
+|----------|-------------|
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Issues, PRs, local checks, and `docs/solutions/` |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history ([Keep a Changelog](https://keepachangelog.com/)) |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Community standards |
+| [`SECURITY.md`](SECURITY.md) | Report vulnerabilities privately |
+| [Bug report template](.github/ISSUE_TEMPLATE/bug_report.md) | Report a defect |
+| [Feature request template](.github/ISSUE_TEMPLATE/feature_request.md) | Propose a feature |
+| [Pull request template](.github/pull_request_template.md) | PR checklist |
+
+---
+
+## Project structure
+
+```
+lib/
+├── features/
+│   ├── onboarding/     Auth, payment sources, Shortcuts setup
+│   ├── dashboard/    Weekly/monthly analytics, drill-downs
+│   ├── review/       Needs your input inbox + classify flow
+│   ├── recovery/     Queue sync, manual paste, pipeline status
+│   ├── accounts/     Bank and card CRUD with sender hints
+│   └── profile/      Settings, sign out, delete all data
+├── ingest/             Firestore queue drain, deep link handler
+├── parse/              Rules parser, optional LLM gate
+├── models/             Domain models (transaction, category, …)
+└── services/           Auth, categories, payment sources, pipeline
+
+firebase/functions/     ingestSms, classifyTransaction, notifyClassification
+docs/                   Setup guides, specs, shortcuts, screenshots (add images)
+test/                   Parser fixtures and service tests
 ```
 
-Copy the deployed `ingestSms` URL from the deploy output. See `firebase/README.md` for curl test and device token setup.
+---
 
-### 2. Flutter + iOS
+## License
 
-```bash
-flutter pub get
-dart pub global activate flutterfire_cli   # if needed
-flutterfire configure   # generates lib/core/config/firebase_options.dart
-```
-
-Download **GoogleService-Info.plist** from Firebase Console → add to `ios/Runner/` (not committed).
-
-```bash
-open ios/Runner.xcworkspace
-# Set your Team, Bundle ID com.moneymatters.money_matters
-flutter build ios --no-codesign
-```
-
-Install on device via Xcode Run.
-
-### 3. Shortcuts
-
-Follow `docs/shortcuts/setup.md`. After onboarding, paste:
-
-- **INGEST_URL** — Cloud Function URL
-- **Bearer token** — device ingest token from app
-- **deviceId** — from onboarding
-
-Keyword filters: `debited`, `credited`, `INR`, `Rs`, `spent`, `payment`, `UPI`, `card`.
-
-### 4. Verify
-
-```bash
-flutter analyze
-flutter test
-```
-
-Manual: POST sample from `docs/shortcuts/payload-examples.json`, open app, check dashboard/recovery.
-
-## Project layout
-
-| Path | Purpose |
-|------|---------|
-| `lib/ingest/` | Firestore drain, URL scheme handler |
-| `lib/parse/` | Rules parser, LLM gate stub |
-| `lib/models/` | Domain models |
-| `lib/features/` | Onboarding, dashboard, review, recovery |
-| `lib/services/ingest_parse_pipeline.dart` | Drain → parse → persist |
-| `firebase/functions/` | `ingestSms` Cloud Function |
-| `docs/shortcuts/` | Automation setup + JSON examples |
-
-## Docs
-
-| Path | Purpose |
-|------|---------|
-| `docs/plans/money-matters-build-plan.md` | Architecture, file ownership, integration |
-| `docs/brainstorms/money-matters-sms-ledger-requirements.md` | Product requirements |
-| `docs/SETUP-IPHONE.md` | **Primary onboarding** — iPhone + Firebase + Shortcuts |
-| `docs/HANDOFF.md` | Build status and next steps |
-| `docs/ideation/2026-05-29-money-matters-ios-shortcuts-ideation.md` | Ideation survivors |
-
-## User blockers
-
-You must supply:
-
-1. **Firebase project ID** — create at console.firebase.google.com
-2. **GoogleService-Info.plist** — download, place in `ios/Runner/`
-3. **flutterfire configure** — generates `firebase_options.dart`
-4. **INGEST_URL + Bearer token** — register device token in Firestore via onboarding flow (see `firebase/README.md`)
-5. **Physical iPhone** — Shortcuts Message automations do not run reliably in Simulator
-
-## Platform constraints (stock iOS)
-
-- No direct SMS inbox access from a sideloaded app
-- Ingestion relies on user-installed Shortcuts automations
-- Android, notification scraping, and jailbreak paths are out of scope
+[MIT](LICENSE) — Copyright (c) 2026 Amrit Dash
