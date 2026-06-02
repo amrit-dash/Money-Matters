@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_accent.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
+
 /// Shown when [DefaultFirebaseOptions.isConfigured] is false.
 /// Points the user to manual setup steps on a physical iPhone.
 class FirebaseSetupScreen extends StatelessWidget {
@@ -21,29 +25,24 @@ class FirebaseSetupScreen extends StatelessWidget {
 
     return MaterialApp(
       title: 'Money Matters — Setup',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-        useMaterial3: true,
+      theme: buildAppTheme(
+        seedColor: AppAccent.violet.seedColor,
+        brightness: Brightness.light,
       ),
       home: Scaffold(
         appBar: AppBar(title: const Text('Setup required')),
         body: ListView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.page),
           children: [
-            Icon(Icons.cloud_off, size: 56, color: theme.colorScheme.primary),
-            const SizedBox(height: 16),
-            Text(
-              'Firebase is not configured',
-              style: theme.textTheme.headlineSmall,
+            AppEmptyState(
+              icon: Icons.cloud_off_outlined,
+              title: 'Firebase is not configured',
+              message:
+                  'This build uses a placeholder firebase_options.dart. '
+                  'Complete setup on your Mac before testing on a physical iPhone.',
             ),
-            const SizedBox(height: 8),
-            Text(
-              'This build uses a placeholder firebase_options.dart. '
-              'Complete setup on your Mac before testing on a physical iPhone.',
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 24),
-            Text('Quick checklist', style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.section),
+            AppSectionHeader(title: 'Quick checklist'),
             const SizedBox(height: 8),
             ...List.generate(_steps.length, (i) {
               return ListTile(

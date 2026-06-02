@@ -136,18 +136,10 @@ class _AuthScreenState extends State<AuthScreen> {
                   labels: ['Sign in', 'Accounts', 'Connect SMS'],
                 ),
                 const SizedBox(height: AppSpacing.section),
-                Text(
-                  'Money Matters',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-                const SizedBox(height: AppSpacing.tight),
-                Text(
-                  'Track spend from bank SMS. Your data stays in your Firebase project.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                const AppWelcomeHero(
+                  title: 'Money Matters',
+                  subtitle:
+                      'Track spend from bank SMS. Your data stays in your Firebase project.',
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: AppSpacing.section),

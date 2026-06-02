@@ -127,30 +127,12 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                         const SizedBox(height: AppSpacing.tight),
                     itemBuilder: (context, index) {
                       if (index == 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.item),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.periodLabel,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${_items.length} transactions · '
-                                '${_currency.format(_total)} spent',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ],
-                          ),
+                        return HeroSpendCard(
+                          label: widget.periodLabel,
+                          amount: _currency.format(_total),
+                          secondaryLabel: 'Transactions',
+                          secondaryAmount: '${_items.length}',
+                          icon: Icons.category_outlined,
                         );
                       }
                       final tx = _items[index - 1];

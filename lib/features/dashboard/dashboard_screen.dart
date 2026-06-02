@@ -28,6 +28,8 @@ class DashboardScreen extends StatefulWidget {
     required this.paymentSourceService,
     this.recoveryRepository,
     this.queueDrain,
+    this.embeddedInShell = false,
+    this.onInboxCountChanged,
   });
 
   final DashboardRepository repository;
@@ -36,6 +38,8 @@ class DashboardScreen extends StatefulWidget {
   final PaymentSourceService paymentSourceService;
   final RecoveryRepository? recoveryRepository;
   final IngestQueueDrain? queueDrain;
+  final bool embeddedInShell;
+  final VoidCallback? onInboxCountChanged;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -121,6 +125,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _loading = false;
       if (!syncQueue) _syncMessage = null;
     });
+    widget.onInboxCountChanged?.call();
   }
 
   bool get _isCurrentPeriod {
@@ -218,36 +223,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
+    final shell = widget.embeddedInShell;
+    final scaffold = Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          title: const Text('Dashboard'),
-          actions: [
-            IconButton(
-              icon: Badge(
-                isLabelVisible: _needsInputCount > 0,
-                label: Text('$_needsInputCount'),
-                child: const Icon(Icons.inbox_outlined),
-              ),
-              tooltip: 'Needs your input',
-              onPressed: () async {
-                await Navigator.pushNamed(context, AppRoutes.review);
-                if (mounted) _load();
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.cloud_sync_outlined),
-              tooltip: 'Recovery queue',
-              onPressed: () => Navigator.pushNamed(context, AppRoutes.recovery),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline),
-              tooltip: 'Profile',
-              onPressed: () => Navigator.pushNamed(context, AppRoutes.profile),
-            ),
-          ],
+          title: Text(shell ? 'Overview' : 'Dashboard'),
+          actions: shell
+              ? null
+              : [
+                  IconButton(
+                    icon: Badge(
+                      isLabelVisible: _needsInputCount > 0,
+                      label: Text('$_needsInputCount'),
+                      child: const Icon(Icons.inbox_outlined),
+                    ),
+                    tooltip: 'Needs your input',
+                    onPressed: () async {
+                      await Navigator.pushNamed(context, AppRoutes.review);
+                      if (mounted) _load();
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cloud_sync_outlined),
+                    tooltip: 'Recovery queue',
+                    onPressed: () =>
+                        Navigator.pushNamed(context, AppRoutes.recovery),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.person_outline),
+                    tooltip: 'Profile',
+                    onPressed: () =>
+                        Navigator.pushNamed(context, AppRoutes.profile),
+                  ),
+                ],
         ),
         body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -257,6 +265,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.all(AppSpacing.page),
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
+                  if (shell)
+                    Text(
+                      'Your spend at a glance',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                    ),
+                  if (shell) const SizedBox(height: AppSpacing.item),
                   SegmentedButton<_PeriodMode>(
                     segments: const [
                       ButtonSegment(
@@ -343,19 +361,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     if (_priorSummary != null)
                       const SizedBox(height: AppSpacing.item),
-                    _TotalCard(
+                    HeroSpendCard(
                       label: 'Total spend',
                       amount: _currency.format(_summary!.totalSpend),
-                      emphasized: true,
+                      secondaryLabel: _summary!.totalIncome > 0
+                          ? 'Income'
+                          : null,
+                      secondaryAmount: _summary!.totalIncome > 0
+                          ? _currency.format(_summary!.totalIncome)
+                          : null,
                     ),
-                    if (_summary!.totalIncome > 0) ...[
-                      const SizedBox(height: AppSpacing.tight),
-                      _TotalCard(
-                        label: 'Income',
-                        amount: _currency.format(_summary!.totalIncome),
-                        muted: true,
-                      ),
-                    ],
                     if (_summary!.breakdown.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.item),
                       CategorySpendBarChart(
@@ -369,6 +384,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       AppSectionHeader(
                         title: 'By account',
                         subtitle: 'Tap a bank or card to see its transactions',
+                        icon: Icons.account_balance_outlined,
                       ),
                       ..._summary!.sources.map(
                         (row) => _SourceRow(
@@ -402,6 +418,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       subtitle: _summary!.breakdown.isEmpty
                           ? null
                           : 'Tap a category to see its transactions',
+                      icon: Icons.pie_chart_outline,
                     ),
                     if (_summary!.breakdown.isEmpty)
                       Text(
@@ -411,15 +428,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                       )
                     else
-                      ..._summary!.breakdown.map(
-                        (row) => _CategoryRow(
-                          name: row.category.name,
-                          amount: _currency.format(row.amount),
-                          share: row.shareOf(_summary!.totalSpend),
-                          count: row.transactionCount,
+                      ..._summary!.breakdown.asMap().entries.map(
+                        (entry) => _CategoryRow(
+                          name: entry.value.category.name,
+                          amount: _currency.format(entry.value.amount),
+                          share: entry.value.shareOf(_summary!.totalSpend),
+                          count: entry.value.transactionCount,
+                          accentIndex: entry.key,
                           onTap: () => _openCategory(
-                            row.category.id,
-                            row.category.name,
+                            entry.value.category.id,
+                            entry.value.category.name,
                           ),
                         ),
                       ),
@@ -427,8 +445,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
-      ),
     );
+
+    if (shell) return scaffold;
+    return PopScope(canPop: false, child: scaffold);
   }
 }
 
@@ -587,53 +607,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _TotalCard extends StatelessWidget {
-  const _TotalCard({
-    required this.label,
-    required this.amount,
-    this.muted = false,
-    this.emphasized = false,
-  });
-
-  final String label;
-  final String amount;
-  final bool muted;
-  final bool emphasized;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Card(
-      color: emphasized
-          ? scheme.primaryContainer.withValues(alpha: 0.35)
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              amount,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: muted ? scheme.outline : scheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _SourceRow extends StatelessWidget {
   const _SourceRow({
     required this.name,
@@ -719,6 +692,7 @@ class _CategoryRow extends StatelessWidget {
     required this.amount,
     required this.share,
     required this.count,
+    this.accentIndex = 0,
     this.onTap,
   });
 
@@ -726,11 +700,13 @@ class _CategoryRow extends StatelessWidget {
   final String amount;
   final double share;
   final int count;
+  final int accentIndex;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final barColor = categoryAccentColor(scheme, accentIndex);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.tight),
@@ -745,6 +721,15 @@ class _CategoryRow extends StatelessWidget {
               children: [
                 Row(
                   children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: barColor,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         name,
@@ -769,6 +754,9 @@ class _CategoryRow extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: share.clamp(0, 1),
                     minHeight: 6,
+                    backgroundColor:
+                        scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                    color: barColor,
                   ),
                 ),
                 const SizedBox(height: 6),

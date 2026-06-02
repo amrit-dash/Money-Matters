@@ -7,9 +7,14 @@ import '../../core/widgets/app_ui.dart';
 import 'recovery_repository.dart';
 
 class RecoveryScreen extends StatefulWidget {
-  const RecoveryScreen({super.key, required this.repository});
+  const RecoveryScreen({
+    super.key,
+    required this.repository,
+    this.embeddedInShell = false,
+  });
 
   final RecoveryRepository repository;
+  final bool embeddedInShell;
 
   @override
   State<RecoveryScreen> createState() => _RecoveryScreenState();
@@ -121,14 +126,18 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.embeddedInShell,
         title: const Text('Recovery'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.dashboard_outlined),
-            tooltip: 'Dashboard',
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.dashboard),
-          ),
-        ],
+        actions: widget.embeddedInShell
+            ? null
+            : [
+                IconButton(
+                  icon: const Icon(Icons.dashboard_outlined),
+                  tooltip: 'Dashboard',
+                  onPressed: () =>
+                      Navigator.pushNamed(context, AppRoutes.dashboard),
+                ),
+              ],
       ),
       body: _loading && _status == null
           ? const Center(child: CircularProgressIndicator())
@@ -142,6 +151,7 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                     title: 'Queue status',
                     subtitle:
                         'On this phone vs still waiting in Firebase cloud',
+                    icon: Icons.cloud_queue_outlined,
                   ),
                   if (_status != null) ...[
                     Row(

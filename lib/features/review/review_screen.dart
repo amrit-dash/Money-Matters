@@ -12,9 +12,16 @@ import 'review_repository.dart';
 /// "Needs your input" inbox — the in-app fallback for classification that works
 /// without push notifications (no paid Apple account required).
 class ReviewScreen extends StatefulWidget {
-  const ReviewScreen({super.key, required this.repository});
+  const ReviewScreen({
+    super.key,
+    required this.repository,
+    this.embeddedInShell = false,
+    this.onListChanged,
+  });
 
   final ReviewRepository repository;
+  final bool embeddedInShell;
+  final VoidCallback? onListChanged;
 
   @override
   State<ReviewScreen> createState() => _ReviewScreenState();
@@ -41,6 +48,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
       _items = items;
       _loading = false;
     });
+    widget.onListChanged?.call();
   }
 
   Future<void> _openClassify(Transaction tx) async {
@@ -60,7 +68,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Needs your input')),
+      appBar: AppBar(
+        automaticallyImplyLeading: !widget.embeddedInShell,
+        title: Text(widget.embeddedInShell ? 'Inbox' : 'Needs your input'),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
@@ -68,8 +79,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   icon: Icons.check_circle_outline,
                   title: 'All clear',
                   message:
-                      'No transactions need your input right now. New ones '
-                      'show up here when a category or payment source is unknown.',
+                      'Nothing needs you right now. When we are unsure about a '
+                      'category or account, it will show up here for a quick tap.',
                 )
               : RefreshIndicator(
                   onRefresh: _load,
@@ -83,7 +94,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         return AppSectionHeader(
                           title: 'To classify (${_items.length})',
                           subtitle:
-                              'Tap to pick a category, add notes or shopping items',
+                              'Tap a row to pick a category, notes, or items',
+                          icon: Icons.label_outline,
                         );
                       }
                       final tx = _items[index - 1];
@@ -121,67 +133,69 @@ class _FlaggedTile extends StatelessWidget {
       if (transaction.unmatched) 'Unmatched',
     ];
 
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+    final scheme = Theme.of(context).colorScheme;
+
+    return AppCard(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          transaction.displayMerchant ?? 'Unknown merchant',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          dateLabel,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    amountLabel,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ],
-              ),
-              if (flags.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.tight),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: flags
-                      .map(
-                        (f) => AppStatusChip(
-                          label: f,
-                          tone: AppStatTone.warning,
-                        ),
-                      )
-                      .toList(),
+              CircleAvatar(
+                radius: 20,
+                backgroundColor:
+                    scheme.tertiaryContainer.withValues(alpha: 0.75),
+                child: Icon(
+                  Icons.receipt_long_outlined,
+                  size: 20,
+                  color: scheme.onTertiaryContainer,
                 ),
-              ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      transaction.displayMerchant ?? 'Unknown merchant',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      dateLabel,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                amountLabel,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
             ],
           ),
-        ),
+          if (flags.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.tight),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: flags
+                  .map(
+                    (f) => AppStatusChip(
+                      label: f,
+                      tone: AppStatTone.warning,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -224,11 +224,21 @@ class PaymentSourceTile extends StatelessWidget {
         ? 'No sender hints'
         : source.senderHints.join(', ');
 
+    final scheme = Theme.of(context).colorScheme;
+    final icon = source.type == PaymentSourceType.bank
+        ? Icons.account_balance_outlined
+        : Icons.credit_card_outlined;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.tight),
       child: Card(
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          leading: CircleAvatar(
+            backgroundColor: scheme.primaryContainer.withValues(alpha: 0.65),
+            foregroundColor: scheme.onPrimaryContainer,
+            child: Icon(icon, size: 20),
+          ),
           title: Text(source.name),
           subtitle: Text('•••• ${source.last4 ?? '????'} · $typeLabel · $hints'),
           trailing: Row(
