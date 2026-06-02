@@ -1,4 +1,5 @@
 import 'package:money_matters/models/category.dart';
+import 'package:money_matters/models/category_taxonomy.dart';
 import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
@@ -25,10 +26,19 @@ class AiClassifyService {
   final CategoryService _categories;
   final PaymentSourceService _paymentSources;
 
-  Future<AiClassifyFormUpdate> suggestForForm(Transaction tx) async {
+  Future<AiClassifyFormUpdate> suggestForForm(
+    Transaction tx, {
+    String? selectedCategoryId,
+    String? selectedSubcategoryId,
+  }) async {
     final categories = await _categories.loadCategories();
     final sources = await _paymentSources.loadAll();
-    final result = await _classify(tx, categories, sources);
+    final result = await _classify(
+      tx,
+      categories,
+      sources,
+      selectedCategoryId: selectedCategoryId,
+    );
     if (result == null) {
       return const AiClassifyFormUpdate();
     }
@@ -47,15 +57,20 @@ class AiClassifyService {
       knownSourceIds: knownIds,
       forceCategory: true,
       forceSource: true,
+      selectedCategoryId: selectedCategoryId,
     );
 
     return AiClassifyFormUpdate(
       categoryId: updated.categoryId,
       paymentSourceId: updated.paymentSourceId,
       merchantNormalized: updated.merchantNormalized,
+      subcategoryId: updated.subcategoryId ?? selectedSubcategoryId,
       userNotes: updated.userNotes,
       shoppingItems: updated.shoppingItems,
       travelProvider: updated.travelProvider,
+      transferTo: updated.transferTo,
+      suggestedCategoryId: result.suggestedCategoryId,
+      suggestedCategoryName: result.suggestedCategoryName,
     );
   }
 
@@ -90,8 +105,9 @@ class AiClassifyService {
   Future<ClassificationResult?> _classify(
     Transaction tx,
     List<Category> categories,
-    List<PaymentSource> sources,
-  ) async {
+    List<PaymentSource> sources, {
+    String? selectedCategoryId,
+  }) async {
     final ingest = await _db.getRawIngest(tx.rawIngestId);
     final body = ingest?['body'] as String? ?? '';
     final sender = ingest?['sender'] as String? ?? '';
@@ -101,6 +117,8 @@ class AiClassifyService {
       smsBody: body,
       smsSender: sender,
       categoryIds: categories.map((c) => c.id).toList(),
+      selectedCategoryId: selectedCategoryId,
+      subcategoryTaxonomy: subcategoryTaxonomyForLlm(),
       paymentSources: sources,
     );
   }

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import '../core/auth/auth_service.dart';
 import '../core/db/local_database.dart';
 import '../models/category.dart';
+import '../models/category_taxonomy.dart';
 import '../models/payment_source.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart';
@@ -456,6 +457,7 @@ class IngestParsePipeline {
       smsBody: body,
       smsSender: sender,
       categoryIds: categories.map((c) => c.id).toList(),
+      subcategoryTaxonomy: subcategoryTaxonomyForLlm(),
       paymentSources: sources,
     );
     if (result == null) {
@@ -519,6 +521,7 @@ class IngestParsePipeline {
       'merchant': tx.merchant,
       'timestamp': tx.timestamp.toUtc().toIso8601String(),
       'category_id': tx.categoryId,
+      'subcategory_id': tx.subcategoryId,
       'payment_source_id': tx.paymentSourceId,
       'unmatched': tx.unmatched ? 1 : 0,
       'ambiguous': tx.ambiguous ? 1 : 0,
@@ -530,6 +533,7 @@ class IngestParsePipeline {
       'shopping_items':
           tx.shoppingItems.isEmpty ? null : jsonEncode(tx.shoppingItems),
       'travel_provider': tx.travelProvider,
+      'transfer_to': tx.transferTo,
       'classified_by': tx.classifiedBy?.name,
       'synced_at': syncedAt,
     });

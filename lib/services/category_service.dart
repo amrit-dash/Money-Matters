@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:money_matters/models/category.dart';
+import 'package:money_matters/models/category_taxonomy.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../core/auth/auth_service.dart';
+import '../core/db/local_data_streams.dart';
 
 /// Spend categories for analytics, relabel UI, and LLM classification.
 ///
@@ -22,15 +26,48 @@ class CategoryService {
   final FirebaseFirestore? _firestore;
 
   List<Category>? _cache;
+  final StreamController<void> _categoryChanges =
+      StreamController<void>.broadcast();
 
-  /// Category ids where the classify flow may capture a per-item shopping list.
+  /// Fires when categories are updated from Firestore snapshots.
+  Stream<void> get categoryChanges => _categoryChanges.stream;
+
+  /// Categories that show the free-text shopping list UI (`Transaction.shoppingItems`).
+  ///
+  /// Groceries: household consumables (BigBasket, Zepto, Blinkit). Shopping:
+  /// general retail (Amazon, Myntra). Not subcategories — user-entered item chips.
+  /// See [docs/category-taxonomy.md].
   static const shoppingCategoryIds = {'groceries', 'shopping'};
 
-  /// Ride / travel categories where the classify flow may tag a provider.
+  /// Categories that show ride/travel app chips (`Transaction.travelProvider`).
+  ///
+  /// Presets in [defaultTravelProviders]; custom apps via text field. Distinct
+  /// from transport/travel *subcategories* (ride_hail, flight, etc.) in
+  /// [categorySubcategories].
   static const travelProviderCategoryIds = {'travel', 'transport'};
 
+  static List<CategorySubcategory> subcategoriesFor(String? categoryId) =>
+      subcategoriesForCategory(categoryId);
+
+  static bool showSubcategoryPicker({
+    required Transaction transaction,
+    String? selectedCategoryId,
+  }) {
+    if (transaction.unmatched || transaction.paymentSourceId == null) {
+      return false;
+    }
+    final categoryId = selectedCategoryId ?? transaction.categoryId;
+    return categoryHasSubcategories(categoryId);
+  }
+
   /// Preset ride providers shown as chips (user may pick Custom for another).
-  static const defaultTravelProviders = ['Uber', 'Rapido', 'Ola'];
+  static const defaultTravelProviders = [
+    'Uber',
+    'Ola',
+    'Rapido',
+    'Namma Yatri',
+    'BluSmart',
+  ];
 
   static const defaultCategories = [
     Category(
@@ -63,20 +100,20 @@ class CategoryService {
     ),
     Category(
       id: 'transport',
-      name: 'Transport',
+      name: 'Rides & Commute',
       system: true,
       merchantRules: [
         'UBER',
         'OLA',
         'RAPIDO',
         'METRO',
-        'IRCTC',
-        'REDBUS',
         'FUEL',
         'PETROL',
         'HPCL',
         'IOCL',
         'BPCL',
+        'FASTAG',
+        'PARKING',
       ],
     ),
     Category(
@@ -108,6 +145,9 @@ class CategoryService {
         'ELECTRICITY',
         'BROADBAND',
         'GAS',
+        'RENT',
+        'WATER',
+        'DTH',
       ],
     ),
     Category(
@@ -128,7 +168,7 @@ class CategoryService {
       id: 'entertainment',
       name: 'Entertainment',
       system: true,
-      merchantRules: ['BOOKMYSHOW', 'PVR', 'INOX', 'CULTFIT'],
+      merchantRules: ['BOOKMYSHOW', 'PVR', 'INOX'],
     ),
     Category(
       id: 'health',
@@ -156,6 +196,10 @@ class CategoryService {
         'AIR INDIA',
         'SPICEJET',
         'OYO',
+        'IRCTC',
+        'REDBUS',
+        'AIRASIA',
+        'VISTARA',
       ],
     ),
     Category(
@@ -242,11 +286,31 @@ class CategoryService {
     return travelProviderCategoryIds.contains(categoryId);
   }
 
+  static const transferCategoryId = 'transfer';
+
+  /// Transfer "To" UI: matched payment + transfer category only.
+  static bool showTransferTo({
+    required Transaction transaction,
+    String? selectedCategoryId,
+  }) {
+    if (transaction.unmatched || transaction.paymentSourceId == null) {
+      return false;
+    }
+    final categoryId = selectedCategoryId ?? transaction.categoryId;
+    if (categoryId == null) return false;
+    return categoryId == transferCategoryId;
+  }
+
   CollectionReference<Map<String, dynamic>>? _collection() {
     final auth = _authService;
     final fs = _firestore;
     if (auth == null || fs == null || !auth.isSignedIn) return null;
     return fs.collection('users').doc(auth.requireUid()).collection('categories');
+  }
+
+  /// Re-emits whenever categories change locally or from Firestore snapshots.
+  Stream<List<Category>> watchCategories() {
+    return watchLocalData(categoryChanges, loadCategories);
   }
 
   Future<List<Category>> loadCategories() async {
@@ -336,8 +400,45 @@ class CategoryService {
         'merchantRules': FieldValue.arrayUnion([rule]),
       }, SetOptions(merge: true));
       _appendRuleToCache(categoryId, rule);
+      if (!_categoryChanges.isClosed) {
+        _categoryChanges.add(null);
+      }
     } catch (e) {
       debugPrint('CategoryService.addMerchantRule: $e');
+    }
+  }
+
+  /// Creates a user-defined category (e.g. from an AI suggestion).
+  Future<Category?> createUserCategory({
+    required String id,
+    required String name,
+  }) async {
+    final slug = id.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]+'), '_');
+    final label = name.trim();
+    if (slug.isEmpty || label.isEmpty) return null;
+
+    final col = _collection();
+    if (col == null) return null;
+
+    final category = Category(
+      id: slug,
+      name: label,
+      system: false,
+      merchantRules: const [],
+    );
+    try {
+      await col.doc(slug).set(_categoryDoc(category));
+      final cached = _cache ?? await loadCategories();
+      if (!cached.any((c) => c.id == slug)) {
+        _cache = _sorted([...cached, category]);
+      }
+      if (!_categoryChanges.isClosed) {
+        _categoryChanges.add(null);
+      }
+      return category;
+    } catch (e) {
+      debugPrint('CategoryService.createUserCategory: $e');
+      return null;
     }
   }
 
@@ -364,6 +465,18 @@ class CategoryService {
 
   /// Forces a reload on next [loadCategories].
   void invalidateCache() => _cache = null;
+
+  /// Updates the in-memory cache from a Firestore categories snapshot.
+  void applyRemoteSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
+    if (snapshot.docs.isEmpty) {
+      _cache = _sorted(List<Category>.from(defaultCategories));
+    } else {
+      _cache = _sorted(snapshot.docs.map(_fromDoc).toList());
+    }
+    if (!_categoryChanges.isClosed) {
+      _categoryChanges.add(null);
+    }
+  }
 
   Category _fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();

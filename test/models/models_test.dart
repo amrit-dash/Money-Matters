@@ -110,6 +110,49 @@ void main() {
       expect(restored.type, TransactionType.debit);
       expect(restored.unmatched, isFalse);
     });
+
+    test('round-trips subcategoryId through JSON', () {
+      final txn = Transaction(
+        id: 'txn-2',
+        rawIngestId: 'ingest-2',
+        amount: 1200,
+        timestamp: DateTime.parse('2026-05-29T00:00:00+05:30'),
+        categoryId: 'bills',
+        subcategoryId: 'rent',
+        type: TransactionType.debit,
+      );
+
+      final restored = Transaction.fromJson(txn.toJson());
+
+      expect(restored.categoryId, 'bills');
+      expect(restored.subcategoryId, 'rent');
+    });
+
+    test('round-trips transferTo through JSON and SQLite', () {
+      final txn = Transaction(
+        id: 'txn-3',
+        rawIngestId: 'ingest-3',
+        amount: 5000,
+        timestamp: DateTime.parse('2026-05-29T00:00:00+05:30'),
+        categoryId: 'transfer',
+        transferTo: 'HDFC Savings',
+        type: TransactionType.debit,
+      );
+
+      final fromJson = Transaction.fromJson(txn.toJson());
+      expect(fromJson.transferTo, 'HDFC Savings');
+
+      final fromSqlite = Transaction.fromSqlite({
+        'id': txn.id,
+        'raw_ingest_id': txn.rawIngestId,
+        'amount': txn.amount,
+        'timestamp': txn.timestamp.toIso8601String(),
+        'category_id': txn.categoryId,
+        'transfer_to': txn.transferTo,
+        'type': txn.type.name,
+      });
+      expect(fromSqlite.transferTo, 'HDFC Savings');
+    });
   });
 
   group('Category', () {

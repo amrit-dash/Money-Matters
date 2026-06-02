@@ -27,6 +27,34 @@ void main() {
       expect(ids.last, 'other');
     });
 
+    test('transport is Rides & Commute without train booking merchants', () {
+      final transport = CategoryService.defaultCategories
+          .firstWhere((c) => c.id == 'transport');
+      final travel = CategoryService.defaultCategories
+          .firstWhere((c) => c.id == 'travel');
+
+      expect(transport.name, 'Rides & Commute');
+      expect(transport.matchMerchant('UBER'), 'transport');
+      expect(transport.matchMerchant('IRCTC'), isNull);
+      expect(travel.matchMerchant('IRCTC'), 'travel');
+      expect(travel.matchMerchant('REDBUS'), 'travel');
+    });
+
+    test('bills, food, and groceries expose subcategories', () {
+      expect(
+        CategoryService.subcategoriesFor('bills').map((s) => s.id),
+        containsAll(['internet', 'rent', 'electricity', 'water', 'phone', 'dth']),
+      );
+      expect(
+        CategoryService.subcategoriesFor('food').map((s) => s.id),
+        containsAll(['delivery', 'dine_in']),
+      );
+      expect(
+        CategoryService.subcategoriesFor('groceries').map((s) => s.id),
+        containsAll(['supermarket', 'quick_commerce']),
+      );
+    });
+
     test('quick-commerce merchants map to groceries not food', () {
       final groceries = CategoryService.defaultCategories
           .firstWhere((c) => c.id == 'groceries');

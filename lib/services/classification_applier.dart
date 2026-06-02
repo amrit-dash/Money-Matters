@@ -1,8 +1,10 @@
 import 'package:money_matters/models/category.dart';
+import 'package:money_matters/models/category_taxonomy.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../features/dashboard/local_dashboard_repository.dart';
 import '../parse/llm_parser.dart';
+import 'category_service.dart';
 
 /// Applies [ClassificationResult] from Gemini to a transaction (pipeline + UI).
 class ClassificationApplier {
@@ -15,6 +17,7 @@ class ClassificationApplier {
     required Set<String> knownSourceIds,
     bool forceCategory = false,
     bool forceSource = false,
+    String? selectedCategoryId,
   }) {
     final needsCategory =
         forceCategory || tx.needsClassification || tx.ambiguous;
@@ -35,23 +38,41 @@ class ClassificationApplier {
       );
     }
 
+    final displayName = result.merchantNormalized;
+    if (displayName != null && displayName.isNotEmpty) {
+      updated = updated.copyWith(
+        merchantNormalized: displayName,
+        merchant: _shouldReplaceMerchant(updated.merchant)
+            ? displayName
+            : updated.merchant,
+      );
+    }
+
     if (needsCategory) {
       final validCategory = result.categoryId != null &&
           categories.any((c) => c.id == result.categoryId);
-      final categoryId =
+      var categoryId =
           validCategory ? result.categoryId : updated.categoryId;
+
+      if (selectedCategoryId != null &&
+          categories.any((c) => c.id == selectedCategoryId)) {
+        categoryId = selectedCategoryId;
+      }
+
       final resolved = categoryId != null && !result.needsUserInput;
 
       updated = updated.copyWith(
         categoryId: categoryId,
-        merchantNormalized:
-            result.merchantNormalized ?? updated.merchantNormalized,
         needsClassification: resolved ? false : updated.needsClassification,
         ambiguous: resolved ? false : updated.ambiguous,
         classifiedBy: resolved ? ClassifiedBy.llm : updated.classifiedBy,
       );
-    } else if (result.merchantNormalized != null) {
-      updated = updated.copyWith(merchantNormalized: result.merchantNormalized);
+    }
+
+    final effectiveCategoryId = updated.categoryId;
+    if (result.subcategoryId != null &&
+        isValidSubcategory(effectiveCategoryId, result.subcategoryId)) {
+      updated = updated.copyWith(subcategoryId: result.subcategoryId);
     }
 
     if (result.userNotes != null && result.userNotes!.trim().isNotEmpty) {
@@ -64,7 +85,23 @@ class ClassificationApplier {
       updated = updated.copyWith(travelProvider: result.travelProvider);
     }
 
+    final transferTo = result.transferTo ??
+        (updated.categoryId == CategoryService.transferCategoryId
+            ? displayName
+            : null);
+    if (transferTo != null && transferTo.isNotEmpty) {
+      updated = updated.copyWith(transferTo: transferTo);
+    }
+
     return updated;
+  }
+
+  /// Replace raw VPA / long opaque merchant strings with the LLM display name.
+  static bool _shouldReplaceMerchant(String? merchant) {
+    if (merchant == null || merchant.isEmpty) return true;
+    if (merchant.contains('@')) return true;
+    if (merchant.length > 48) return true;
+    return false;
   }
 }
 
@@ -74,9 +111,13 @@ class AiClassifyFormUpdate {
     this.categoryId,
     this.paymentSourceId,
     this.merchantNormalized,
+    this.subcategoryId,
     this.userNotes,
     this.shoppingItems = const [],
     this.travelProvider,
+    this.transferTo,
+    this.suggestedCategoryId,
+    this.suggestedCategoryName,
     this.needsConfig = false,
     this.errorMessage,
   });
@@ -84,9 +125,13 @@ class AiClassifyFormUpdate {
   final String? categoryId;
   final String? paymentSourceId;
   final String? merchantNormalized;
+  final String? subcategoryId;
   final String? userNotes;
   final List<String> shoppingItems;
   final String? travelProvider;
+  final String? transferTo;
+  final String? suggestedCategoryId;
+  final String? suggestedCategoryName;
   final bool needsConfig;
   final String? errorMessage;
 }

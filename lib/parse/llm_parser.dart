@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/category_taxonomy.dart';
 import '../models/payment_source.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart';
@@ -50,6 +51,7 @@ class ClassificationResult {
   const ClassificationResult({
     this.categoryId,
     this.merchantNormalized,
+    this.subcategoryId,
     this.type,
     this.needsUserInput = false,
     this.needsConfig = false,
@@ -58,14 +60,20 @@ class ClassificationResult {
     this.userNotes,
     this.shoppingItems = const [],
     this.travelProvider,
+    this.transferTo,
+    this.suggestedCategoryId,
+    this.suggestedCategoryName,
     this.errorMessage,
   });
 
   /// One of the known category ids (e.g. `food`, `shopping`, `transfer`).
   final String? categoryId;
 
-  /// Cleaned-up merchant name (e.g. raw VPA → "Zepto").
+  /// Cleaned-up merchant display name extracted from SMS (e.g. raw VPA → "Zepto").
   final String? merchantNormalized;
+
+  /// Optional refine under [categoryId] (e.g. bills → rent).
+  final String? subcategoryId;
 
   /// High-level spend kind reported by the model (shopping, food, transfer…).
   final String? type;
@@ -91,6 +99,15 @@ class ClassificationResult {
   /// Ride/travel provider when obvious from SMS (e.g. Uber, Ola).
   final String? travelProvider;
 
+  /// Transfer recipient or destination when category is transfer.
+  final String? transferTo;
+
+  /// Proposed new category slug when none of the allowed ids fit.
+  final String? suggestedCategoryId;
+
+  /// Human-readable label for [suggestedCategoryId].
+  final String? suggestedCategoryName;
+
   /// Callable/network failure — distinct from [needsConfig] (missing backend key).
   final String? errorMessage;
 
@@ -110,7 +127,8 @@ class ClassificationResult {
       categoryId: (map['categoryId'] as String?)?.trim().isEmpty ?? true
           ? null
           : map['categoryId'] as String?,
-      merchantNormalized: map['merchantNormalized'] as String?,
+      merchantNormalized: _parseOptionalString(map['merchantNormalized']),
+      subcategoryId: _parseOptionalString(map['subcategoryId']),
       type: map['type'] as String?,
       needsUserInput: map['needsUserInput'] as bool? ?? false,
       needsConfig: map['needsConfig'] as bool? ?? false,
@@ -124,11 +142,14 @@ class ClassificationResult {
           ? null
           : (map['userNotes'] as String?)?.trim(),
       shoppingItems: items,
-      travelProvider: _parseTravelProvider(map['travelProvider']),
+      travelProvider: _parseOptionalString(map['travelProvider']),
+      transferTo: _parseOptionalString(map['transferTo']),
+      suggestedCategoryId: _parseOptionalString(map['suggestedCategoryId']),
+      suggestedCategoryName: _parseOptionalString(map['suggestedCategoryName']),
     );
   }
 
-  static String? _parseTravelProvider(dynamic raw) {
+  static String? _parseOptionalString(dynamic raw) {
     if (raw is! String) return null;
     final trimmed = raw.trim();
     return trimmed.isEmpty ? null : trimmed;
@@ -143,6 +164,8 @@ abstract class TransactionClassifier {
     String? smsBody,
     String? smsSender,
     List<String> categoryIds = const [],
+    String? selectedCategoryId,
+    Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
   });
 }
@@ -157,6 +180,8 @@ class NoOpTransactionClassifier implements TransactionClassifier {
     String? smsBody,
     String? smsSender,
     List<String> categoryIds = const [],
+    String? selectedCategoryId,
+    Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
   }) async =>
       null;
@@ -182,9 +207,14 @@ class CloudFunctionsClassifier implements TransactionClassifier {
     String? smsBody,
     String? smsSender,
     List<String> categoryIds = const [],
+    String? selectedCategoryId,
+    Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
   }) async {
     try {
+      final taxonomy = subcategoryTaxonomy.isEmpty
+          ? subcategoryTaxonomyForLlm()
+          : subcategoryTaxonomy;
       final callable = _functions.httpsCallable('classifyTransaction');
       final response = await callable.call<Map<String, dynamic>>({
         'merchant': transaction.merchant,
@@ -193,6 +223,11 @@ class CloudFunctionsClassifier implements TransactionClassifier {
         'smsBody': smsBody,
         if (smsSender != null && smsSender.isNotEmpty) 'sender': smsSender,
         'categoryIds': categoryIds,
+        if (selectedCategoryId != null && selectedCategoryId.isNotEmpty) ...{
+          'selectedCategoryId': selectedCategoryId,
+          'hintCategoryId': selectedCategoryId,
+        },
+        if (taxonomy.isNotEmpty) 'subcategoryTaxonomy': taxonomy,
         if (paymentSources.isNotEmpty)
           'paymentSources': paymentSources
               .map(

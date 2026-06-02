@@ -36,6 +36,7 @@ class Transaction {
     this.merchant,
     required this.timestamp,
     this.categoryId,
+    this.subcategoryId,
     this.paymentSourceId,
     this.unmatched = false,
     this.ambiguous = false,
@@ -46,6 +47,7 @@ class Transaction {
     this.userNotes,
     this.shoppingItems = const [],
     this.travelProvider,
+    this.transferTo,
     this.classifiedBy,
   });
 
@@ -56,6 +58,10 @@ class Transaction {
   final String? merchant;
   final DateTime timestamp;
   final String? categoryId;
+
+  /// Optional refine under [categoryId] (e.g. bills → rent, food → delivery).
+  final String? subcategoryId;
+
   final String? paymentSourceId;
   final bool unmatched;
   final bool ambiguous;
@@ -81,6 +87,9 @@ class Transaction {
   /// Optional ride/travel provider (e.g. Uber) from classify flow.
   final String? travelProvider;
 
+  /// Transfer recipient or destination when category is transfer.
+  final String? transferTo;
+
   /// Provenance of the current category: rules, llm, or user.
   final ClassifiedBy? classifiedBy;
 
@@ -95,6 +104,7 @@ class Transaction {
         if (merchant != null) 'merchant': merchant,
         'timestamp': timestamp.toIso8601String(),
         if (categoryId != null) 'categoryId': categoryId,
+        if (subcategoryId != null) 'subcategoryId': subcategoryId,
         if (paymentSourceId != null) 'paymentSourceId': paymentSourceId,
         'unmatched': unmatched,
         'ambiguous': ambiguous,
@@ -105,6 +115,7 @@ class Transaction {
         if (userNotes != null) 'userNotes': userNotes,
         if (shoppingItems.isNotEmpty) 'shoppingItems': shoppingItems,
         if (travelProvider != null) 'travelProvider': travelProvider,
+        if (transferTo != null) 'transferTo': transferTo,
         if (classifiedBy != null) 'classifiedBy': classifiedBy!.name,
       };
 
@@ -117,6 +128,7 @@ class Transaction {
       merchant: json['merchant'] as String?,
       timestamp: DateTime.parse(json['timestamp'] as String),
       categoryId: json['categoryId'] as String?,
+      subcategoryId: json['subcategoryId'] as String?,
       paymentSourceId: json['paymentSourceId'] as String?,
       unmatched: json['unmatched'] as bool? ?? false,
       ambiguous: json['ambiguous'] as bool? ?? false,
@@ -130,6 +142,7 @@ class Transaction {
               .toList() ??
           const [],
       travelProvider: json['travelProvider'] as String?,
+      transferTo: json['transferTo'] as String?,
       classifiedBy: ClassifiedBy.fromString(json['classifiedBy'] as String?),
     );
   }
@@ -155,6 +168,7 @@ class Transaction {
       merchant: row['merchant'] as String?,
       timestamp: DateTime.parse(row['timestamp'] as String),
       categoryId: row['category_id'] as String?,
+      subcategoryId: row['subcategory_id'] as String?,
       paymentSourceId: row['payment_source_id'] as String?,
       unmatched: (row['unmatched'] as int? ?? 0) == 1,
       ambiguous: (row['ambiguous'] as int? ?? 0) == 1,
@@ -165,6 +179,7 @@ class Transaction {
       userNotes: row['user_notes'] as String?,
       shoppingItems: items,
       travelProvider: row['travel_provider'] as String?,
+      transferTo: row['transfer_to'] as String?,
       classifiedBy: ClassifiedBy.fromString(row['classified_by'] as String?),
     );
   }
@@ -177,6 +192,7 @@ class Transaction {
     String? merchant,
     DateTime? timestamp,
     String? categoryId,
+    String? subcategoryId,
     String? paymentSourceId,
     bool? unmatched,
     bool? ambiguous,
@@ -187,6 +203,7 @@ class Transaction {
     String? userNotes,
     List<String>? shoppingItems,
     String? travelProvider,
+    String? transferTo,
     ClassifiedBy? classifiedBy,
   }) {
     return Transaction(
@@ -197,6 +214,7 @@ class Transaction {
       merchant: merchant ?? this.merchant,
       timestamp: timestamp ?? this.timestamp,
       categoryId: categoryId ?? this.categoryId,
+      subcategoryId: subcategoryId ?? this.subcategoryId,
       paymentSourceId: paymentSourceId ?? this.paymentSourceId,
       unmatched: unmatched ?? this.unmatched,
       ambiguous: ambiguous ?? this.ambiguous,
@@ -207,6 +225,7 @@ class Transaction {
       userNotes: userNotes ?? this.userNotes,
       shoppingItems: shoppingItems ?? this.shoppingItems,
       travelProvider: travelProvider ?? this.travelProvider,
+      transferTo: transferTo ?? this.transferTo,
       classifiedBy: classifiedBy ?? this.classifiedBy,
     );
   }
