@@ -67,6 +67,7 @@ class LocalReviewRepository implements ReviewRepository {
     await _db.updateTransactionClassification(
       id,
       categoryId: input.categoryId,
+      merchantNormalized: input.merchantNormalized,
       userNotes: input.userNotes,
       shoppingItems: input.shoppingItems,
       classifiedBy: ClassifiedBy.user.name,
@@ -90,6 +91,8 @@ class LocalReviewRepository implements ReviewRepository {
       'ambiguous': false,
       'needsClassification': false,
       'classifiedBy': ClassifiedBy.user.name,
+      if (input.merchantNormalized != null)
+        'merchantNormalized': input.merchantNormalized,
       if (input.userNotes != null) 'userNotes': input.userNotes,
       if (input.shoppingItems.isNotEmpty) 'shoppingItems': input.shoppingItems,
       if (paymentSourceId != null) ...{
@@ -214,6 +217,49 @@ class LocalReviewRepository implements ReviewRepository {
     } catch (_) {
       // Offline or unsigned — local exclusion still applies.
     }
+  }
+
+  @override
+  Future<void> persistAiClassification(Transaction transaction) async {
+    final id = transaction.id;
+    if (id == null) {
+      throw StateError('Cannot persist AI classification without an id');
+    }
+
+    await _db.updateTransactionClassification(
+      id,
+      categoryId: transaction.categoryId,
+      merchantNormalized: transaction.merchantNormalized,
+      userNotes: transaction.userNotes,
+      shoppingItems: transaction.shoppingItems,
+      classifiedBy: ClassifiedBy.llm.name,
+      needsClassification: transaction.needsClassification,
+      ambiguous: transaction.ambiguous,
+    );
+
+    if (transaction.paymentSourceId != null) {
+      await _db.updateTransactionPaymentSource(
+        id,
+        transaction.paymentSourceId!,
+      );
+    }
+
+    final uid = _authService.requireUid();
+    await _firestore.collection('users').doc(uid).collection('transactions').doc(id).set({
+      if (transaction.categoryId != null) 'categoryId': transaction.categoryId,
+      'ambiguous': transaction.ambiguous,
+      'needsClassification': transaction.needsClassification,
+      'classifiedBy': ClassifiedBy.llm.name,
+      if (transaction.merchantNormalized != null)
+        'merchantNormalized': transaction.merchantNormalized,
+      if (transaction.userNotes != null) 'userNotes': transaction.userNotes,
+      if (transaction.shoppingItems.isNotEmpty)
+        'shoppingItems': transaction.shoppingItems,
+      if (transaction.paymentSourceId != null) ...{
+        'paymentSourceId': transaction.paymentSourceId,
+        'unmatched': transaction.unmatched,
+      },
+    }, SetOptions(merge: true));
   }
 
   @override

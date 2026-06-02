@@ -6,16 +6,16 @@ import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/classify_pickers.dart';
 import '../../core/widgets/original_ingest_sheet.dart';
 import '../../services/app_services.dart';
 import '../accounts/payment_source_widgets.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
-import '../../core/widgets/app_ui.dart';
 import 'review_repository.dart';
 
-/// Full-screen classify flow. Reached from the Review inbox, transaction
-/// detail "Reclassify", or a tapped FCM notification (deep link by id).
+/// Full-screen classify / reclassify flow.
 class ClassifyScreen extends StatefulWidget {
   const ClassifyScreen({
     super.key,
@@ -40,6 +40,7 @@ class ClassifyScreen extends StatefulWidget {
 class _ClassifyScreenState extends State<ClassifyScreen> {
   final _notesController = TextEditingController();
   final _itemController = TextEditingController();
+  final _merchantController = TextEditingController();
 
   Transaction? _tx;
   List<Category> _categories = [];
@@ -50,6 +51,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   bool _saveRule = true;
   bool _loading = true;
   bool _saving = false;
+  bool _aiLoading = false;
   String? _error;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
@@ -65,6 +67,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   void dispose() {
     _notesController.dispose();
     _itemController.dispose();
+    _merchantController.dispose();
     super.dispose();
   }
 
@@ -85,13 +88,14 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         return;
       }
       _notesController.text = tx.userNotes ?? '';
-      _shoppingItems.addAll(tx.shoppingItems);
+      _merchantController.text = tx.displayMerchant ?? '';
+      _shoppingItems
+        ..clear()
+        ..addAll(tx.shoppingItems);
       setState(() {
         _tx = tx;
         _categories = categories;
         _paymentSources = sources;
-        // Never default to the first category (was Food & Dining) — leave unset
-        // until the user or LLM picks one.
         _selectedCategoryId = tx.categoryId;
         _selectedPaymentSourceId = tx.paymentSourceId;
         _loading = false;
@@ -114,6 +118,57 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     });
   }
 
+  Future<void> _reclassifyWithAi() async {
+    final tx = _tx;
+    if (tx == null || _aiLoading) return;
+    setState(() => _aiLoading = true);
+    try {
+      final update =
+          await AppScope.of(context).aiClassifyService.suggestForForm(tx);
+      if (!mounted) return;
+      if (update.needsConfig) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI classify needs GEMINI_API_KEY on Cloud Functions.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (update.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI classify failed: ${update.errorMessage}')),
+        );
+        return;
+      }
+      setState(() {
+        if (update.categoryId != null) {
+          _selectedCategoryId = update.categoryId;
+        }
+        if (update.paymentSourceId != null) {
+          _selectedPaymentSourceId = update.paymentSourceId;
+        }
+        if (update.merchantNormalized != null) {
+          _merchantController.text = update.merchantNormalized!;
+        }
+        if (update.userNotes != null) {
+          _notesController.text = update.userNotes!;
+        }
+        if (update.shoppingItems.isNotEmpty) {
+          _shoppingItems
+            ..clear()
+            ..addAll(update.shoppingItems);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('AI suggestions applied — review and save')),
+      );
+    } finally {
+      if (mounted) setState(() => _aiLoading = false);
+    }
+  }
+
   Future<void> _save() async {
     final tx = _tx;
     final categoryId = _selectedCategoryId;
@@ -122,6 +177,9 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
 
     final sourceChanged = _selectedPaymentSourceId != null &&
         _selectedPaymentSourceId != tx.paymentSourceId;
+    final merchantName = _merchantController.text.trim();
+    final merchantNormalized =
+        merchantName.isEmpty ? null : merchantName;
 
     setState(() => _saving = true);
     try {
@@ -137,6 +195,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
               : const [],
           saveMerchantRule: _saveRule,
           paymentSourceId: sourceChanged ? _selectedPaymentSourceId : null,
+          merchantNormalized: merchantNormalized,
         ),
       );
       if (!mounted) return;
@@ -156,7 +215,22 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Classify')),
+      appBar: AppBar(
+        title: const Text('Reclassify'),
+        actions: [
+          TextButton.icon(
+            onPressed: _aiLoading || _loading ? null : _reclassifyWithAi,
+            icon: _aiLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_awesome_outlined, size: 18),
+            label: const Text('Reclassify using AI'),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -244,15 +318,14 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             ),
           ),
         ),
-        const SizedBox(height: AppSpacing.tight),
-        OutlinedButton.icon(
-          onPressed: () => showOriginalIngestSheet(
-            context,
-            localDatabase: AppScope.of(context).localDatabase,
-            rawIngestId: tx.rawIngestId,
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(title: 'Merchant'),
+        TextField(
+          controller: _merchantController,
+          decoration: const InputDecoration(
+            labelText: 'Display name',
+            hintText: 'e.g. Zepto, Swiggy',
           ),
-          icon: const Icon(Icons.sms_outlined),
-          label: const Text('View original message'),
         ),
         const SizedBox(height: AppSpacing.section),
         AppSectionHeader(
@@ -261,44 +334,17 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
               ? 'Which bank or card was this charge on?'
               : 'Change if the wrong bank or card was matched',
         ),
-        if (_paymentSources.isEmpty)
-          Text(
-            'Add a bank or card in Accounts first.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-          )
-        else
-          DropdownButtonFormField<String?>(
-            key: ValueKey(_selectedPaymentSourceId),
-            initialValue: _selectedPaymentSourceId,
-            decoration: const InputDecoration(labelText: 'Payment source'),
-            hint: const Text('Choose an account'),
-            items: _paymentSources
-                .map(
-                  (s) => DropdownMenuItem(
-                    value: s.id,
-                    child: Text(
-                      s.last4 != null
-                          ? '${s.name} ···· ${s.last4}'
-                          : s.name,
-                    ),
-                  ),
-                )
-                .toList(),
-            onChanged: (v) => setState(() => _selectedPaymentSourceId = v),
-          ),
+        PaymentSourceClassifyPicker(
+          sources: _paymentSources,
+          selectedId: _selectedPaymentSourceId,
+          onSelected: (id) => setState(() => _selectedPaymentSourceId = id),
+        ),
         const SizedBox(height: AppSpacing.section),
         AppSectionHeader(title: 'Category'),
-        DropdownButtonFormField<String?>(
-          key: ValueKey(_selectedCategoryId),
-          initialValue: _selectedCategoryId,
-          decoration: const InputDecoration(labelText: 'Category'),
-          hint: const Text('Choose a category'),
-          items: _categories
-              .map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
-              .toList(),
-          onChanged: (v) => setState(() => _selectedCategoryId = v),
+        CategoryClassifyPicker(
+          categories: _categories,
+          selectedId: _selectedCategoryId,
+          onSelected: (id) => setState(() => _selectedCategoryId = id),
         ),
         if (tx.merchant != null) ...[
           const SizedBox(height: AppSpacing.tight),
@@ -362,6 +408,16 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           ],
         ],
         const SizedBox(height: AppSpacing.section),
+        OutlinedButton.icon(
+          onPressed: () => showOriginalIngestSheet(
+            context,
+            localDatabase: AppScope.of(context).localDatabase,
+            rawIngestId: tx.rawIngestId,
+          ),
+          icon: const Icon(Icons.sms_outlined),
+          label: const Text('View original message'),
+        ),
+        const SizedBox(height: AppSpacing.item),
         FilledButton(
           onPressed: _saving ||
                   _selectedCategoryId == null ||

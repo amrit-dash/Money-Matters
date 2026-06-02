@@ -14,6 +14,7 @@ import '../parse/llm_parser.dart';
 import '../parse/parse_service.dart';
 import '../parse/rules_parser.dart';
 import '../services/category_service.dart';
+import '../services/classification_applier.dart';
 import '../services/payment_source_service.dart';
 
 /// Result of processing local unprocessed ingests through the rules parser.
@@ -478,60 +479,18 @@ class IngestParsePipeline {
       return _ClassifyOutcome(transaction: tx, needsConfig: true);
     }
 
-    final updated = _applyClassificationResult(
-      tx,
-      result,
+    final updated = ClassificationApplier.apply(
+      tx: tx,
+      result: result,
       categories: categories,
       knownSourceIds: knownIds,
-      needsCategory: needsCategory,
-      needsSource: needsSource,
+      forceCategory: needsCategory,
+      forceSource: needsSource,
     );
     return _ClassifyOutcome(
       transaction: updated,
       applied: updated != tx,
     );
-  }
-
-  Transaction _applyClassificationResult(
-    Transaction tx,
-    ClassificationResult result, {
-    required List<Category> categories,
-    required Set<String> knownSourceIds,
-    required bool needsCategory,
-    required bool needsSource,
-  }) {
-    var updated = tx;
-
-    if (needsSource &&
-        result.paymentSourceId != null &&
-        knownSourceIds.contains(result.paymentSourceId) &&
-        (result.paymentSourceConfidence ?? 0) >=
-            ClassificationResult.paymentSourceConfidenceThreshold) {
-      updated = updated.copyWith(
-        paymentSourceId: result.paymentSourceId,
-        unmatched: false,
-      );
-    }
-
-    if (needsCategory) {
-      final validCategory = result.categoryId != null &&
-          categories.any((c) => c.id == result.categoryId);
-      final categoryId = validCategory ? result.categoryId : updated.categoryId;
-      final resolved = categoryId != null && !result.needsUserInput;
-
-      updated = updated.copyWith(
-        categoryId: categoryId,
-        merchantNormalized: result.merchantNormalized ?? updated.merchantNormalized,
-        needsClassification:
-            resolved ? false : updated.needsClassification,
-        ambiguous: resolved ? false : updated.ambiguous,
-        classifiedBy: resolved ? ClassifiedBy.llm : updated.classifiedBy,
-      );
-    } else if (result.merchantNormalized != null) {
-      updated = updated.copyWith(merchantNormalized: result.merchantNormalized);
-    }
-
-    return updated;
   }
 
   RawIngest _rawIngestFromRow(Map<String, dynamic> row) {

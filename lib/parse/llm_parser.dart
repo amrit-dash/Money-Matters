@@ -55,6 +55,8 @@ class ClassificationResult {
     this.needsConfig = false,
     this.paymentSourceId,
     this.paymentSourceConfidence,
+    this.userNotes,
+    this.shoppingItems = const [],
     this.errorMessage,
   });
 
@@ -79,6 +81,12 @@ class ClassificationResult {
   /// Model confidence for [paymentSourceId] in 0.0–1.0.
   final double? paymentSourceConfidence;
 
+  /// Short user-facing note from the model (e.g. "weekly groceries").
+  final String? userNotes;
+
+  /// Optional line items when the spend is clearly a shopping trip.
+  final List<String> shoppingItems;
+
   /// Callable/network failure — distinct from [needsConfig] (missing backend key).
   final String? errorMessage;
 
@@ -86,6 +94,14 @@ class ClassificationResult {
 
   factory ClassificationResult.fromMap(Map<String, dynamic> map) {
     final rawConfidence = map['paymentSourceConfidence'];
+    final rawItems = map['shoppingItems'];
+    List<String> items = const [];
+    if (rawItems is List) {
+      items = rawItems
+          .map((e) => e.toString().trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
     return ClassificationResult(
       categoryId: (map['categoryId'] as String?)?.trim().isEmpty ?? true
           ? null
@@ -100,6 +116,10 @@ class ClassificationResult {
       paymentSourceConfidence: rawConfidence is num
           ? rawConfidence.toDouble()
           : null,
+      userNotes: (map['userNotes'] as String?)?.trim().isEmpty ?? true
+          ? null
+          : (map['userNotes'] as String?)?.trim(),
+      shoppingItems: items,
     );
   }
 }

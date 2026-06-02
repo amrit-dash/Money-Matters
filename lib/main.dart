@@ -58,6 +58,7 @@ Future<void> main() async {
     parsePipeline: parsePipeline,
     paymentSourceService: paymentSourceService,
     categoryService: categoryService,
+    transactionClassifier: CloudFunctionsClassifier(),
   );
 
   runApp(

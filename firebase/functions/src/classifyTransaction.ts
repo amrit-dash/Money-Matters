@@ -39,6 +39,8 @@ export interface ClassifyResult {
   needsConfig: boolean;
   paymentSourceId: string | null;
   paymentSourceConfidence: number | null;
+  userNotes: string | null;
+  shoppingItems: string[];
 }
 
 function fallback(needsConfig: boolean): ClassifyResult {
@@ -50,6 +52,8 @@ function fallback(needsConfig: boolean): ClassifyResult {
     needsConfig,
     paymentSourceId: null,
     paymentSourceConfidence: null,
+    userNotes: null,
+    shoppingItems: [],
   };
 }
 
@@ -95,6 +99,10 @@ function buildPrompt(data: ClassifyRequest): string {
     "  account (SMS sender id like FEDBNK-S / FEDSCP-S, bank name in footer, card",
     "  product name, or last4). Match sender id to senderHints first. null if unclear.",
     "- paymentSourceConfidence: 0.0–1.0; use >= 0.85 only when very confident.",
+    "- userNotes: one short sentence on what this spend was for when you can infer it",
+    "  from the SMS (e.g. 'Uber ride to airport'); null if unclear.",
+    "- shoppingItems: array of item names only for obvious grocery/shopping SMS;",
+    "  empty array otherwise.",
   ].join("\n");
 }
 
@@ -107,6 +115,11 @@ const RESPONSE_SCHEMA = {
     needsUserInput: {type: "BOOLEAN"},
     paymentSourceId: {type: "STRING", nullable: true},
     paymentSourceConfidence: {type: "NUMBER", nullable: true},
+    userNotes: {type: "STRING", nullable: true},
+    shoppingItems: {
+      type: "ARRAY",
+      items: {type: "STRING"},
+    },
   },
   required: ["needsUserInput"],
 };
@@ -171,6 +184,18 @@ async function callGemini(
     paymentSourceConfidence = parsed.paymentSourceConfidence;
   }
 
+  const rawNotes =
+    typeof parsed.userNotes === "string" ? parsed.userNotes.trim() : "";
+  const userNotes = rawNotes.length > 0 ? rawNotes : null;
+
+  let shoppingItems: string[] = [];
+  if (Array.isArray(parsed.shoppingItems)) {
+    shoppingItems = parsed.shoppingItems
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+
   return {
     categoryId,
     merchantNormalized:
@@ -183,6 +208,8 @@ async function callGemini(
     needsConfig: false,
     paymentSourceId,
     paymentSourceConfidence,
+    userNotes,
+    shoppingItems,
   };
 }
 

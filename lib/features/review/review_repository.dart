@@ -9,6 +9,7 @@ class ClassifyInput {
     this.shoppingItems = const [],
     this.saveMerchantRule = false,
     this.paymentSourceId,
+    this.merchantNormalized,
   });
 
   final String categoryId;
@@ -18,6 +19,9 @@ class ClassifyInput {
 
   /// When set, links an unmatched transaction to a saved bank/card.
   final String? paymentSourceId;
+
+  /// Display merchant override from user or AI reclassify.
+  final String? merchantNormalized;
 }
 
 /// Transactions needing human review (uncategorized, ambiguous, or unmatched).
@@ -53,4 +57,7 @@ abstract class ReviewRepository {
 
   /// Permanently removes a transaction locally and from Firestore when synced.
   Future<void> deleteTransaction(String transactionId);
+
+  /// Persists an AI-suggested classification without marking as user-classified.
+  Future<void> persistAiClassification(Transaction transaction);
 }

@@ -12,7 +12,9 @@ import '../ingest/ingest_queue_drain.dart';
 import '../ingest/ingest_repository.dart';
 import 'category_service.dart';
 import 'ingest_parse_pipeline.dart';
+import 'ai_classify_service.dart';
 import 'payment_source_service.dart';
+import '../parse/llm_parser.dart';
 
 /// Root dependency container for Money Matters.
 class AppServices {
@@ -27,7 +29,16 @@ class AppServices {
     DashboardRepository? dashboardRepository,
     ReviewRepository? reviewRepository,
     RecoveryRepository? recoveryRepository,
-  })  :         dashboardRepository = dashboardRepository ??
+    TransactionClassifier? transactionClassifier,
+    AiClassifyService? aiClassifyService,
+  })  : aiClassifyService = aiClassifyService ??
+            AiClassifyService(
+              classifier: transactionClassifier,
+              localDatabase: localDatabase,
+              categoryService: categoryService,
+              paymentSourceService: paymentSourceService,
+            ),
+        dashboardRepository = dashboardRepository ??
             LocalDashboardRepository(
               localDatabase: localDatabase,
               categoryService: categoryService,
@@ -59,6 +70,7 @@ class AppServices {
   final DashboardRepository dashboardRepository;
   final ReviewRepository reviewRepository;
   final RecoveryRepository recoveryRepository;
+  final AiClassifyService aiClassifyService;
 }
 
 /// InheritedWidget exposing [AppServices] to the widget tree.

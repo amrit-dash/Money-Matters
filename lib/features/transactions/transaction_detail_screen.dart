@@ -6,15 +6,13 @@ import 'package:money_matters/models/transaction.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../core/widgets/original_ingest_sheet.dart';
-import '../../core/widgets/payment_source_picker_sheet.dart';
 import '../../services/app_services.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
-import '../accounts/payment_source_widgets.dart';
 import '../review/classify_screen.dart';
 import '../review/review_repository.dart';
 
-/// Full parsed view of a single transaction with a reclassify action.
+/// Full parsed view of a single transaction with reclassify actions.
 class TransactionDetailScreen extends StatefulWidget {
   const TransactionDetailScreen({
     super.key,
@@ -39,6 +37,7 @@ class TransactionDetailScreen extends StatefulWidget {
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   late Transaction _tx;
   String? _resolvedPaymentSourceName;
+  bool _aiLoading = false;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
   final _dateFormat = DateFormat('EEE, d MMM yyyy · h:mm:ss a');
@@ -66,50 +65,22 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     } catch (_) {}
   }
 
-  Future<void> _changePaymentSource() async {
+  Future<void> _reloadTransaction() async {
     final id = _tx.id;
     if (id == null) return;
-
-    final sources = visiblePaymentSources(
-      await widget.paymentSourceService.loadAll(),
-    );
-    if (!mounted) return;
-
-    final picked = await showPaymentSourcePickerSheet(
-      context,
-      sources: sources,
-      selectedId: _tx.paymentSourceId,
-      title: 'Change payment source',
-    );
-    if (picked == null || picked.id == _tx.paymentSourceId || !mounted) return;
-
-    await widget.reviewRepository.updatePaymentSource(
-      transactionId: id,
-      paymentSourceId: picked.id,
-    );
-    if (!mounted) return;
-
-    setState(() {
-      _tx = _tx.copyWith(
-        paymentSourceId: picked.id,
-        unmatched: false,
-      );
-      _resolvedPaymentSourceName = picked.name;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Linked to ${picked.name}')),
-    );
+    final updated = await widget.reviewRepository.transactionById(id);
+    if (updated != null && mounted) {
+      setState(() {
+        _tx = updated;
+        if (widget.paymentSourceName == null) {
+          _resolvedPaymentSourceName = null;
+        }
+      });
+      await _resolvePaymentSourceName();
+    }
   }
 
-  Future<void> _viewOriginalMessage() async {
-    await showOriginalIngestSheet(
-      context,
-      localDatabase: AppScope.of(context).localDatabase,
-      rawIngestId: _tx.rawIngestId,
-    );
-  }
-
-  Future<void> _reclassify() async {
+  Future<void> _openReclassify() async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -120,18 +91,60 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ),
       ),
     );
-    if (changed == true && _tx.id != null) {
-      final updated = await widget.reviewRepository.transactionById(_tx.id!);
-      if (updated != null && mounted) {
-        setState(() {
-          _tx = updated;
-          if (widget.paymentSourceName == null) {
-            _resolvedPaymentSourceName = null;
-          }
-        });
-        await _resolvePaymentSourceName();
+    if (changed == true) await _reloadTransaction();
+  }
+
+  Future<void> _reclassifyWithAi() async {
+    if (_aiLoading) return;
+    setState(() => _aiLoading = true);
+    try {
+      final services = AppScope.of(context);
+      final outcome =
+          await services.aiClassifyService.applyToTransaction(_tx);
+      if (!mounted) return;
+      if (outcome.needsConfig) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI classify needs GEMINI_API_KEY on Cloud Functions. '
+              'Set the secret in Firebase, then try again.',
+            ),
+          ),
+        );
+        return;
       }
+      if (outcome.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI classify failed: ${outcome.error}')),
+        );
+        return;
+      }
+      final updated = outcome.transaction;
+      if (updated == null || updated == _tx) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI had no changes to suggest')),
+        );
+        return;
+      }
+      await widget.reviewRepository.persistAiClassification(updated);
+      if (!mounted) return;
+      setState(() => _tx = updated);
+      await _resolvePaymentSourceName();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Updated with AI classification')),
+      );
+    } finally {
+      if (mounted) setState(() => _aiLoading = false);
     }
+  }
+
+  Future<void> _viewOriginalMessage() async {
+    await showOriginalIngestSheet(
+      context,
+      localDatabase: AppScope.of(context).localDatabase,
+      rawIngestId: _tx.rawIngestId,
+    );
   }
 
   Future<void> _exclude() async {
@@ -218,7 +231,30 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     final isCredit = _tx.type == TransactionType.credit;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Transaction')),
+      appBar: AppBar(
+        title: const Text('Transaction'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Reclassify',
+            onPressed: _openReclassify,
+          ),
+          IconButton(
+            icon: _aiLoading
+                ? SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: scheme.onSurface,
+                    ),
+                  )
+                : const Icon(Icons.auto_awesome_outlined),
+            tooltip: 'Reclassify using AI',
+            onPressed: _aiLoading ? null : _reclassifyWithAi,
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.page),
         children: [
@@ -246,12 +282,17 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.section),
-          _DetailRow(label: 'Type', value: _tx.type.name.toUpperCase()),
-          _DetailRow(label: 'Category', value: _categoryName()),
-          _DetailRow(
+          _EditableDetailRow(
+            label: 'Category',
+            value: _categoryName(),
+            onTap: _openReclassify,
+          ),
+          _EditableDetailRow(
             label: 'Payment source',
             value: _paymentSourceLabel(),
+            onTap: _openReclassify,
           ),
+          _DetailRow(label: 'Type', value: _tx.type.name.toUpperCase()),
           _DetailRow(label: 'When', value: _dateFormat.format(_tx.timestamp)),
           if (_tx.merchant != null)
             _DetailRow(label: 'Raw merchant', value: _tx.merchant!),
@@ -268,7 +309,6 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               value: _tx.shoppingItems.join(', '),
             ),
           _DetailRow(label: 'Currency', value: _tx.currency),
-          _DetailRow(label: 'Ingest id', value: _tx.rawIngestId, mono: true),
           const SizedBox(height: AppSpacing.item),
           Wrap(
             spacing: 6,
@@ -290,41 +330,90 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.section),
-          OutlinedButton.icon(
-            onPressed: _viewOriginalMessage,
-            icon: const Icon(Icons.sms_outlined),
-            label: const Text('View original message'),
-          ),
-          const SizedBox(height: AppSpacing.tight),
-          OutlinedButton.icon(
-            onPressed: _changePaymentSource,
-            icon: const Icon(Icons.account_balance_outlined),
-            label: const Text('Change payment source'),
-          ),
-          const SizedBox(height: AppSpacing.tight),
-          FilledButton.icon(
-            onPressed: _reclassify,
-            icon: const Icon(Icons.edit_outlined),
-            label: const Text('Reclassify'),
-          ),
-          if (!_tx.excluded) ...[
-            const SizedBox(height: AppSpacing.tight),
-            OutlinedButton.icon(
-              onPressed: _exclude,
-              icon: const Icon(Icons.block_outlined),
-              label: const Text('Not a real transaction'),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.tight),
-          TextButton.icon(
-            onPressed: _delete,
-            icon: Icon(Icons.delete_outline, color: scheme.error),
-            label: Text(
-              'Delete',
-              style: TextStyle(color: scheme.error),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.sms_outlined),
+                  title: const Text('View original message'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _viewOriginalMessage,
+                ),
+                if (!_tx.excluded) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Icon(Icons.block_outlined, color: scheme.outline),
+                    title: const Text('Not a real transaction'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _exclude,
+                  ),
+                ],
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.delete_outline, color: scheme.error),
+                  title: Text(
+                    'Delete',
+                    style: TextStyle(color: scheme.error),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: scheme.error),
+                  onTap: _delete,
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EditableDetailRow extends StatelessWidget {
+  const _EditableDetailRow({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Material(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 120,
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    value,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                Icon(Icons.edit_outlined, size: 18, color: scheme.outline),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -334,12 +423,10 @@ class _DetailRow extends StatelessWidget {
   const _DetailRow({
     required this.label,
     required this.value,
-    this.mono = false,
   });
 
   final String label;
   final String value;
-  final bool mono;
 
   @override
   Widget build(BuildContext context) {
@@ -360,12 +447,7 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: mono
-                  ? Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(fontFamily: 'monospace')
-                  : Theme.of(context).textTheme.bodyMedium,
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
         ],
