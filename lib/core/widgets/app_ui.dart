@@ -2,37 +2,138 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
+export '../theme/app_theme.dart' show AppStatTone, AppRadii;
+
+/// Standard surface card — 16px radius, outline, optional hero gradient.
+class AppCard extends StatelessWidget {
+  const AppCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+    this.color,
+    this.heroGradient = false,
+    this.onTap,
+    this.margin,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final Color? color;
+  final bool heroGradient;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry? margin;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final baseColor = color ?? scheme.surfaceContainerLow;
+
+    Widget content = Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.85),
+        ),
+        color: heroGradient ? null : baseColor,
+        gradient: heroGradient
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  scheme.primaryContainer.withValues(alpha: 0.55),
+                  scheme.secondaryContainer.withValues(alpha: 0.35),
+                ],
+              )
+            : null,
+      ),
+      child: Padding(
+        padding: padding ?? EdgeInsets.zero,
+        child: child,
+      ),
+    );
+
+    if (onTap != null) {
+      content = Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadii.card),
+          child: content,
+        ),
+      );
+    }
+
+    if (margin != null) {
+      content = Padding(padding: margin!, child: content);
+    }
+
+    return content;
+  }
+}
+
 class AppSectionHeader extends StatelessWidget {
   const AppSectionHeader({
     super.key,
     required this.title,
     this.subtitle,
     this.action,
+    this.icon,
   });
 
   final String title;
   final String? subtitle;
   final Widget? action;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.item),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: 4,
+            height: 24,
+            margin: const EdgeInsets.only(top: 2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(2),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [scheme.primary, scheme.secondary],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (icon != null) ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(AppRadii.badge),
+              ),
+              child: Icon(icon, size: 18, color: scheme.primary),
+            ),
+            const SizedBox(width: 10),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                Text(title, style: theme.textTheme.titleMedium),
                 if (subtitle != null) ...[
                   const SizedBox(height: 4),
                   Text(
                     subtitle!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.35,
+                    ),
                   ),
                 ],
               ],
@@ -62,42 +163,35 @@ class AppStatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final (Color bg, Color fg) = switch (tone) {
-      AppStatTone.success => (scheme.primaryContainer, scheme.onPrimaryContainer),
-      AppStatTone.warning => (scheme.tertiaryContainer, scheme.onTertiaryContainer),
-      AppStatTone.error => (scheme.errorContainer, scheme.onErrorContainer),
-      AppStatTone.neutral => (scheme.surfaceContainerHighest, scheme.onSurface),
-    };
+    final theme = Theme.of(context);
+    final (bg, fg) = appToneColors(scheme, tone);
 
-    return Card(
-      color: bg.withValues(alpha: 0.55),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 20, color: fg),
-            const SizedBox(height: AppSpacing.item),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: fg,
-                    fontWeight: FontWeight.w600,
-                  ),
+    return AppCard(
+      color: scheme.surfaceContainerLow,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _AppIconBadge(icon: icon, background: bg, foreground: fg),
+          const SizedBox(height: AppSpacing.item),
+          Text(
+            value,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: scheme.onSurface,
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: fg),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
-
-enum AppStatTone { neutral, success, warning, error }
 
 class AppEmptyState extends StatelessWidget {
   const AppEmptyState({
@@ -117,20 +211,60 @@ class AppEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 8),
       child: Column(
         children: [
-          Icon(icon, size: 56, color: Theme.of(context).colorScheme.outline),
+          SizedBox(
+            width: 112,
+            height: 112,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 112,
+                  height: 112,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        scheme.primaryContainer.withValues(alpha: 0.65),
+                        scheme.surface.withValues(alpha: 0),
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: scheme.outlineVariant.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  child: Icon(icon, size: 40, color: scheme.primary),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: AppSpacing.section),
-          Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+          Text(
+            title,
+            style: theme.textTheme.titleLarge,
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: AppSpacing.tight),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              height: 1.4,
+            ),
           ),
           if (primaryAction != null) ...[
             const SizedBox(height: AppSpacing.section),
@@ -165,15 +299,39 @@ class AppMenuTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = destructive ? scheme.error : scheme.onSurface;
+    final theme = Theme.of(context);
+    final accent = destructive ? scheme.error : scheme.primary;
+    final titleColor = destructive ? scheme.error : scheme.onSurface;
 
-    return Card(
+    return AppCard(
+      onTap: onTap,
+      padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(title, style: TextStyle(color: color)),
-        subtitle: subtitle != null ? Text(subtitle!) : null,
-        trailing: Icon(Icons.chevron_right, color: scheme.outline),
-        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: _AppIconBadge(
+          icon: icon,
+          background: destructive
+              ? scheme.errorContainer.withValues(alpha: 0.65)
+              : scheme.primaryContainer.withValues(alpha: 0.55),
+          foreground: destructive ? scheme.onErrorContainer : accent,
+          compact: true,
+        ),
+        title: Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(color: titleColor),
+        ),
+        subtitle: subtitle != null
+            ? Text(
+                subtitle!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              )
+            : null,
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: scheme.outline,
+        ),
       ),
     );
   }
@@ -184,33 +342,49 @@ class AppStatusChip extends StatelessWidget {
     super.key,
     required this.label,
     this.tone = AppStatTone.neutral,
+    this.showDot = true,
   });
 
   final String label;
   final AppStatTone tone;
+  final bool showDot;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final (Color bg, Color fg) = switch (tone) {
-      AppStatTone.success => (scheme.primaryContainer, scheme.onPrimaryContainer),
-      AppStatTone.warning => (scheme.tertiaryContainer, scheme.onTertiaryContainer),
-      AppStatTone.error => (scheme.errorContainer, scheme.onErrorContainer),
-      AppStatTone.neutral => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
-    };
+    final (bg, fg) = appToneColors(scheme, tone);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
+        color: bg.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(AppRadii.chip),
+        border: Border.all(
+          color: fg.withValues(alpha: 0.2),
+        ),
       ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: fg,
-              fontWeight: FontWeight.w600,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showDot) ...[
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: fg,
+                shape: BoxShape.circle,
+              ),
             ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
       ),
     );
   }
@@ -238,13 +412,19 @@ class OnboardingStepIndicator extends StatelessWidget {
         Row(
           children: List.generate(totalSteps, (index) {
             final active = index <= currentStep;
+            final current = index == currentStep;
             return Expanded(
               child: Container(
-                height: 4,
+                height: current ? 5 : 4,
                 margin: EdgeInsets.only(right: index < totalSteps - 1 ? 6 : 0),
                 decoration: BoxDecoration(
-                  color: active ? scheme.primary : scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(3),
+                  gradient: active
+                      ? LinearGradient(
+                          colors: [scheme.primary, scheme.secondary],
+                        )
+                      : null,
+                  color: active ? null : scheme.surfaceContainerHighest,
                 ),
               ),
             );
@@ -255,9 +435,134 @@ class OnboardingStepIndicator extends StatelessWidget {
           'Step ${currentStep + 1} of $totalSteps · ${labels[currentStep]}',
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
                 color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
               ),
         ),
       ],
+    );
+  }
+}
+
+/// Large hero metric for dashboard spend / income.
+class HeroSpendCard extends StatelessWidget {
+  const HeroSpendCard({
+    super.key,
+    required this.label,
+    required this.amount,
+    this.secondaryLabel,
+    this.secondaryAmount,
+    this.icon = Icons.account_balance_wallet_outlined,
+  });
+
+  final String label;
+  final String amount;
+  final String? secondaryLabel;
+  final String? secondaryAmount;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    return AppCard(
+      heroGradient: true,
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: scheme.onPrimaryContainer, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: scheme.onPrimaryContainer.withValues(alpha: 0.9),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            amount,
+            style: theme.textTheme.displaySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: scheme.onPrimaryContainer,
+              height: 1.1,
+            ),
+          ),
+          if (secondaryLabel != null && secondaryAmount != null) ...[
+            const SizedBox(height: AppSpacing.item),
+            Text(
+              '$secondaryLabel · $secondaryAmount',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onPrimaryContainer.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Onboarding welcome block with friendly copy.
+class AppWelcomeHero extends StatelessWidget {
+  const AppWelcomeHero({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    this.icon = Icons.savings_outlined,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return AppCard(
+      heroGradient: true,
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: scheme.surface.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(AppRadii.badge),
+            ),
+            child: Icon(icon, size: 32, color: scheme.primary),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onPrimaryContainer,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onPrimaryContainer.withValues(alpha: 0.9),
+                        height: 1.35,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -272,6 +577,37 @@ class AppPageBody extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.page),
       child: child,
+    );
+  }
+}
+
+class _AppIconBadge extends StatelessWidget {
+  const _AppIconBadge({
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    this.compact = false,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 36.0 : 40.0;
+    final iconSize = compact ? 18.0 : 20.0;
+
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: background.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(AppRadii.badge),
+      ),
+      child: Icon(icon, size: iconSize, color: foreground),
     );
   }
 }

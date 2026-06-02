@@ -24,6 +24,7 @@ class CategorySpendBarChart extends StatelessWidget {
     }
 
     final scheme = Theme.of(context).colorScheme;
+    final accents = chartAccentColors(scheme);
     final top = breakdown.take(maxBars).toList();
     final maxAmount = top.map((b) => b.amount).reduce((a, b) => a > b ? a : b);
 
@@ -38,8 +39,12 @@ class CategorySpendBarChart extends StatelessWidget {
               style: Theme.of(context).textTheme.titleSmall,
             ),
             const SizedBox(height: AppSpacing.item),
-            ...top.map((row) {
+            ...top.asMap().entries.map((entry) {
+              final index = entry.key;
+              final row = entry.value;
               final share = maxAmount <= 0 ? 0.0 : row.amount / maxAmount;
+              final barColor = accents[index % accents.length];
+
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Column(
@@ -47,6 +52,15 @@ class CategorySpendBarChart extends StatelessWidget {
                   children: [
                     Row(
                       children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: barColor,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             row.category.name,
@@ -73,7 +87,7 @@ class CategorySpendBarChart extends StatelessWidget {
                         minHeight: 8,
                         backgroundColor:
                             scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                        color: scheme.primary.withValues(alpha: 0.85),
+                        color: barColor,
                       ),
                     ),
                   ],
@@ -122,14 +136,18 @@ class PeriodComparisonCard extends StatelessWidget {
         ? scheme.onSurfaceVariant
         : trendUp
             ? scheme.error
-            : scheme.primary;
+            : scheme.tertiary;
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(trendIcon, color: trendColor, size: 28),
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: trendColor.withValues(alpha: 0.15),
+              child: Icon(trendIcon, color: trendColor, size: 24),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
