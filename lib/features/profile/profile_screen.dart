@@ -5,6 +5,7 @@ import '../../core/auth/auth_service.dart';
 import '../../core/config/firebase_options.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
+import '../../parse/llm_parser.dart';
 
 /// Lightweight settings hub: accounts, SMS setup, sign out.
 class ProfileScreen extends StatelessWidget {
@@ -106,6 +107,9 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.section),
+          AppSectionHeader(title: 'Auto-classify (Gemini)'),
+          _GeminiStatusCard(),
+          const SizedBox(height: AppSpacing.section),
           AppSectionHeader(title: 'Setup'),
           AppMenuTile(
             icon: Icons.account_balance_outlined,
@@ -129,6 +133,86 @@ class ProfileScreen extends StatelessWidget {
             destructive: true,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GeminiStatusCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final needsConfig = ClassifierDiagnostics.lastNeedsConfig;
+    final error = ClassifierDiagnostics.lastError;
+    final lastAt = ClassifierDiagnostics.lastAttemptAt;
+    final successCount = ClassifierDiagnostics.lastSuccessCount;
+
+    final (Color bg, String title, String body, AppStatTone tone) =
+        needsConfig
+            ? (
+                scheme.tertiaryContainer.withValues(alpha: 0.35),
+                'Gemini not configured',
+                'Cloud auto-classify needs GEMINI_API_KEY on Firebase Functions. '
+                    'Rules + Review inbox still work. Set the secret and redeploy '
+                    'classifyTransaction — see USER-FIX.md.',
+                AppStatTone.warning,
+              )
+            : error != null
+                ? (
+                    scheme.errorContainer.withValues(alpha: 0.35),
+                    'Last classify call failed',
+                    error,
+                    AppStatTone.error,
+                  )
+                : successCount > 0
+                    ? (
+                        scheme.primaryContainer.withValues(alpha: 0.35),
+                        'Auto-classify active',
+                        'Last sync auto-classified $successCount transaction(s).',
+                        AppStatTone.success,
+                      )
+                    : (
+                        scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                        'Auto-classify ready',
+                        'Run Recovery → Sync and parse now to classify backlog. '
+                            'New ambiguous debits are sent to classifyTransaction on sync.',
+                        AppStatTone.neutral,
+                      );
+
+    return Card(
+      color: bg,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                AppStatusChip(label: 'Cloud LLM', tone: tone),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.tight),
+            Text(
+              body,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            if (lastAt != null) ...[
+              const SizedBox(height: AppSpacing.tight),
+              Text(
+                'Last attempt: ${lastAt.toLocal()}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

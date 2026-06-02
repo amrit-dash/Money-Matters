@@ -6,6 +6,8 @@ import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/original_ingest_sheet.dart';
+import '../../services/app_services.dart';
 import '../accounts/payment_source_widgets.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
@@ -45,7 +47,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   final List<String> _shoppingItems = [];
   String? _selectedCategoryId;
   String? _selectedPaymentSourceId;
-  bool _saveRule = false;
+  bool _saveRule = true;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -91,8 +93,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         // Never default to the first category (was Food & Dining) — leave unset
         // until the user or LLM picks one.
         _selectedCategoryId = tx.categoryId;
-        _selectedPaymentSourceId =
-            tx.unmatched ? null : tx.paymentSourceId;
+        _selectedPaymentSourceId = tx.paymentSourceId;
         _loading = false;
       });
     } catch (e) {
@@ -119,6 +120,9 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     if (tx == null || categoryId == null) return;
     if (tx.unmatched && _selectedPaymentSourceId == null) return;
 
+    final sourceChanged = _selectedPaymentSourceId != null &&
+        _selectedPaymentSourceId != tx.paymentSourceId;
+
     setState(() => _saving = true);
     try {
       await widget.repository.classify(
@@ -132,7 +136,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
               ? List<String>.from(_shoppingItems)
               : const [],
           saveMerchantRule: _saveRule,
-          paymentSourceId: tx.unmatched ? _selectedPaymentSourceId : null,
+          paymentSourceId: sourceChanged ? _selectedPaymentSourceId : null,
         ),
       );
       if (!mounted) return;
@@ -240,40 +244,50 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             ),
           ),
         ),
-        if (tx.unmatched) ...[
-          const SizedBox(height: AppSpacing.section),
-          AppSectionHeader(
-            title: 'Account',
-            subtitle: 'Which bank or card was this charge on?',
+        const SizedBox(height: AppSpacing.tight),
+        OutlinedButton.icon(
+          onPressed: () => showOriginalIngestSheet(
+            context,
+            localDatabase: AppScope.of(context).localDatabase,
+            rawIngestId: tx.rawIngestId,
           ),
-          if (_paymentSources.isEmpty)
-            Text(
-              'Add a bank or card in Accounts first.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-            )
-          else
-            DropdownButtonFormField<String?>(
-              key: ValueKey(_selectedPaymentSourceId),
-              initialValue: _selectedPaymentSourceId,
-              decoration: const InputDecoration(labelText: 'Payment source'),
-              hint: const Text('Choose an account'),
-              items: _paymentSources
-                  .map(
-                    (s) => DropdownMenuItem(
-                      value: s.id,
-                      child: Text(
-                        s.last4 != null
-                            ? '${s.name} ···· ${s.last4}'
-                            : s.name,
-                      ),
+          icon: const Icon(Icons.sms_outlined),
+          label: const Text('View original message'),
+        ),
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(
+          title: 'Account',
+          subtitle: tx.unmatched
+              ? 'Which bank or card was this charge on?'
+              : 'Change if the wrong bank or card was matched',
+        ),
+        if (_paymentSources.isEmpty)
+          Text(
+            'Add a bank or card in Accounts first.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+          )
+        else
+          DropdownButtonFormField<String?>(
+            key: ValueKey(_selectedPaymentSourceId),
+            initialValue: _selectedPaymentSourceId,
+            decoration: const InputDecoration(labelText: 'Payment source'),
+            hint: const Text('Choose an account'),
+            items: _paymentSources
+                .map(
+                  (s) => DropdownMenuItem(
+                    value: s.id,
+                    child: Text(
+                      s.last4 != null
+                          ? '${s.name} ···· ${s.last4}'
+                          : s.name,
                     ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _selectedPaymentSourceId = v),
-            ),
-        ],
+                  ),
+                )
+                .toList(),
+            onChanged: (v) => setState(() => _selectedPaymentSourceId = v),
+          ),
         const SizedBox(height: AppSpacing.section),
         AppSectionHeader(title: 'Category'),
         DropdownButtonFormField<String?>(

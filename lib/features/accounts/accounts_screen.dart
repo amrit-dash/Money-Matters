@@ -84,6 +84,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
         message = 'Saved — ${bits.join(', ')}';
       } else if (backlog?.classifyNeedsConfig == true) {
         message = 'Saved — LLM needs GEMINI_API_KEY (see USER-FIX.md)';
+      } else if (backlog?.classifyError != null) {
+        message = 'Saved — LLM classify error (see Profile)';
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),

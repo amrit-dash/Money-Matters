@@ -5,9 +5,12 @@ import 'package:money_matters/models/transaction.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/original_ingest_sheet.dart';
+import '../../core/widgets/payment_source_picker_sheet.dart';
 import '../../services/app_services.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
+import '../accounts/payment_source_widgets.dart';
 import '../review/classify_screen.dart';
 import '../review/review_repository.dart';
 
@@ -61,6 +64,49 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       final match = matches.first;
       setState(() => _resolvedPaymentSourceName = match.name);
     } catch (_) {}
+  }
+
+  Future<void> _changePaymentSource() async {
+    final id = _tx.id;
+    if (id == null) return;
+
+    final sources = visiblePaymentSources(
+      await widget.paymentSourceService.loadAll(),
+    );
+    if (!mounted) return;
+
+    final picked = await showPaymentSourcePickerSheet(
+      context,
+      sources: sources,
+      selectedId: _tx.paymentSourceId,
+      title: 'Change payment source',
+    );
+    if (picked == null || picked.id == _tx.paymentSourceId || !mounted) return;
+
+    await widget.reviewRepository.updatePaymentSource(
+      transactionId: id,
+      paymentSourceId: picked.id,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _tx = _tx.copyWith(
+        paymentSourceId: picked.id,
+        unmatched: false,
+      );
+      _resolvedPaymentSourceName = picked.name;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Linked to ${picked.name}')),
+    );
+  }
+
+  Future<void> _viewOriginalMessage() async {
+    await showOriginalIngestSheet(
+      context,
+      localDatabase: AppScope.of(context).localDatabase,
+      rawIngestId: _tx.rawIngestId,
+    );
   }
 
   Future<void> _reclassify() async {
@@ -244,6 +290,18 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.section),
+          OutlinedButton.icon(
+            onPressed: _viewOriginalMessage,
+            icon: const Icon(Icons.sms_outlined),
+            label: const Text('View original message'),
+          ),
+          const SizedBox(height: AppSpacing.tight),
+          OutlinedButton.icon(
+            onPressed: _changePaymentSource,
+            icon: const Icon(Icons.account_balance_outlined),
+            label: const Text('Change payment source'),
+          ),
+          const SizedBox(height: AppSpacing.tight),
           FilledButton.icon(
             onPressed: _reclassify,
             icon: const Icon(Icons.edit_outlined),
