@@ -60,6 +60,20 @@ class ParsePipelineResult {
   }
 }
 
+class _ClassifyOutcome {
+  const _ClassifyOutcome({
+    required this.transaction,
+    this.needsConfig = false,
+    this.error,
+    this.applied = false,
+  });
+
+  final Transaction transaction;
+  final bool needsConfig;
+  final String? error;
+  final bool applied;
+}
+
 /// Drains local SQLite queue: parse → persist → mark processed (Coordinator-owned).
 class IngestParsePipeline {
   IngestParsePipeline({
@@ -114,6 +128,8 @@ class IngestParsePipeline {
     var transactionsCreated = 0;
     var skipped = 0;
     var failed = 0;
+    var classifyNeedsConfig = false;
+    String? classifyError;
 
     for (final row in rows) {
       final ingest = _rawIngestFromRow(row);
@@ -133,13 +149,16 @@ class IngestParsePipeline {
             sources,
             instrumentLast4: outcome.result.candidate?.instrumentLast4,
           );
-          tx = await _maybeClassify(
+          final classifyOutcome = await _maybeClassify(
             tx,
             body: ingest.body,
             sender: ingest.sender,
             categories: cats,
             sources: sources,
           );
+          tx = classifyOutcome.transaction;
+          if (classifyOutcome.needsConfig) classifyNeedsConfig = true;
+          classifyError ??= classifyOutcome.error;
           await _persistTransaction(tx);
           transactionsCreated++;
         } else {
@@ -159,6 +178,7 @@ class IngestParsePipeline {
     }
 
     final rematched = await _rematchUnmatchedTransactions(sources);
+    final categoryMatched = await _reapplyLearnedCategoryRules(cats);
     final backlog = await _reclassifyPendingTransactions(sources, cats);
 
     return ParsePipelineResult(
@@ -167,9 +187,9 @@ class IngestParsePipeline {
       skipped: skipped,
       failed: failed,
       rematched: rematched,
-      reclassified: backlog.reclassified,
-      classifyNeedsConfig: backlog.classifyNeedsConfig,
-      classifyError: backlog.classifyError,
+      reclassified: categoryMatched + backlog.reclassified,
+      classifyNeedsConfig: classifyNeedsConfig || backlog.classifyNeedsConfig,
+      classifyError: backlog.classifyError ?? classifyError,
     );
   }
 
@@ -194,6 +214,7 @@ class IngestParsePipeline {
     final cats = categories ?? await _categoryService.loadCategories();
 
     final rematched = await _rematchUnmatchedTransactions(sources);
+    final categoryMatched = await _reapplyLearnedCategoryRules(cats);
     final backlog = await _reclassifyPendingTransactions(sources, cats);
     return ParsePipelineResult(
       processed: 0,
@@ -201,7 +222,7 @@ class IngestParsePipeline {
       skipped: 0,
       failed: 0,
       rematched: rematched,
-      reclassified: backlog.reclassified,
+      reclassified: categoryMatched + backlog.reclassified,
       classifyNeedsConfig: backlog.classifyNeedsConfig,
       classifyError: backlog.classifyError,
     );
@@ -223,6 +244,7 @@ class IngestParsePipeline {
       sender: ingest.sender,
       body: ingest.body,
       instrumentLast4: last4,
+      merchant: tx.merchant,
       sources: sources,
     );
     if (rulesMatch == null) return tx;
@@ -256,6 +278,7 @@ class IngestParsePipeline {
         sender: sender,
         body: body,
         instrumentLast4: last4,
+        merchant: tx.merchant,
         sources: sources,
       );
       if (matchId == null || tx.id == null) continue;
@@ -276,6 +299,58 @@ class IngestParsePipeline {
       debugPrint('IngestParsePipeline: rematched $rematched transaction(s)');
     }
     return rematched;
+  }
+
+  /// Applies user-taught merchant rules to backlog rows still awaiting category.
+  Future<int> _reapplyLearnedCategoryRules(List<Category> categories) async {
+    if (!_authService.isSignedIn) return 0;
+
+    final rows = await _localDatabase.getFlaggedTransactions();
+    final uid = _authService.requireUid();
+    var matched = 0;
+
+    for (final row in rows) {
+      final tx = Transaction.fromSqlite(row);
+      if (tx.classifiedBy == ClassifiedBy.user) continue;
+      if (!tx.needsClassification && !tx.ambiguous) continue;
+      if (tx.merchant == null || tx.merchant!.isEmpty) continue;
+
+      String? categoryId;
+      for (final category in categories) {
+        if (category.matchMerchant(tx.merchant) != null) {
+          categoryId = category.id;
+          break;
+        }
+      }
+      if (categoryId == null || tx.id == null) continue;
+
+      final updated = tx.copyWith(
+        categoryId: categoryId,
+        needsClassification: false,
+        ambiguous: false,
+        classifiedBy: ClassifiedBy.rules,
+      );
+      await _persistTransaction(updated);
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection(_transactionsCollection)
+          .doc(tx.id)
+          .set({
+        'categoryId': categoryId,
+        'needsClassification': false,
+        'ambiguous': false,
+        'classifiedBy': ClassifiedBy.rules.name,
+      }, SetOptions(merge: true));
+      matched++;
+    }
+
+    if (matched > 0) {
+      debugPrint(
+        'IngestParsePipeline: category rules matched $matched transaction(s)',
+      );
+    }
+    return matched;
   }
 
   /// Re-runs LLM classify on backlog rows still in Review (e.g. after Gemini
@@ -314,7 +389,7 @@ class IngestParsePipeline {
 
       final body = ingestRow['body'] as String? ?? '';
       final sender = ingestRow['sender'] as String? ?? '';
-      final updated = await _maybeClassify(
+      final classifyOutcome = await _maybeClassify(
         tx,
         body: body,
         sender: sender,
@@ -322,14 +397,13 @@ class IngestParsePipeline {
         sources: sources,
       );
 
-      if (updated == tx) {
-        final diag = ClassifierDiagnostics.lastNeedsConfig;
-        if (diag) classifyNeedsConfig = true;
-        classifyError ??= ClassifierDiagnostics.lastError;
+      if (!classifyOutcome.applied) {
+        if (classifyOutcome.needsConfig) classifyNeedsConfig = true;
+        classifyError ??= classifyOutcome.error;
         continue;
       }
 
-      await _persistTransaction(updated);
+      await _persistTransaction(classifyOutcome.transaction);
       reclassified++;
     }
 
@@ -361,7 +435,7 @@ class IngestParsePipeline {
   /// backend returns `needsConfig: true` (no `GEMINI_API_KEY` secret), the
   /// transaction stays in the in-app Review inbox — redeploy after setting the
   /// secret: `firebase functions:secrets:set GEMINI_API_KEY`.
-  Future<Transaction> _maybeClassify(
+  Future<_ClassifyOutcome> _maybeClassify(
     Transaction tx, {
     required String body,
     required String sender,
@@ -372,7 +446,9 @@ class IngestParsePipeline {
     final needsCategory = tx.needsClassification || tx.ambiguous;
     final needsSource =
         LocalDashboardRepository.isUnmatched(tx, knownIds) && sources.isNotEmpty;
-    if (!needsCategory && !needsSource) return tx;
+    if (!needsCategory && !needsSource) {
+      return _ClassifyOutcome(transaction: tx);
+    }
 
     final result = await _classifier.classify(
       transaction: tx,
@@ -381,22 +457,38 @@ class IngestParsePipeline {
       categoryIds: categories.map((c) => c.id).toList(),
       paymentSources: sources,
     );
-    if (result == null) return tx;
+    if (result == null) {
+      return _ClassifyOutcome(transaction: tx);
+    }
     if (result.errorMessage != null) {
       debugPrint(
         'IngestParsePipeline: classify failed for ${tx.id}: ${result.errorMessage}',
       );
-      return tx;
+      ClassifierDiagnostics.recordAttempt(error: result.errorMessage);
+      return _ClassifyOutcome(
+        transaction: tx,
+        error: result.errorMessage,
+      );
     }
-    if (result.needsConfig) return tx;
+    if (result.needsConfig) {
+      ClassifierDiagnostics.recordAttempt(
+        needsConfig: true,
+        error: 'GEMINI_API_KEY not set on Cloud Functions',
+      );
+      return _ClassifyOutcome(transaction: tx, needsConfig: true);
+    }
 
-    return _applyClassificationResult(
+    final updated = _applyClassificationResult(
       tx,
       result,
       categories: categories,
       knownSourceIds: knownIds,
       needsCategory: needsCategory,
       needsSource: needsSource,
+    );
+    return _ClassifyOutcome(
+      transaction: updated,
+      applied: updated != tx,
     );
   }
 

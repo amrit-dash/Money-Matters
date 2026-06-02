@@ -99,7 +99,11 @@ class IngestQueueDrain {
 
     if (result.totalSynced > 0 ||
         (parseResult?.processed ?? 0) > 0 ||
-        (parseResult?.failed ?? 0) > 0) {
+        (parseResult?.failed ?? 0) > 0 ||
+        (parseResult?.rematched ?? 0) > 0 ||
+        (parseResult?.reclassified ?? 0) > 0 ||
+        parseResult?.classifyNeedsConfig == true ||
+        parseResult?.classifyError != null) {
       _drainEvents.add(result);
     }
     return result;
