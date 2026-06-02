@@ -5,7 +5,8 @@ import 'app_router.dart';
 import 'core/auth/auth_service.dart';
 import 'core/config/firebase_options.dart';
 import 'core/db/local_database.dart';
-import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
+import 'core/theme/theme_scope.dart';
 import 'features/setup/firebase_setup_screen.dart';
 import 'ingest/ingest_queue_drain.dart';
 import 'ingest/ingest_repository.dart';
@@ -60,15 +61,21 @@ Future<void> main() async {
     categoryService: categoryService,
     transactionClassifier: CloudFunctionsClassifier(),
   );
+  final themeController = ThemeController();
+  await themeController.load();
 
   runApp(
     AppScope(
       services: appServices,
-      child: MoneyMattersApp(
-        authService: authService,
-        queueDrain: queueDrain,
-        urlIngestHandler: urlIngestHandler,
-        fcmService: fcmService,
+      child: ThemeScope(
+        notifier: themeController,
+        child: MoneyMattersApp(
+          authService: authService,
+          queueDrain: queueDrain,
+          urlIngestHandler: urlIngestHandler,
+          fcmService: fcmService,
+          themeController: themeController,
+        ),
       ),
     ),
   );
@@ -81,12 +88,14 @@ class MoneyMattersApp extends StatefulWidget {
     required this.queueDrain,
     required this.urlIngestHandler,
     required this.fcmService,
+    required this.themeController,
   });
 
   final AuthService authService;
   final IngestQueueDrain queueDrain;
   final UrlIngestHandler urlIngestHandler;
   final FcmService fcmService;
+  final ThemeController themeController;
 
   @override
   State<MoneyMattersApp> createState() => _MoneyMattersAppState();
@@ -145,12 +154,19 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
     final initialRoute =
         _isSignedIn ? AppRoutes.dashboard : AppRoutes.onboarding;
 
-    return MaterialApp(
-      navigatorKey: _navigatorKey,
-      title: 'Money Matters',
-      theme: buildAppTheme(),
-      initialRoute: initialRoute,
-      onGenerateRoute: AppRouter.onGenerateRoute,
+    return ListenableBuilder(
+      listenable: widget.themeController,
+      builder: (context, _) {
+        return MaterialApp(
+          navigatorKey: _navigatorKey,
+          title: 'Money Matters',
+          theme: widget.themeController.lightTheme,
+          darkTheme: widget.themeController.darkTheme,
+          themeMode: widget.themeController.themeMode,
+          initialRoute: initialRoute,
+          onGenerateRoute: AppRouter.onGenerateRoute,
+        );
+      },
     );
   }
 }

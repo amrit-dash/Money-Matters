@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'features/accounts/accounts_screen.dart';
-import 'features/dashboard/dashboard_screen.dart';
+import 'core/widgets/app_shell.dart';
 import 'features/onboarding/connect_sms_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/profile/profile_screen.dart';
@@ -62,13 +62,15 @@ class AppRouter {
           settings: settings,
           builder: (ctx) {
             final services = AppScope.of(ctx);
-            return DashboardScreen(
-              repository: services.dashboardRepository,
+            return AppShell(
+              dashboardRepository: services.dashboardRepository,
               reviewRepository: services.reviewRepository,
               categoryService: services.categoryService,
               paymentSourceService: services.paymentSourceService,
               recoveryRepository: services.recoveryRepository,
               queueDrain: services.queueDrain,
+              authService: services.authService,
+              userDataDeletionService: services.userDataDeletionService,
             );
           },
         );
