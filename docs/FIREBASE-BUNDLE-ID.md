@@ -5,10 +5,13 @@
 
 Configured in repo:
 
-- `ios/Runner/GoogleService-Info.plist`
-- `lib/core/config/firebase_options.dart`
 - `ios/Runner/Info.plist` (Google Sign-In URL scheme)
 - GitHub secret `GOOGLE_SERVICE_INFO_PLIST_BASE64`
+
+Generated locally (gitignored — do not commit):
+
+- `ios/Runner/GoogleService-Info.plist`
+- `lib/core/config/firebase_options.dart` (see `lib/core/config/firebase_options.example.dart`)
 
 ## Remove old iOS app (manual — MCP/CLI cannot delete)
 

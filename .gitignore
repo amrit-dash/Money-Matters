@@ -51,3 +51,4 @@ firebase/functions/lib/
 # Local secrets / Firebase iOS config (user-supplied)
 .env
 ios/Runner/GoogleService-Info.plist
+lib/core/config/firebase_options.dart

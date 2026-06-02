@@ -53,12 +53,18 @@ if [[ -f lib/core/config/firebase_options.dart ]]; then
   if grep -q 'isConfigured = false' lib/core/config/firebase_options.dart; then
     fail "firebase_options.dart is placeholder — run flutterfire configure"
   elif grep -q 'isConfigured = true' lib/core/config/firebase_options.dart; then
-    ok "firebase_options.dart configured"
+    ok "firebase_options.dart configured (local, gitignored)"
   else
     warn "firebase_options.dart exists but isConfigured flag unclear"
   fi
 else
-  fail "Missing lib/core/config/firebase_options.dart"
+  fail "Missing lib/core/config/firebase_options.dart — run flutterfire configure (see docs/SETUP-IPHONE.md)"
+fi
+
+if [[ -f lib/core/config/firebase_options.example.dart ]]; then
+  ok "firebase_options.example.dart template present"
+else
+  warn "Missing firebase_options.example.dart template"
 fi
 
 echo ""

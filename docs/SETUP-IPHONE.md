@@ -126,7 +126,14 @@ flutterfire configure \
   --yes
 ```
 
-This replaces the placeholder [`lib/core/config/firebase_options.dart`](../lib/core/config/firebase_options.dart) and sets `isConfigured = true`.
+This writes `lib/core/config/firebase_options.dart` (gitignored — never commit) and sets `isConfigured = true`.
+
+If you prefer a manual start, copy the template:
+
+```bash
+cp lib/core/config/firebase_options.example.dart lib/core/config/firebase_options.dart
+# Edit placeholders, then set isConfigured = true
+```
 
 Then:
 
