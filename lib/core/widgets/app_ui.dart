@@ -460,6 +460,7 @@ class HeroSpendCard extends StatelessWidget {
     this.secondaryLabel,
     this.secondaryAmount,
     this.additionalMetrics = const [],
+    this.metricsRow = const [],
     this.icon = Icons.account_balance_wallet_outlined,
   });
 
@@ -468,6 +469,9 @@ class HeroSpendCard extends StatelessWidget {
   final String? secondaryLabel;
   final String? secondaryAmount;
   final List<HeroSpendMetric> additionalMetrics;
+
+  /// Shown as side-by-side columns (e.g. Income | Net on monthly analytics).
+  final List<HeroSpendMetric> metricsRow;
   final IconData icon;
 
   @override
@@ -502,18 +506,21 @@ class HeroSpendCard extends StatelessWidget {
               height: 1.1,
             ),
           ),
-          ..._buildMetricRows(
-            theme,
-            scheme,
-            [
-              if (secondaryLabel != null && secondaryAmount != null)
-                HeroSpendMetric(
-                  label: secondaryLabel!,
-                  amount: secondaryAmount!,
-                ),
-              ...additionalMetrics,
-            ],
-          ),
+          if (metricsRow.isNotEmpty)
+            ..._buildMetricsRow(theme, scheme, metricsRow)
+          else
+            ..._buildMetricRows(
+              theme,
+              scheme,
+              [
+                if (secondaryLabel != null && secondaryAmount != null)
+                  HeroSpendMetric(
+                    label: secondaryLabel!,
+                    amount: secondaryAmount!,
+                  ),
+                ...additionalMetrics,
+              ],
+            ),
         ],
       ),
     );
@@ -542,6 +549,43 @@ class HeroSpendCard extends StatelessWidget {
         Text(metric.amount, style: amountStyle),
         if (metric != metrics.last) const SizedBox(height: AppSpacing.tight),
       ],
+    ];
+  }
+
+  static List<Widget> _buildMetricsRow(
+    ThemeData theme,
+    ColorScheme scheme,
+    List<HeroSpendMetric> metrics,
+  ) {
+    if (metrics.isEmpty) return const [];
+
+    final labelStyle = theme.textTheme.labelMedium?.copyWith(
+      color: scheme.onPrimaryContainer.withValues(alpha: 0.75),
+    );
+    final amountStyle = theme.textTheme.titleMedium?.copyWith(
+      color: scheme.onPrimaryContainer.withValues(alpha: 0.9),
+      fontWeight: FontWeight.w600,
+    );
+
+    return [
+      const SizedBox(height: AppSpacing.item),
+      Row(
+        children: [
+          for (var i = 0; i < metrics.length; i++) ...[
+            if (i > 0) const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(metrics[i].label, style: labelStyle),
+                  const SizedBox(height: 2),
+                  Text(metrics[i].amount, style: amountStyle),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     ];
   }
 }

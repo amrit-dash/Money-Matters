@@ -188,9 +188,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget _buildBody(BuildContext context, PeriodSummary summary) {
     final shell = widget.embeddedInShell;
     final isCurrentPeriod = _isCurrentPeriodFor(summary);
-    final showIncomeOrNet =
-        summary.totalIncome > 0 || summary.net != 0;
-    final saved = summary.net;
+    final isMonthly = _mode == _PeriodMode.monthly;
+    final saved = periodSavedAmount(summary);
+    final showCreditsChart = isMonthly && summary.totalIncome > 0;
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.page),
@@ -217,6 +217,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             _loadAuxiliarySummaries();
           },
         ),
+        if (_hasPriorComparisonData) ...[
+          const SizedBox(height: AppSpacing.item),
+          PeriodComparisonCard(
+            currentSpend: summary.totalSpend,
+            priorSpend: _priorSummary!.totalSpend,
+            priorLabel: _priorPeriodLabel,
+          ),
+        ],
         const SizedBox(height: AppSpacing.item),
         _PeriodNavigator(
           label: summary.label,
@@ -238,12 +246,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           HeroSpendCard(
             label: 'Total spend',
             amount: _currency.format(summary.totalSpend),
-            secondaryLabel: showIncomeOrNet ? 'Income' : null,
-            secondaryAmount: showIncomeOrNet
-                ? _currency.format(summary.totalIncome)
-                : null,
-            additionalMetrics: showIncomeOrNet
+            metricsRow: isMonthly
                 ? [
+                    HeroSpendMetric(
+                      label: 'Income',
+                      amount: _currency.format(summary.totalIncome),
+                    ),
                     HeroSpendMetric(
                       label: 'Net',
                       amount: _currency.format(summary.net),
@@ -252,7 +260,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 : const [],
             icon: Icons.insights_outlined,
           ),
-          if (showIncomeOrNet) ...[
+          if (summary.breakdown.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.item),
+            CategorySpendPieChart(
+              breakdown: summary.breakdown,
+              totalSpend: summary.totalSpend,
+            ),
+          ],
+          if (showCreditsChart) ...[
             const SizedBox(height: AppSpacing.item),
             CreditsSpendSavedChart(
               totalIncome: summary.totalIncome,
@@ -260,29 +275,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               saved: saved,
             ),
           ],
+          if (isMonthly && _monthlyTrend.length >= 2) ...[
+            const SizedBox(height: AppSpacing.item),
+            MonthlyTrendLineChart(summaries: _monthlyTrend),
+          ],
           if (summary.breakdown.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.item),
             CategorySpendBarChart(
               breakdown: summary.breakdown,
               totalSpend: summary.totalSpend,
               maxBars: 10,
-            ),
-            const SizedBox(height: AppSpacing.item),
-            CategorySpendPieChart(
-              breakdown: summary.breakdown,
-              totalSpend: summary.totalSpend,
-            ),
-          ],
-          if (_mode == _PeriodMode.monthly && _monthlyTrend.length >= 2) ...[
-            const SizedBox(height: AppSpacing.item),
-            MonthlyTrendLineChart(summaries: _monthlyTrend),
-          ],
-          if (_hasPriorComparisonData) ...[
-            const SizedBox(height: AppSpacing.section),
-            PeriodComparisonCard(
-              currentSpend: summary.totalSpend,
-              priorSpend: _priorSummary!.totalSpend,
-              priorLabel: _priorPeriodLabel,
             ),
           ],
           if (summary.sources.isNotEmpty || summary.unmatchedCount > 0) ...[

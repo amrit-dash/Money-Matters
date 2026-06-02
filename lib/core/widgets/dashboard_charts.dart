@@ -126,7 +126,7 @@ class CreditsSpendSavedChart extends StatelessWidget {
 
     final scheme = Theme.of(context).colorScheme;
     final currency = NumberFormat.compactCurrency(locale: 'en_IN', symbol: '₹');
-    final maxVal = [totalIncome, totalSpend, saved.abs()]
+    final maxVal = [totalIncome, totalSpend, saved]
         .fold(0.0, (a, b) => a > b ? a : b);
 
     Widget bar(String label, double value, Color color) {
@@ -188,11 +188,7 @@ class CreditsSpendSavedChart extends StatelessWidget {
                 children: [
                   bar('Credits', totalIncome, scheme.primary),
                   bar('Spend', totalSpend, scheme.error),
-                  bar(
-                    'Saved',
-                    saved,
-                    saved >= 0 ? scheme.tertiary : scheme.errorContainer,
-                  ),
+                  bar('Saved', saved, scheme.tertiary),
                 ],
               ),
             ),
@@ -403,7 +399,16 @@ class MonthlyTrendLineChart extends StatelessWidget {
                     ),
                     _LineSeries(
                       color: scheme.tertiary,
-                      values: summaries.map((s) => s.net).toList(),
+                      values: summaries
+                          .map(
+                            (s) => s.totalIncome <= 0
+                                ? 0.0
+                                : math.max(
+                                    0.0,
+                                    s.totalIncome - s.totalSpend,
+                                  ),
+                          )
+                          .toList(),
                     ),
                   ],
                   labels: labels,
