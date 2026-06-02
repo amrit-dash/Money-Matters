@@ -13,6 +13,7 @@ import '../recovery/recovery_repository.dart';
 import '../review/review_repository.dart';
 import '../../services/payment_source_service.dart';
 import 'dashboard_repository.dart';
+import 'category_detail_screen.dart';
 import 'source_detail_screen.dart';
 
 enum _PeriodMode { weekly, monthly }
@@ -124,6 +125,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final last4 = source.last4;
     final suffix = last4 != null ? ' ···· $last4' : '';
     return '$type$suffix · ${row.transactionCount} transactions';
+  }
+
+  Future<void> _openCategory(String categoryId, String title) async {
+    final summary = _summary;
+    if (summary == null) return;
+    if (!mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CategoryDetailScreen(
+          dashboardRepository: widget.repository,
+          reviewRepository: widget.reviewRepository,
+          categoryService: widget.categoryService,
+          paymentSourceService: widget.paymentSourceService,
+          categoryId: categoryId,
+          title: title,
+          periodStart: summary.start,
+          periodEnd: summary.end,
+          periodLabel: summary.label,
+        ),
+      ),
+    );
+    if (mounted) _load();
   }
 
   Future<void> _openSource(String? sourceId, String title) async {
@@ -308,7 +332,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                     ],
                     const SizedBox(height: AppSpacing.section),
-                    AppSectionHeader(title: 'By category'),
+                    AppSectionHeader(
+                      title: 'By category',
+                      subtitle: _summary!.breakdown.isEmpty
+                          ? null
+                          : 'Tap a category to see its transactions',
+                    ),
                     if (_summary!.breakdown.isEmpty)
                       Text(
                         'No categorized spend in this period.',
@@ -323,6 +352,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           amount: _currency.format(row.amount),
                           share: row.shareOf(_summary!.totalSpend),
                           count: row.transactionCount,
+                          onTap: () => _openCategory(
+                            row.category.id,
+                            row.category.name,
+                          ),
                         ),
                       ),
                   ],
@@ -570,55 +603,67 @@ class _CategoryRow extends StatelessWidget {
     required this.amount,
     required this.share,
     required this.count,
+    this.onTap,
   });
 
   final String name;
   final String amount;
   final double share;
   final int count;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.item),
+      padding: const EdgeInsets.only(bottom: AppSpacing.tight),
       child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name,
-                      style: Theme.of(context).textTheme.titleSmall,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
                     ),
-                  ),
-                  Text(
-                    amount,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.tight),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: share.clamp(0, 1),
-                  minHeight: 6,
+                    Text(
+                      amount,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    if (onTap != null) ...[
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right, color: scheme.outline),
+                    ],
+                  ],
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '$count transactions · ${(share * 100).toStringAsFixed(0)}%',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
+                const SizedBox(height: AppSpacing.tight),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: share.clamp(0, 1),
+                    minHeight: 6,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '$count transactions · ${(share * 100).toStringAsFixed(0)}%',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

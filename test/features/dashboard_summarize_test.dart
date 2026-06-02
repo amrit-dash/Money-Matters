@@ -217,5 +217,54 @@ void main() {
       expect(summary.unmatchedCount, unmatched.length);
       expect(summary.unmatchedSpend, unmatched.fold(0.0, (s, t) => s + t.amount));
     });
+
+    test('filterCategoryTransactions matches summarize category buckets', () {
+      final known = sources.map((s) => s.id).toSet();
+      final rows = [
+        tx(id: '1', amount: 100, sourceId: 'card-1', categoryId: 'food'),
+        tx(id: '2', amount: 40, sourceId: 'card-1', categoryId: 'food'),
+        tx(id: '3', amount: 50, sourceId: 'bank-1', categoryId: 'shopping'),
+        tx(id: '4', amount: 25, sourceId: 'card-1'),
+        tx(id: '5', amount: 130, sourceId: 'deleted-card', categoryId: 'food'),
+        tx(
+          id: '6',
+          amount: 500,
+          sourceId: 'bank-1',
+          type: TransactionType.credit,
+          categoryId: 'food',
+        ),
+      ];
+
+      final food = LocalDashboardRepository.filterCategoryTransactions(
+        transactions: rows,
+        categoryId: 'food',
+        knownSourceIds: known,
+      );
+
+      expect(food.map((t) => t.id).toList(), ['1', '2']);
+
+      final uncategorizedTxs =
+          LocalDashboardRepository.filterCategoryTransactions(
+        transactions: rows,
+        categoryId: 'uncategorized',
+        knownSourceIds: known,
+      );
+
+      expect(uncategorizedTxs.map((t) => t.id).toList(), ['4']);
+
+      final summary = LocalDashboardRepository.summarize(
+        label: 'May',
+        start: start,
+        end: end,
+        transactions: rows,
+        sources: sources,
+        categories: categories,
+        uncategorized: uncategorized,
+      );
+
+      final foodBucket = summary.breakdown.firstWhere((b) => b.category.id == 'food');
+      expect(foodBucket.transactionCount, food.length);
+      expect(foodBucket.amount, food.fold(0.0, (s, t) => s + t.amount));
+    });
   });
 }

@@ -75,6 +75,13 @@ abstract class DashboardRepository {
   /// All transactions for a payment source (null = unmatched), newest first.
   Future<List<Transaction>> sourceTransactions(String? paymentSourceId);
 
+  /// Matched debit transactions for one category in [start, end], newest first.
+  Future<List<Transaction>> categoryTransactions({
+    required String categoryId,
+    required DateTime start,
+    required DateTime end,
+  });
+
   /// Resolves a payment source by id (for detail screens).
   Future<PaymentSource?> paymentSourceById(String id);
 

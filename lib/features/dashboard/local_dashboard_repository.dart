@@ -180,6 +180,22 @@ class LocalDashboardRepository implements DashboardRepository {
     );
   }
 
+  /// Filters transactions for a category drill-down in a period window.
+  static List<Transaction> filterCategoryTransactions({
+    required List<Transaction> transactions,
+    required String categoryId,
+    required Set<String> knownSourceIds,
+  }) {
+    return transactions.where((tx) {
+      if (tx.excluded) return false;
+      if (tx.type != TransactionType.debit) return false;
+      if (isUnmatched(tx, knownSourceIds)) return false;
+      final catKey = tx.categoryId ?? 'uncategorized';
+      return catKey == categoryId;
+    }).toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  }
+
   /// Filters transactions for a source drill-down (null = unmatched bucket).
   static List<Transaction> filterSourceTransactions({
     required List<Transaction> transactions,
@@ -195,6 +211,22 @@ class LocalDashboardRepository implements DashboardRepository {
       return !isUnmatched(tx, knownSourceIds) &&
           tx.paymentSourceId == paymentSourceId;
     }).toList();
+  }
+
+  @override
+  Future<List<Transaction>> categoryTransactions({
+    required String categoryId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final sources = await _loadSources();
+    final knownSourceIds = sources.map((s) => s.id).toSet();
+    final rows = await _db.getTransactionsBetween(start, end);
+    return filterCategoryTransactions(
+      transactions: rows.map(Transaction.fromSqlite).toList(),
+      categoryId: categoryId,
+      knownSourceIds: knownSourceIds,
+    );
   }
 
   @override
