@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../parse/llm_parser.dart';
 import '../../services/user_data_deletion_service.dart';
+import 'appearance_settings_section.dart';
 
 /// Lightweight settings hub: accounts, SMS setup, sign out.
 class ProfileScreen extends StatelessWidget {
@@ -14,10 +15,12 @@ class ProfileScreen extends StatelessWidget {
     super.key,
     required this.authService,
     required this.userDataDeletionService,
+    this.embeddedInShell = false,
   });
 
   final AuthService authService;
   final UserDataDeletionService userDataDeletionService;
+  final bool embeddedInShell;
 
   Future<void> _signOut(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -122,62 +125,73 @@ class ProfileScreen extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        automaticallyImplyLeading: !embeddedInShell,
+        title: const Text('Profile'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.page),
         children: [
-          Card(
-            color: scheme.primaryContainer.withValues(alpha: 0.35),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: scheme.primary,
-                    foregroundColor: scheme.onPrimary,
-                    child: Text(
-                      email != null && email.isNotEmpty
-                          ? email[0].toUpperCase()
-                          : '?',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
+          AppCard(
+            heroGradient: true,
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: scheme.primary,
+                  foregroundColor: scheme.onPrimary,
+                  child: Text(
+                    email != null && email.isNotEmpty
+                        ? email[0].toUpperCase()
+                        : '?',
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        email ?? 'Signed in',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: scheme.onPrimaryContainer,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      AppStatusChip(
+                        label: 'Active session',
+                        tone: AppStatTone.success,
+                      ),
+                      if (uid != null) ...[
+                        const SizedBox(height: 8),
                         Text(
-                          email ?? 'Signed in',
-                          style: Theme.of(context).textTheme.titleMedium,
+                          'UID: $uid',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.onPrimaryContainer
+                                    .withValues(alpha: 0.85),
+                              ),
                         ),
-                        const SizedBox(height: 4),
-                        AppStatusChip(
-                          label: 'Active session',
-                          tone: AppStatTone.success,
-                        ),
-                        if (uid != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'UID: $uid',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                        if (projectId != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'Firebase: $projectId',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
                       ],
-                    ),
+                      if (projectId != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Firebase: $projectId',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.onPrimaryContainer
+                                    .withValues(alpha: 0.85),
+                              ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(height: AppSpacing.section),
+          const AppearanceSettingsSection(),
           const SizedBox(height: AppSpacing.section),
           AppSectionHeader(title: 'Auto-classify (Gemini)'),
           _GeminiStatusCard(),
