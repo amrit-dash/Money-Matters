@@ -13,7 +13,7 @@ import '../transactions/transaction_detail_screen.dart';
 import 'dashboard_repository.dart';
 
 /// Lists every transaction for one payment source (or the unmatched bucket).
-class SourceDetailScreen extends StatefulWidget {
+class SourceDetailScreen extends StatelessWidget {
   const SourceDetailScreen({
     super.key,
     required this.dashboardRepository,
@@ -35,102 +35,87 @@ class SourceDetailScreen extends StatefulWidget {
   final String title;
   final PaymentSource? source;
 
-  @override
-  State<SourceDetailScreen> createState() => _SourceDetailScreenState();
-}
+  static final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
+  static final _dateFormat = DateFormat('d MMM, h:mm a');
 
-class _SourceDetailScreenState extends State<SourceDetailScreen> {
-  List<Transaction> _items = [];
-  bool _loading = true;
-
-  final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
-  final _dateFormat = DateFormat('d MMM, h:mm a');
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final items =
-        await widget.dashboardRepository.sourceTransactions(widget.paymentSourceId);
-    if (!mounted) return;
-    setState(() {
-      _items = items;
-      _loading = false;
-    });
-  }
-
-  double get _total => _items
-      .where((t) => t.type == TransactionType.debit)
-      .fold(0.0, (sum, t) => sum + t.amount);
-
-  Future<void> _openTransaction(Transaction tx) async {
-    final changed = await Navigator.push<bool>(
+  Future<void> _openTransaction(BuildContext context, Transaction tx) async {
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TransactionDetailScreen(
           transaction: tx,
-          reviewRepository: widget.reviewRepository,
-          categoryService: widget.categoryService,
-          paymentSourceService: widget.paymentSourceService,
-          paymentSourceName: widget.source?.name,
+          reviewRepository: reviewRepository,
+          categoryService: categoryService,
+          paymentSourceService: paymentSourceService,
+          paymentSourceName: source?.name,
         ),
       ),
     );
-    if (changed == true) _load();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-              ? Center(
-                  child: AppEmptyState(
-                    icon: Icons.receipt_long_outlined,
-                    title: 'No transactions',
-                    message: widget.paymentSourceId == null
-                        ? 'No unmatched transactions right now.'
-                        : 'Nothing recorded for this account yet.',
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(AppSpacing.page),
-                    itemCount: _items.length + 1,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSpacing.tight),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.item),
-                          child: Text(
-                            '${_items.length} transactions · '
-                            '${_currency.format(_total)} spent',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        );
-                      }
-                      final tx = _items[index - 1];
-                      return _TransactionTile(
-                        transaction: tx,
-                        amountLabel: _currency.format(tx.amount),
-                        dateLabel: _dateFormat.format(tx.timestamp),
-                        categoryName: widget.categoryService
-                                .findById(tx.categoryId)
-                                ?.name ??
-                            'Uncategorized',
-                        onTap: () => _openTransaction(tx),
-                      );
-                    },
-                  ),
-                ),
+      appBar: AppBar(title: Text(title)),
+      body: StreamBuilder<List<Transaction>>(
+        stream: dashboardRepository.watchSourceTransactions(paymentSourceId),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final items = snapshot.data!;
+          final total = items
+              .where((t) => t.type == TransactionType.debit)
+              .fold(0.0, (sum, t) => sum + t.amount);
+
+          if (items.isEmpty) {
+            return Center(
+              child: AppEmptyState(
+                icon: Icons.receipt_long_outlined,
+                title: 'No transactions',
+                message: paymentSourceId == null
+                    ? 'No unmatched transactions right now.'
+                    : 'Nothing recorded for this account yet.',
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              await dashboardRepository.sourceTransactions(paymentSourceId);
+            },
+            child: ListView.separated(
+              padding: const EdgeInsets.all(AppSpacing.page),
+              itemCount: items.length + 1,
+              separatorBuilder: (_, _) =>
+                  const SizedBox(height: AppSpacing.tight),
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.item),
+                    child: Text(
+                      '${items.length} transactions · '
+                      '${_currency.format(total)} spent',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  );
+                }
+                final tx = items[index - 1];
+                return _TransactionTile(
+                  transaction: tx,
+                  amountLabel: _currency.format(tx.amount),
+                  dateLabel: _dateFormat.format(tx.timestamp),
+                  categoryName:
+                      categoryService.findById(tx.categoryId)?.name ??
+                          'Uncategorized',
+                  onTap: () => _openTransaction(context, tx),
+                );
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 }

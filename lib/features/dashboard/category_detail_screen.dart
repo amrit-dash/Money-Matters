@@ -8,12 +8,13 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
+import '../accounts/payment_source_widgets.dart';
 import '../review/review_repository.dart';
 import '../transactions/transaction_detail_screen.dart';
 import 'dashboard_repository.dart';
 
 /// Lists matched debit transactions for one category in a dashboard period.
-class CategoryDetailScreen extends StatefulWidget {
+class CategoryDetailScreen extends StatelessWidget {
   const CategoryDetailScreen({
     super.key,
     required this.dashboardRepository,
@@ -38,114 +39,119 @@ class CategoryDetailScreen extends StatefulWidget {
   final DateTime periodEnd;
   final String periodLabel;
 
-  @override
-  State<CategoryDetailScreen> createState() => _CategoryDetailScreenState();
-}
+  static final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
+  static final _dateFormat = DateFormat('d MMM, h:mm a');
 
-class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
-  List<Transaction> _items = [];
-  Map<String, String> _sourceNames = {};
-  bool _loading = true;
-
-  final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
-  final _dateFormat = DateFormat('d MMM, h:mm a');
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final items = await widget.dashboardRepository.categoryTransactions(
-      categoryId: widget.categoryId,
-      start: widget.periodStart,
-      end: widget.periodEnd,
-    );
-    final sources = await widget.paymentSourceService.loadAll();
-    if (!mounted) return;
-    setState(() {
-      _items = items;
-      _sourceNames = {for (final s in sources) s.id: s.name};
-      _loading = false;
-    });
-  }
-
-  double get _total =>
-      _items.fold(0.0, (sum, t) => sum + t.amount);
-
-  String _sourceLabel(Transaction tx) {
-    final id = tx.paymentSourceId;
-    if (id == null) return 'Unknown account';
-    return _sourceNames[id] ?? 'Unknown account';
-  }
-
-  Future<void> _openTransaction(Transaction tx) async {
+  Future<void> _openTransaction(
+    BuildContext context, {
+    required Transaction tx,
+    required Map<String, String> sourceNames,
+  }) async {
     PaymentSource? source;
     final sourceId = tx.paymentSourceId;
     if (sourceId != null) {
-      source = await widget.dashboardRepository.paymentSourceById(sourceId);
+      source = await dashboardRepository.paymentSourceById(sourceId);
     }
-    if (!mounted) return;
-    final changed = await Navigator.push<bool>(
+    if (!context.mounted) return;
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TransactionDetailScreen(
           transaction: tx,
-          reviewRepository: widget.reviewRepository,
-          categoryService: widget.categoryService,
-          paymentSourceService: widget.paymentSourceService,
-          paymentSourceName: source?.name,
+          reviewRepository: reviewRepository,
+          categoryService: categoryService,
+          paymentSourceService: paymentSourceService,
+          paymentSourceName: source?.name ?? sourceNames[sourceId],
         ),
       ),
     );
-    if (changed == true) _load();
+  }
+
+  String _sourceLabel(Transaction tx, Map<String, String> sourceNames) {
+    final id = tx.paymentSourceId;
+    if (id == null) return 'Unknown account';
+    return sourceNames[id] ?? 'Unknown account';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-              ? Center(
+      appBar: AppBar(title: Text(title)),
+      body: StreamBuilder<List<PaymentSource>>(
+        stream: paymentSourceService.watchAll(),
+        builder: (context, sourcesSnapshot) {
+          final sourceNames = {
+            for (final s in visiblePaymentSources(sourcesSnapshot.data ?? const []))
+              s.id: s.name,
+          };
+
+          return StreamBuilder<List<Transaction>>(
+            stream: dashboardRepository.watchCategoryTransactions(
+              categoryId: categoryId,
+              start: periodStart,
+              end: periodEnd,
+            ),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final items = snapshot.data!;
+              final total = items.fold(0.0, (sum, t) => sum + t.amount);
+
+              if (items.isEmpty) {
+                return Center(
                   child: AppEmptyState(
                     icon: Icons.receipt_long_outlined,
                     title: 'No transactions',
                     message:
-                        'No spend in ${widget.title} for ${widget.periodLabel}.',
+                        'No spend in $title for $periodLabel.',
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(AppSpacing.page),
-                    itemCount: _items.length + 1,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSpacing.tight),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return HeroSpendCard(
-                          label: widget.periodLabel,
-                          amount: _currency.format(_total),
-                          secondaryLabel: 'Transactions',
-                          secondaryAmount: '${_items.length}',
-                          icon: Icons.category_outlined,
-                        );
-                      }
-                      final tx = _items[index - 1];
-                      return _CategoryTransactionTile(
-                        transaction: tx,
-                        amountLabel: _currency.format(tx.amount),
-                        dateLabel: _dateFormat.format(tx.timestamp),
-                        accountLabel: _sourceLabel(tx),
-                        onTap: () => _openTransaction(tx),
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async {
+                  await dashboardRepository.categoryTransactions(
+                    categoryId: categoryId,
+                    start: periodStart,
+                    end: periodEnd,
+                  );
+                },
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.page),
+                  itemCount: items.length + 1,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.tight),
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return HeroSpendCard(
+                        label: periodLabel,
+                        amount: _currency.format(total),
+                        secondaryLabel: 'Transactions',
+                        secondaryAmount: '${items.length}',
+                        icon: Icons.category_outlined,
                       );
-                    },
-                  ),
+                    }
+                    final tx = items[index - 1];
+                    return _CategoryTransactionTile(
+                      transaction: tx,
+                      amountLabel: _currency.format(tx.amount),
+                      dateLabel: _dateFormat.format(tx.timestamp),
+                      accountLabel: _sourceLabel(tx, sourceNames),
+                      onTap: () => _openTransaction(
+                        context,
+                        tx: tx,
+                        sourceNames: sourceNames,
+                      ),
+                    );
+                  },
                 ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
