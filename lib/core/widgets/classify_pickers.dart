@@ -6,8 +6,10 @@ import '../../models/payment_source.dart';
 import '../../services/category_service.dart';
 import '../theme/app_theme.dart';
 
+const _paymentSourceCollapseThreshold = 2;
+
 /// Banks and cards in separate sections for the classify flow.
-class PaymentSourceClassifyPicker extends StatelessWidget {
+class PaymentSourceClassifyPicker extends StatefulWidget {
   const PaymentSourceClassifyPicker({
     super.key,
     required this.sources,
@@ -20,10 +22,34 @@ class PaymentSourceClassifyPicker extends StatelessWidget {
   final ValueChanged<String?> onSelected;
 
   @override
+  State<PaymentSourceClassifyPicker> createState() =>
+      _PaymentSourceClassifyPickerState();
+}
+
+class _PaymentSourceClassifyPickerState extends State<PaymentSourceClassifyPicker> {
+  bool _showAll = false;
+
+  @override
+  void didUpdateWidget(PaymentSourceClassifyPicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedId != widget.selectedId &&
+        widget.selectedId != null &&
+        !_showAll) {
+      final visible = visiblePaymentSources(widget.sources);
+      final hiddenSelected = visible.length >
+              _paymentSourceCollapseThreshold &&
+          visible
+              .skip(_paymentSourceCollapseThreshold)
+              .any((s) => s.id == widget.selectedId);
+      if (hiddenSelected) {
+        _showAll = true;
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final visible = visiblePaymentSources(sources);
-    final banks = visible.where((s) => s.type == PaymentSourceType.bank).toList();
-    final cards = visible.where((s) => s.type == PaymentSourceType.card).toList();
+    final visible = visiblePaymentSources(widget.sources);
     final scheme = Theme.of(context).colorScheme;
 
     if (visible.isEmpty) {
@@ -34,6 +60,16 @@ class PaymentSourceClassifyPicker extends StatelessWidget {
             ),
       );
     }
+
+    final canCollapse = visible.length > _paymentSourceCollapseThreshold;
+    final shown = canCollapse && !_showAll
+        ? visible.take(_paymentSourceCollapseThreshold).toList()
+        : visible;
+    final banks =
+        shown.where((s) => s.type == PaymentSourceType.bank).toList();
+    final cards =
+        shown.where((s) => s.type == PaymentSourceType.card).toList();
+    final hiddenCount = visible.length - shown.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -46,8 +82,8 @@ class PaymentSourceClassifyPicker extends StatelessWidget {
           ...banks.map(
             (s) => _SourceTile(
               source: s,
-              selected: s.id == selectedId,
-              onTap: () => onSelected(s.id),
+              selected: s.id == widget.selectedId,
+              onTap: () => widget.onSelected(s.id),
             ),
           ),
         ],
@@ -60,8 +96,22 @@ class PaymentSourceClassifyPicker extends StatelessWidget {
           ...cards.map(
             (s) => _SourceTile(
               source: s,
-              selected: s.id == selectedId,
-              onTap: () => onSelected(s.id),
+              selected: s.id == widget.selectedId,
+              onTap: () => widget.onSelected(s.id),
+            ),
+          ),
+        ],
+        if (canCollapse && !_showAll) ...[
+          const SizedBox(height: AppSpacing.tight),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() => _showAll = true),
+              child: Text(
+                hiddenCount == 1
+                    ? 'Load more (1 more)'
+                    : 'Load more ($hiddenCount more)',
+              ),
             ),
           ),
         ],
@@ -207,6 +257,40 @@ class TravelProviderPicker extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Subcategory chips under a parent category (bills, food, transport, travel).
+class SubcategoryClassifyPicker extends StatelessWidget {
+  const SubcategoryClassifyPicker({
+    super.key,
+    required this.categoryId,
+    required this.selectedSubcategoryId,
+    required this.onSelected,
+  });
+
+  final String categoryId;
+  final String? selectedSubcategoryId;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final subs = CategoryService.subcategoriesFor(categoryId);
+    if (subs.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: subs.map((sub) {
+        final selected = sub.id == selectedSubcategoryId;
+        return FilterChip(
+          label: Text(sub.label),
+          selected: selected,
+          onSelected: (_) => onSelected(selected ? null : sub.id),
+          showCheckmark: true,
+        );
+      }).toList(),
     );
   }
 }

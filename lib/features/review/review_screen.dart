@@ -28,28 +28,8 @@ class ReviewScreen extends StatefulWidget {
 }
 
 class _ReviewScreenState extends State<ReviewScreen> {
-  List<Transaction> _items = [];
-  bool _loading = true;
-
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
   final _dateFormat = DateFormat('d MMM, h:mm a');
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final items = await widget.repository.flaggedTransactions();
-    if (!mounted) return;
-    setState(() {
-      _items = items;
-      _loading = false;
-    });
-    widget.onListChanged?.call();
-  }
 
   Future<void> _openClassify(Transaction tx) async {
     final changed = await Navigator.push<bool>(
@@ -62,7 +42,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
         ),
       ),
     );
-    if (changed == true) _load();
+    if (changed == true) widget.onListChanged?.call();
   }
 
   @override
@@ -72,42 +52,55 @@ class _ReviewScreenState extends State<ReviewScreen> {
         automaticallyImplyLeading: !widget.embeddedInShell,
         title: Text(widget.embeddedInShell ? 'Inbox' : 'Needs your input'),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-              ? AppEmptyState(
-                  icon: Icons.check_circle_outline,
-                  title: 'All clear',
-                  message:
-                      'Nothing needs you right now. When we are unsure about a '
-                      'category or account, it will show up here for a quick tap.',
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(AppSpacing.page),
-                    itemCount: _items.length + 1,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: AppSpacing.tight),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return AppSectionHeader(
-                          title: 'To classify (${_items.length})',
-                          subtitle:
-                              'Tap a row to pick a category, notes, or items',
-                          icon: Icons.label_outline,
-                        );
-                      }
-                      final tx = _items[index - 1];
-                      return _FlaggedTile(
-                        transaction: tx,
-                        amountLabel: _currency.format(tx.amount),
-                        dateLabel: _dateFormat.format(tx.timestamp),
-                        onTap: () => _openClassify(tx),
-                      );
-                    },
-                  ),
-                ),
+      body: StreamBuilder<List<Transaction>>(
+        stream: widget.repository.watchFlaggedTransactions(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final items = snapshot.data!;
+
+          if (items.isEmpty) {
+            return AppEmptyState(
+              icon: Icons.check_circle_outline,
+              title: 'All clear',
+              message:
+                  'Nothing needs you right now. When we are unsure about a '
+                  'category or account, it will show up here for a quick tap.',
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              await widget.repository.flaggedTransactions();
+            },
+            child: ListView.separated(
+              padding: const EdgeInsets.all(AppSpacing.page),
+              itemCount: items.length + 1,
+              separatorBuilder: (context, index) =>
+                  const SizedBox(height: AppSpacing.tight),
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return AppSectionHeader(
+                    title: 'To classify (${items.length})',
+                    subtitle:
+                        'Tap a row to pick a category, notes, or items',
+                    icon: Icons.label_outline,
+                  );
+                }
+                final tx = items[index - 1];
+                return _FlaggedTile(
+                  transaction: tx,
+                  amountLabel: _currency.format(tx.amount),
+                  dateLabel: _dateFormat.format(tx.timestamp),
+                  onTap: () => _openClassify(tx),
+                );
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 }
