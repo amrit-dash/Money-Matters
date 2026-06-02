@@ -41,6 +41,7 @@ export interface ClassifyResult {
   paymentSourceConfidence: number | null;
   userNotes: string | null;
   shoppingItems: string[];
+  travelProvider: string | null;
 }
 
 function fallback(needsConfig: boolean): ClassifyResult {
@@ -54,6 +55,7 @@ function fallback(needsConfig: boolean): ClassifyResult {
     paymentSourceConfidence: null,
     userNotes: null,
     shoppingItems: [],
+    travelProvider: null,
   };
 }
 
@@ -103,6 +105,8 @@ function buildPrompt(data: ClassifyRequest): string {
     "  from the SMS (e.g. 'Uber ride to airport'); null if unclear.",
     "- shoppingItems: array of item names only for obvious grocery/shopping SMS;",
     "  empty array otherwise.",
+    "- travelProvider: ride/travel app when clear from SMS (Uber, Ola, Rapido, etc.);",
+    "  null if unclear or not a ride/travel spend.",
   ].join("\n");
 }
 
@@ -120,6 +124,7 @@ const RESPONSE_SCHEMA = {
       type: "ARRAY",
       items: {type: "STRING"},
     },
+    travelProvider: {type: "STRING", nullable: true},
   },
   required: ["needsUserInput"],
 };
@@ -196,6 +201,10 @@ async function callGemini(
       .filter((item) => item.length > 0);
   }
 
+  const rawTravel =
+    typeof parsed.travelProvider === "string" ? parsed.travelProvider.trim() : "";
+  const travelProvider = rawTravel.length > 0 ? rawTravel : null;
+
   return {
     categoryId,
     merchantNormalized:
@@ -210,6 +219,7 @@ async function callGemini(
     paymentSourceConfidence,
     userNotes,
     shoppingItems,
+    travelProvider,
   };
 }
 

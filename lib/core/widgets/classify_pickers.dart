@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../features/accounts/payment_source_widgets.dart';
 import '../../models/category.dart';
 import '../../models/payment_source.dart';
+import '../../services/category_service.dart';
 import '../theme/app_theme.dart';
 
 /// Banks and cards in separate sections for the classify flow.
@@ -148,6 +149,64 @@ class _SourceTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Preset + custom ride/travel provider chips for classify / reclassify.
+class TravelProviderPicker extends StatelessWidget {
+  const TravelProviderPicker({
+    super.key,
+    required this.selectedProvider,
+    required this.customMode,
+    required this.customController,
+    required this.onPresetSelected,
+    required this.onCustomMode,
+  });
+
+  final String? selectedProvider;
+  final bool customMode;
+  final TextEditingController customController;
+  final ValueChanged<String?> onPresetSelected;
+  final VoidCallback onCustomMode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ...CategoryService.defaultTravelProviders.map((provider) {
+              final selected = !customMode && selectedProvider == provider;
+              return FilterChip(
+                label: Text(provider),
+                selected: selected,
+                onSelected: (_) => onPresetSelected(provider),
+                showCheckmark: true,
+              );
+            }),
+            FilterChip(
+              label: const Text('Custom'),
+              selected: customMode,
+              onSelected: (_) => onCustomMode(),
+              showCheckmark: true,
+            ),
+          ],
+        ),
+        if (customMode) ...[
+          const SizedBox(height: AppSpacing.tight),
+          TextField(
+            controller: customController,
+            decoration: const InputDecoration(
+              hintText: 'e.g. Namma Yatri, BluSmart',
+            ),
+            textCapitalization: TextCapitalization.words,
+          ),
+        ],
+      ],
     );
   }
 }

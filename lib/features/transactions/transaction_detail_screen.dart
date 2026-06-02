@@ -308,6 +308,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               label: 'Shopping list',
               value: _tx.shoppingItems.join(', '),
             ),
+          if (_tx.travelProvider != null && _tx.travelProvider!.isNotEmpty)
+            _DetailRow(label: 'Travel provider', value: _tx.travelProvider!),
           _DetailRow(label: 'Currency', value: _tx.currency),
           const SizedBox(height: AppSpacing.item),
           Wrap(

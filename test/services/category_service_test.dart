@@ -119,4 +119,66 @@ void main() {
       );
     });
   });
+
+  group('CategoryService.showTravelProvider', () {
+    Transaction tx({
+      String? categoryId,
+      String? paymentSourceId,
+      bool unmatched = false,
+    }) {
+      return Transaction(
+        id: 't1',
+        rawIngestId: 'r1',
+        amount: 100,
+        timestamp: DateTime.parse('2026-05-29T00:00:00+05:30'),
+        type: TransactionType.debit,
+        categoryId: categoryId,
+        paymentSourceId: paymentSourceId,
+        unmatched: unmatched,
+      );
+    }
+
+    test('hidden without matched payment source', () {
+      expect(
+        CategoryService.showTravelProvider(
+          transaction: tx(categoryId: 'travel'),
+          selectedCategoryId: 'travel',
+        ),
+        isFalse,
+      );
+    });
+
+    test('hidden for groceries and unset categories', () {
+      expect(
+        CategoryService.showTravelProvider(
+          transaction: tx(categoryId: 'groceries', paymentSourceId: 'card-1'),
+        ),
+        isFalse,
+      );
+      expect(
+        CategoryService.showTravelProvider(
+          transaction: tx(paymentSourceId: 'card-1'),
+          selectedCategoryId: 'food',
+        ),
+        isFalse,
+      );
+    });
+
+    test('shown for travel/transport with matched payment', () {
+      final base = tx(paymentSourceId: 'card-1');
+      expect(
+        CategoryService.showTravelProvider(
+          transaction: base,
+          selectedCategoryId: 'travel',
+        ),
+        isTrue,
+      );
+      expect(
+        CategoryService.showTravelProvider(
+          transaction: base.copyWith(categoryId: 'transport'),
+        ),
+        isTrue,
+      );
+    });
+  });
 }

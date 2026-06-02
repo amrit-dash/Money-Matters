@@ -45,6 +45,7 @@ class Transaction {
     this.merchantNormalized,
     this.userNotes,
     this.shoppingItems = const [],
+    this.travelProvider,
     this.classifiedBy,
   });
 
@@ -77,6 +78,9 @@ class Transaction {
   /// Optional shopping-list items captured during the classify flow.
   final List<String> shoppingItems;
 
+  /// Optional ride/travel provider (e.g. Uber) from classify flow.
+  final String? travelProvider;
+
   /// Provenance of the current category: rules, llm, or user.
   final ClassifiedBy? classifiedBy;
 
@@ -100,6 +104,7 @@ class Transaction {
         if (merchantNormalized != null) 'merchantNormalized': merchantNormalized,
         if (userNotes != null) 'userNotes': userNotes,
         if (shoppingItems.isNotEmpty) 'shoppingItems': shoppingItems,
+        if (travelProvider != null) 'travelProvider': travelProvider,
         if (classifiedBy != null) 'classifiedBy': classifiedBy!.name,
       };
 
@@ -124,6 +129,7 @@ class Transaction {
               ?.map((e) => e as String)
               .toList() ??
           const [],
+      travelProvider: json['travelProvider'] as String?,
       classifiedBy: ClassifiedBy.fromString(json['classifiedBy'] as String?),
     );
   }
@@ -158,6 +164,7 @@ class Transaction {
       merchantNormalized: row['merchant_normalized'] as String?,
       userNotes: row['user_notes'] as String?,
       shoppingItems: items,
+      travelProvider: row['travel_provider'] as String?,
       classifiedBy: ClassifiedBy.fromString(row['classified_by'] as String?),
     );
   }
@@ -179,6 +186,7 @@ class Transaction {
     String? merchantNormalized,
     String? userNotes,
     List<String>? shoppingItems,
+    String? travelProvider,
     ClassifiedBy? classifiedBy,
   }) {
     return Transaction(
@@ -198,6 +206,7 @@ class Transaction {
       merchantNormalized: merchantNormalized ?? this.merchantNormalized,
       userNotes: userNotes ?? this.userNotes,
       shoppingItems: shoppingItems ?? this.shoppingItems,
+      travelProvider: travelProvider ?? this.travelProvider,
       classifiedBy: classifiedBy ?? this.classifiedBy,
     );
   }

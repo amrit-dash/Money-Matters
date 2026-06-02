@@ -9,7 +9,7 @@ class LocalDatabase {
   LocalDatabase();
 
   static const _dbName = 'money_matters.db';
-  static const _dbVersion = 4;
+  static const _dbVersion = 5;
 
   Database? _db;
 
@@ -83,6 +83,7 @@ class LocalDatabase {
         merchant_normalized TEXT,
         user_notes TEXT,
         shopping_items TEXT,
+        travel_provider TEXT,
         classified_by TEXT,
         synced_at TEXT NOT NULL,
         FOREIGN KEY (raw_ingest_id) REFERENCES raw_ingests(idempotency_key)
@@ -153,6 +154,15 @@ class LocalDatabase {
           deleted_at TEXT NOT NULL
         )
       ''');
+    }
+    if (oldVersion < 5) {
+      try {
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN travel_provider TEXT',
+        );
+      } catch (_) {
+        // Column already present (idempotent upgrade) — ignore.
+      }
     }
   }
 
@@ -443,6 +453,7 @@ class LocalDatabase {
     String? merchantNormalized,
     String? userNotes,
     List<String>? shoppingItems,
+    String? travelProvider,
     String? classifiedBy,
     bool? needsClassification,
     bool? ambiguous,
@@ -456,6 +467,10 @@ class LocalDatabase {
     if (userNotes != null) updates['user_notes'] = userNotes;
     if (shoppingItems != null) {
       updates['shopping_items'] = jsonEncode(shoppingItems);
+    }
+    if (travelProvider != null) {
+      updates['travel_provider'] =
+          travelProvider.isEmpty ? null : travelProvider;
     }
     if (classifiedBy != null) updates['classified_by'] = classifiedBy;
     if (needsClassification != null) {
@@ -480,6 +495,17 @@ class LocalDatabase {
     );
     if (rows.isEmpty) return null;
     return DateTime.tryParse(rows.first['received_at'] as String? ?? '');
+  }
+
+  /// Wipes all local ledger rows (ingests, jobs, transactions, tombstones).
+  Future<void> clearAllUserData() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('transactions');
+      await txn.delete('raw_ingests');
+      await txn.delete('parse_jobs');
+      await txn.delete('deleted_transactions');
+    });
   }
 
   Future<void> close() async {

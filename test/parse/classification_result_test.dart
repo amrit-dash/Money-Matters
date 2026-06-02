@@ -9,11 +9,13 @@ void main() {
       'needsUserInput': false,
       'userNotes': 'Weekly groceries',
       'shoppingItems': ['Milk', 'Bread'],
+      'travelProvider': 'Uber',
     });
 
     expect(result.categoryId, 'food');
     expect(result.merchantNormalized, 'Zepto');
     expect(result.userNotes, 'Weekly groceries');
     expect(result.shoppingItems, ['Milk', 'Bread']);
+    expect(result.travelProvider, 'Uber');
   });
 }

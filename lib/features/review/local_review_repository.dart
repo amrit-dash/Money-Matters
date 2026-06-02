@@ -70,6 +70,7 @@ class LocalReviewRepository implements ReviewRepository {
       merchantNormalized: input.merchantNormalized,
       userNotes: input.userNotes,
       shoppingItems: input.shoppingItems,
+      travelProvider: input.travelProvider,
       classifiedBy: ClassifiedBy.user.name,
       needsClassification: false,
       ambiguous: false,
@@ -95,6 +96,8 @@ class LocalReviewRepository implements ReviewRepository {
         'merchantNormalized': input.merchantNormalized,
       if (input.userNotes != null) 'userNotes': input.userNotes,
       if (input.shoppingItems.isNotEmpty) 'shoppingItems': input.shoppingItems,
+      if (input.travelProvider != null && input.travelProvider!.isNotEmpty)
+        'travelProvider': input.travelProvider,
       if (paymentSourceId != null) ...{
         'paymentSourceId': paymentSourceId,
         'unmatched': false,
@@ -232,6 +235,7 @@ class LocalReviewRepository implements ReviewRepository {
       merchantNormalized: transaction.merchantNormalized,
       userNotes: transaction.userNotes,
       shoppingItems: transaction.shoppingItems,
+      travelProvider: transaction.travelProvider,
       classifiedBy: ClassifiedBy.llm.name,
       needsClassification: transaction.needsClassification,
       ambiguous: transaction.ambiguous,
@@ -255,6 +259,9 @@ class LocalReviewRepository implements ReviewRepository {
       if (transaction.userNotes != null) 'userNotes': transaction.userNotes,
       if (transaction.shoppingItems.isNotEmpty)
         'shoppingItems': transaction.shoppingItems,
+      if (transaction.travelProvider != null &&
+          transaction.travelProvider!.isNotEmpty)
+        'travelProvider': transaction.travelProvider,
       if (transaction.paymentSourceId != null) ...{
         'paymentSourceId': transaction.paymentSourceId,
         'unmatched': transaction.unmatched,

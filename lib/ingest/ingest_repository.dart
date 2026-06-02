@@ -367,6 +367,7 @@ class IngestRepository {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      travelProvider: data['travelProvider'] as String?,
       classifiedBy: ledger.ClassifiedBy.fromString(
         data['classifiedBy'] as String?,
       ),
@@ -395,6 +396,7 @@ class IngestRepository {
       'user_notes': tx.userNotes,
       'shopping_items':
           tx.shoppingItems.isEmpty ? null : jsonEncode(tx.shoppingItems),
+      'travel_provider': tx.travelProvider,
       'classified_by': tx.classifiedBy?.name,
       'synced_at': syncedAt,
     };

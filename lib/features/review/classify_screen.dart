@@ -41,11 +41,14 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   final _notesController = TextEditingController();
   final _itemController = TextEditingController();
   final _merchantController = TextEditingController();
+  final _customTravelProviderController = TextEditingController();
 
   Transaction? _tx;
   List<Category> _categories = [];
   List<PaymentSource> _paymentSources = [];
   final List<String> _shoppingItems = [];
+  String? _selectedTravelProvider;
+  bool _travelProviderCustom = false;
   String? _selectedCategoryId;
   String? _selectedPaymentSourceId;
   bool _saveRule = true;
@@ -68,6 +71,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     _notesController.dispose();
     _itemController.dispose();
     _merchantController.dispose();
+    _customTravelProviderController.dispose();
     super.dispose();
   }
 
@@ -92,6 +96,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       _shoppingItems
         ..clear()
         ..addAll(tx.shoppingItems);
+      _initTravelProvider(tx.travelProvider);
       setState(() {
         _tx = tx;
         _categories = categories;
@@ -106,6 +111,29 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         _loading = false;
         _error = e.toString();
       });
+    }
+  }
+
+  void _initTravelProvider(String? provider) {
+    if (provider == null || provider.isEmpty) {
+      _selectedTravelProvider = null;
+      _travelProviderCustom = false;
+      _customTravelProviderController.clear();
+      return;
+    }
+    final preset = CategoryService.defaultTravelProviders
+        .map((p) => p.toLowerCase())
+        .toList();
+    final matchIndex = preset.indexOf(provider.toLowerCase());
+    if (matchIndex >= 0) {
+      _selectedTravelProvider =
+          CategoryService.defaultTravelProviders[matchIndex];
+      _travelProviderCustom = false;
+      _customTravelProviderController.clear();
+    } else {
+      _selectedTravelProvider = provider;
+      _travelProviderCustom = true;
+      _customTravelProviderController.text = provider;
     }
   }
 
@@ -160,6 +188,9 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             ..clear()
             ..addAll(update.shoppingItems);
         }
+        if (update.travelProvider != null) {
+          _initTravelProvider(update.travelProvider);
+        }
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('AI suggestions applied — review and save')),
@@ -193,6 +224,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           shoppingItems: _showShoppingList
               ? List<String>.from(_shoppingItems)
               : const [],
+          travelProvider: _travelProviderForSave,
           saveMerchantRule: _saveRule,
           paymentSourceId: sourceChanged ? _selectedPaymentSourceId : null,
           merchantNormalized: merchantNormalized,
@@ -257,6 +289,24 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       transaction: tx,
       selectedCategoryId: _selectedCategoryId,
     );
+  }
+
+  bool get _showTravelProvider {
+    final tx = _tx;
+    if (tx == null) return false;
+    return CategoryService.showTravelProvider(
+      transaction: tx,
+      selectedCategoryId: _selectedCategoryId,
+    );
+  }
+
+  /// Value to persist: provider string, empty to clear, or omit when unchanged.
+  String? get _travelProviderForSave {
+    if (!_showTravelProvider) return '';
+    if (_travelProviderCustom) {
+      return _customTravelProviderController.text.trim();
+    }
+    return _selectedTravelProvider;
   }
 
   Widget _buildForm(BuildContext context) {
@@ -368,6 +418,27 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             hintText: 'e.g. weekly groceries, gift for mom',
           ),
         ),
+        if (_showTravelProvider) ...[
+          const SizedBox(height: AppSpacing.section),
+          AppSectionHeader(
+            title: 'Ride / travel provider',
+            subtitle: 'Which app or service? (optional)',
+          ),
+          TravelProviderPicker(
+            selectedProvider: _selectedTravelProvider,
+            customMode: _travelProviderCustom,
+            customController: _customTravelProviderController,
+            onPresetSelected: (provider) => setState(() {
+              _travelProviderCustom = false;
+              _selectedTravelProvider = provider;
+              _customTravelProviderController.clear();
+            }),
+            onCustomMode: () => setState(() {
+              _travelProviderCustom = true;
+              _selectedTravelProvider = null;
+            }),
+          ),
+        ],
         if (_showShoppingList) ...[
           const SizedBox(height: AppSpacing.section),
           AppSectionHeader(

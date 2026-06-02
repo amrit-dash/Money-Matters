@@ -26,6 +26,12 @@ class CategoryService {
   /// Category ids where the classify flow may capture a per-item shopping list.
   static const shoppingCategoryIds = {'groceries', 'shopping'};
 
+  /// Ride / travel categories where the classify flow may tag a provider.
+  static const travelProviderCategoryIds = {'travel', 'transport'};
+
+  /// Preset ride providers shown as chips (user may pick Custom for another).
+  static const defaultTravelProviders = ['Uber', 'Rapido', 'Ola'];
+
   static const defaultCategories = [
     Category(
       id: 'groceries',
@@ -221,6 +227,19 @@ class CategoryService {
     final categoryId = selectedCategoryId ?? transaction.categoryId;
     if (categoryId == null) return false;
     return shoppingCategoryIds.contains(categoryId);
+  }
+
+  /// Travel provider UI: matched payment + travel/transport category only.
+  static bool showTravelProvider({
+    required Transaction transaction,
+    String? selectedCategoryId,
+  }) {
+    if (transaction.unmatched || transaction.paymentSourceId == null) {
+      return false;
+    }
+    final categoryId = selectedCategoryId ?? transaction.categoryId;
+    if (categoryId == null) return false;
+    return travelProviderCategoryIds.contains(categoryId);
   }
 
   CollectionReference<Map<String, dynamic>>? _collection() {

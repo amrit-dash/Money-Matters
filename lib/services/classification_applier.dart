@@ -60,6 +60,9 @@ class ClassificationApplier {
     if (result.shoppingItems.isNotEmpty) {
       updated = updated.copyWith(shoppingItems: result.shoppingItems);
     }
+    if (result.travelProvider != null && result.travelProvider!.isNotEmpty) {
+      updated = updated.copyWith(travelProvider: result.travelProvider);
+    }
 
     return updated;
   }
@@ -73,6 +76,7 @@ class AiClassifyFormUpdate {
     this.merchantNormalized,
     this.userNotes,
     this.shoppingItems = const [],
+    this.travelProvider,
     this.needsConfig = false,
     this.errorMessage,
   });
@@ -82,6 +86,7 @@ class AiClassifyFormUpdate {
   final String? merchantNormalized;
   final String? userNotes;
   final List<String> shoppingItems;
+  final String? travelProvider;
   final bool needsConfig;
   final String? errorMessage;
 }

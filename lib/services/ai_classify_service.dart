@@ -55,6 +55,7 @@ class AiClassifyService {
       merchantNormalized: updated.merchantNormalized,
       userNotes: updated.userNotes,
       shoppingItems: updated.shoppingItems,
+      travelProvider: updated.travelProvider,
     );
   }
 

@@ -7,6 +7,7 @@ class ClassifyInput {
     required this.categoryId,
     this.userNotes,
     this.shoppingItems = const [],
+    this.travelProvider,
     this.saveMerchantRule = false,
     this.paymentSourceId,
     this.merchantNormalized,
@@ -15,6 +16,7 @@ class ClassifyInput {
   final String categoryId;
   final String? userNotes;
   final List<String> shoppingItems;
+  final String? travelProvider;
   final bool saveMerchantRule;
 
   /// When set, links an unmatched transaction to a saved bank/card.

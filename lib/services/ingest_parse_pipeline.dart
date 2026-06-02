@@ -529,6 +529,7 @@ class IngestParsePipeline {
       'user_notes': tx.userNotes,
       'shopping_items':
           tx.shoppingItems.isEmpty ? null : jsonEncode(tx.shoppingItems),
+      'travel_provider': tx.travelProvider,
       'classified_by': tx.classifiedBy?.name,
       'synced_at': syncedAt,
     });

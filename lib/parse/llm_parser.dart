@@ -57,6 +57,7 @@ class ClassificationResult {
     this.paymentSourceConfidence,
     this.userNotes,
     this.shoppingItems = const [],
+    this.travelProvider,
     this.errorMessage,
   });
 
@@ -86,6 +87,9 @@ class ClassificationResult {
 
   /// Optional line items when the spend is clearly a shopping trip.
   final List<String> shoppingItems;
+
+  /// Ride/travel provider when obvious from SMS (e.g. Uber, Ola).
+  final String? travelProvider;
 
   /// Callable/network failure — distinct from [needsConfig] (missing backend key).
   final String? errorMessage;
@@ -120,7 +124,14 @@ class ClassificationResult {
           ? null
           : (map['userNotes'] as String?)?.trim(),
       shoppingItems: items,
+      travelProvider: _parseTravelProvider(map['travelProvider']),
     );
+  }
+
+  static String? _parseTravelProvider(dynamic raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 }
 
