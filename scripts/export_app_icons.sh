@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Export docs/assets/app-icon/*.svg into ios/Runner/Assets.xcassets/AppIcon.appiconset PNGs.
+# Export docs/assets/app-icon masters into ios/Runner/Assets.xcassets/AppIcon.appiconset PNGs.
+# Prefers app-icon-master-1024.png when present; otherwise renders light/dark SVGs.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PNG_MASTER="${ROOT}/docs/assets/app-icon/app-icon-master-1024.png"
 LIGHT_SVG="${ROOT}/docs/assets/app-icon/app-icon-master-light.svg"
 DARK_SVG="${ROOT}/docs/assets/app-icon/app-icon-master-dark.svg"
 OUT_DIR="${ROOT}/ios/Runner/Assets.xcassets/AppIcon.appiconset"
 TMP="${ROOT}/build/icon-export"
-
-if ! command -v rsvg-convert >/dev/null 2>&1; then
-  echo "ERROR: rsvg-convert not found. Install: brew install librsvg"
-  exit 1
-fi
 
 python3 -c "from PIL import Image" 2>/dev/null || {
   echo "ERROR: Python Pillow required. Run: pip3 install pillow"
@@ -20,9 +17,22 @@ python3 -c "from PIL import Image" 2>/dev/null || {
 
 mkdir -p "$TMP" "$OUT_DIR"
 
-echo "==> Rendering 1024 masters"
-rsvg-convert -w 1024 -h 1024 "$LIGHT_SVG" -o "${TMP}/light-1024.png"
-rsvg-convert -w 1024 -h 1024 "$DARK_SVG" -o "${TMP}/dark-1024.png"
+if [[ -f "$PNG_MASTER" ]]; then
+  echo "==> Using PNG master: ${PNG_MASTER}"
+  cp "$PNG_MASTER" "${TMP}/light-1024.png"
+  cp "$PNG_MASTER" "${TMP}/dark-1024.png"
+elif [[ -f "$LIGHT_SVG" && -f "$DARK_SVG" ]]; then
+  if ! command -v rsvg-convert >/dev/null 2>&1; then
+    echo "ERROR: rsvg-convert not found. Install: brew install librsvg"
+    exit 1
+  fi
+  echo "==> Rendering 1024 masters from SVG"
+  rsvg-convert -w 1024 -h 1024 "$LIGHT_SVG" -o "${TMP}/light-1024.png"
+  rsvg-convert -w 1024 -h 1024 "$DARK_SVG" -o "${TMP}/dark-1024.png"
+else
+  echo "ERROR: No icon master found. Add docs/assets/app-icon/app-icon-master-1024.png or SVG masters."
+  exit 1
+fi
 
 export ROOT
 python3 <<'PY'
