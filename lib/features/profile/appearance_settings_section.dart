@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_accent.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_scope.dart';
 import '../../core/widgets/app_ui.dart';
 

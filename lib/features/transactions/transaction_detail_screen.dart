@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 
 import 'package:money_matters/models/transaction.dart';
 
-import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../core/widgets/original_ingest_sheet.dart';
 import '../../services/app_services.dart';

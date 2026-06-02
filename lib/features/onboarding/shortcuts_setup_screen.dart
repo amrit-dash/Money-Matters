@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
-import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import 'onboarding_state.dart';
 

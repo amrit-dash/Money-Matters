@@ -7,7 +7,6 @@ import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../app_router.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../ingest/ingest_queue_drain.dart';
 import '../../ingest/ingest_repository.dart';

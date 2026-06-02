@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../app_router.dart';
 import '../../core/auth/auth_service.dart';
 import '../../core/config/firebase_options.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../parse/llm_parser.dart';
 import '../../services/user_data_deletion_service.dart';

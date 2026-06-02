@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_service.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
 import 'onboarding_state.dart';
 
