@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/dashboard_charts.dart';
 import '../../ingest/ingest_queue_drain.dart';
 import '../../ingest/ingest_repository.dart';
 import '../../services/category_service.dart';
@@ -42,7 +43,9 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   _PeriodMode _mode = _PeriodMode.weekly;
+  DateTime _periodAnchor = DateTime.now();
   PeriodSummary? _summary;
+  PeriodSummary? _priorSummary;
   bool _loading = true;
   String? _syncMessage;
   int _rawIngestCount = 0;
@@ -82,8 +85,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final summary = _mode == _PeriodMode.weekly
-        ? await widget.repository.weeklySummary()
-        : await widget.repository.monthlySummary();
+        ? await widget.repository.weeklySummary(anchor: _periodAnchor)
+        : await widget.repository.monthlySummary(anchor: _periodAnchor);
+    final priorSummary = _mode == _PeriodMode.weekly
+        ? await widget.repository.weeklySummary(
+            anchor: _periodAnchor.subtract(const Duration(days: 7)),
+          )
+        : await widget.repository.monthlySummary(
+            anchor: DateTime(_periodAnchor.year, _periodAnchor.month - 1, 15),
+          );
     final counts = await widget.repository.localCounts();
     final needsInput = await widget.reviewRepository.needsInputCount();
     var showPipeline = false;
@@ -103,6 +113,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     setState(() {
       _summary = summary;
+      _priorSummary = priorSummary;
       _rawIngestCount = counts.rawIngests;
       _transactionCount = counts.transactions;
       _needsInputCount = needsInput;
@@ -110,6 +121,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _loading = false;
       if (!syncQueue) _syncMessage = null;
     });
+  }
+
+  bool get _isCurrentPeriod {
+    final summary = _summary;
+    if (summary == null) return true;
+    final now = DateTime.now();
+    return !now.isBefore(summary.start) && !now.isAfter(summary.end);
+  }
+
+  void _shiftPeriod(int direction) {
+    setState(() {
+      if (_mode == _PeriodMode.weekly) {
+        _periodAnchor = _periodAnchor.add(Duration(days: 7 * direction));
+      } else {
+        _periodAnchor = DateTime(
+          _periodAnchor.year,
+          _periodAnchor.month + direction,
+          _periodAnchor.day,
+        );
+      }
+    });
+    _load();
+  }
+
+  void _resetToCurrentPeriod() {
+    setState(() => _periodAnchor = DateTime.now());
+    _load();
+  }
+
+  String get _priorPeriodLabel {
+    if (_mode == _PeriodMode.weekly) return 'prior week';
+    final prior = DateTime(_periodAnchor.year, _periodAnchor.month - 1);
+    return DateFormat('MMMM').format(prior);
   }
 
   bool get _isEmpty =>
@@ -226,9 +270,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                     selected: {_mode},
                     onSelectionChanged: (s) {
-                      setState(() => _mode = s.first);
+                      setState(() {
+                        _mode = s.first;
+                        _periodAnchor = DateTime.now();
+                      });
                       _load();
                     },
+                  ),
+                  const SizedBox(height: AppSpacing.item),
+                  _PeriodNavigator(
+                    label: _summary?.label ?? '',
+                    canGoNext: !_isCurrentPeriod,
+                    onPrevious: () => _shiftPeriod(-1),
+                    onNext: _isCurrentPeriod ? null : () => _shiftPeriod(1),
+                    onToday: _isCurrentPeriod ? null : _resetToCurrentPeriod,
                   ),
                   if (_syncMessage != null) ...[
                     const SizedBox(height: AppSpacing.item),
@@ -280,11 +335,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     )
                   else if (_summary != null) ...[
-                    Text(
-                      _summary!.label,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: AppSpacing.item),
+                    if (_priorSummary != null)
+                      PeriodComparisonCard(
+                        currentSpend: _summary!.totalSpend,
+                        priorSpend: _priorSummary!.totalSpend,
+                        priorLabel: _priorPeriodLabel,
+                      ),
+                    if (_priorSummary != null)
+                      const SizedBox(height: AppSpacing.item),
                     _TotalCard(
                       label: 'Total spend',
                       amount: _currency.format(_summary!.totalSpend),
@@ -296,6 +354,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         label: 'Income',
                         amount: _currency.format(_summary!.totalIncome),
                         muted: true,
+                      ),
+                    ],
+                    if (_summary!.breakdown.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.item),
+                      CategorySpendBarChart(
+                        breakdown: _summary!.breakdown,
+                        totalSpend: _summary!.totalSpend,
                       ),
                     ],
                     if (_summary!.sources.isNotEmpty ||
@@ -362,6 +427,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
+      ),
+    );
+  }
+}
+
+class _PeriodNavigator extends StatelessWidget {
+  const _PeriodNavigator({
+    required this.label,
+    required this.onPrevious,
+    this.onNext,
+    this.onToday,
+    this.canGoNext = true,
+  });
+
+  final String label;
+  final VoidCallback onPrevious;
+  final VoidCallback? onNext;
+  final VoidCallback? onToday;
+  final bool canGoNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left),
+              tooltip: 'Previous period',
+              onPressed: onPrevious,
+            ),
+            Expanded(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right),
+              tooltip: 'Next period',
+              onPressed: canGoNext ? onNext : null,
+            ),
+            if (onToday != null)
+              TextButton(
+                onPressed: onToday,
+                child: const Text('Today'),
+              ),
+          ],
+        ),
       ),
     );
   }
