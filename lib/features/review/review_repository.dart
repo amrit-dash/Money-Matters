@@ -13,6 +13,8 @@ class ClassifyInput {
     this.saveMerchantRule = false,
     this.paymentSourceId,
     this.merchantNormalized,
+    this.merchant,
+    this.classifiedBy,
   });
 
   final String categoryId;
@@ -28,6 +30,12 @@ class ClassifyInput {
 
   /// Display merchant override from user or AI reclassify.
   final String? merchantNormalized;
+
+  /// Raw merchant override (e.g. corrected payee name from AI or user).
+  final String? merchant;
+
+  /// Provenance override; defaults to [ClassifiedBy.user] when null.
+  final ClassifiedBy? classifiedBy;
 }
 
 /// Transactions needing human review (uncategorized, ambiguous, or unmatched).

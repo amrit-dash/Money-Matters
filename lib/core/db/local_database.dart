@@ -487,6 +487,7 @@ class LocalDatabase {
     String id, {
     String? categoryId,
     String? subcategoryId,
+    String? merchant,
     String? merchantNormalized,
     String? userNotes,
     List<String>? shoppingItems,
@@ -502,6 +503,9 @@ class LocalDatabase {
     if (subcategoryId != null) {
       updates['subcategory_id'] =
           subcategoryId.isEmpty ? null : subcategoryId;
+    }
+    if (merchant != null) {
+      updates['merchant'] = merchant.isEmpty ? null : merchant;
     }
     if (merchantNormalized != null) {
       updates['merchant_normalized'] = merchantNormalized;

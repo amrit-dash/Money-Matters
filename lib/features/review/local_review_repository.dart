@@ -93,16 +93,19 @@ class LocalReviewRepository implements ReviewRepository {
       throw StateError('Cannot classify a transaction without an id');
     }
 
+    final classifiedBy = input.classifiedBy ?? ClassifiedBy.user;
+
     await _db.updateTransactionClassification(
       id,
       categoryId: input.categoryId,
       subcategoryId: input.subcategoryId,
+      merchant: input.merchant,
       merchantNormalized: input.merchantNormalized,
       userNotes: input.userNotes,
       shoppingItems: input.shoppingItems,
       travelProvider: input.travelProvider,
       transferTo: input.transferTo,
-      classifiedBy: ClassifiedBy.user.name,
+      classifiedBy: classifiedBy.name,
       needsClassification: false,
       ambiguous: false,
     );
@@ -122,7 +125,8 @@ class LocalReviewRepository implements ReviewRepository {
       'categoryId': input.categoryId,
       'ambiguous': false,
       'needsClassification': false,
-      'classifiedBy': ClassifiedBy.user.name,
+      'classifiedBy': classifiedBy.name,
+      if (input.merchant != null) 'merchant': input.merchant,
       if (input.subcategoryId != null && input.subcategoryId!.isNotEmpty)
         'subcategoryId': input.subcategoryId,
       if (input.subcategoryId != null && input.subcategoryId!.isEmpty)
@@ -147,7 +151,9 @@ class LocalReviewRepository implements ReviewRepository {
 
     // Teach a user-specific merchant rule so future SMS auto-categorize.
     if (input.saveMerchantRule) {
-      final merchant = transaction.merchant;
+      final merchant = input.merchant ??
+          input.merchantNormalized ??
+          transaction.merchant;
       if (merchant != null && merchant.isNotEmpty) {
         await _categories.addMerchantRule(
           categoryId: input.categoryId,

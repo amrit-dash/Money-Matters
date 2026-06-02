@@ -64,6 +64,7 @@ class AiClassifyService {
       categoryId: updated.categoryId,
       paymentSourceId: updated.paymentSourceId,
       merchantNormalized: updated.merchantNormalized,
+      merchant: updated.merchant != tx.merchant ? updated.merchant : null,
       subcategoryId: updated.subcategoryId ?? selectedSubcategoryId,
       userNotes: updated.userNotes,
       shoppingItems: updated.shoppingItems,

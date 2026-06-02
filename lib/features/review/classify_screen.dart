@@ -62,6 +62,8 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   bool _saving = false;
   bool _aiLoading = false;
   bool _formDirty = false;
+  bool _aiAssisted = false;
+  String? _originalMerchant;
   String? _error;
 
   StreamSubscription<List<Category>>? _categoriesSub;
@@ -152,6 +154,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       );
       setState(() {
         _tx = tx;
+        _originalMerchant = tx.merchant;
         _categories = categories;
         _paymentSources = sources;
         _selectedCategoryId = tx.categoryId;
@@ -317,6 +320,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         return;
       }
       setState(() {
+        _aiAssisted = true;
         if (update.categoryId != null) {
           _formDirty = true;
           _selectedCategoryId = update.categoryId;
@@ -334,7 +338,13 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           _selectedPaymentSourceId = update.paymentSourceId;
         }
         if (update.merchantNormalized != null) {
+          _formDirty = true;
           _merchantController.text = update.merchantNormalized!;
+        }
+        if (update.merchant != null && _tx != null) {
+          _tx = _tx!.copyWith(merchant: update.merchant);
+        } else if (update.merchantNormalized != null && _tx != null) {
+          _tx = _tx!.copyWith(merchant: update.merchantNormalized);
         }
         if (update.userNotes != null) {
           _notesController.text = update.userNotes!;
@@ -427,6 +437,11 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     final merchantName = _merchantController.text.trim();
     final merchantNormalized =
         merchantName.isEmpty ? null : merchantName;
+    final rawMerchantOverride = merchantName.isEmpty
+        ? null
+        : merchantName.toUpperCase();
+    final shouldUpdateMerchant = rawMerchantOverride != null &&
+        rawMerchantOverride != (_originalMerchant ?? '').toUpperCase();
 
     setState(() => _saving = true);
     try {
@@ -446,6 +461,8 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           saveMerchantRule: _saveRule,
           paymentSourceId: sourceChanged ? _selectedPaymentSourceId : null,
           merchantNormalized: merchantNormalized,
+          merchant: shouldUpdateMerchant ? rawMerchantOverride : null,
+          classifiedBy: _aiAssisted ? ClassifiedBy.llm : ClassifiedBy.user,
         ),
       );
       if (!mounted) return;
@@ -469,7 +486,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         title: const Text('Reclassify'),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: 16),
             child: _aiLoading
                 ? const Padding(
                     padding: EdgeInsets.all(12),
@@ -565,6 +582,12 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       return _customTravelProviderController.text.trim();
     }
     return _selectedTravelProvider;
+  }
+
+  String? get _merchantNameForRule {
+    final fromField = _merchantController.text.trim();
+    if (fromField.isNotEmpty) return fromField.toUpperCase();
+    return _tx?.merchant;
   }
 
   Widget _buildForm(BuildContext context) {
@@ -701,12 +724,12 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             }),
           ),
         ],
-        if (tx.merchant != null) ...[
+        if (_merchantNameForRule != null) ...[
           const SizedBox(height: AppSpacing.tight),
           CheckboxListTile(
             value: _saveRule,
             onChanged: (v) => setState(() => _saveRule = v ?? false),
-            title: Text('Remember "${tx.merchant}" → this category'),
+            title: Text('Remember "${_merchantNameForRule!}" → this category'),
             controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,
           ),

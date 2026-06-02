@@ -101,6 +101,9 @@ class ClassificationApplier {
     if (merchant == null || merchant.isEmpty) return true;
     if (merchant.contains('@')) return true;
     if (merchant.length > 48) return true;
+    // UPI payment-type codes (P2A, P2M) and numeric reference fragments.
+    if (RegExp(r'^[A-Z0-9]{2,4}$').hasMatch(merchant)) return true;
+    if (RegExp(r'^\d+$').hasMatch(merchant)) return true;
     return false;
   }
 }
@@ -111,6 +114,7 @@ class AiClassifyFormUpdate {
     this.categoryId,
     this.paymentSourceId,
     this.merchantNormalized,
+    this.merchant,
     this.subcategoryId,
     this.userNotes,
     this.shoppingItems = const [],
@@ -125,6 +129,8 @@ class AiClassifyFormUpdate {
   final String? categoryId;
   final String? paymentSourceId;
   final String? merchantNormalized;
+  /// Corrected raw merchant (when AI replaces opaque parse like P2A).
+  final String? merchant;
   final String? subcategoryId;
   final String? userNotes;
   final List<String> shoppingItems;
