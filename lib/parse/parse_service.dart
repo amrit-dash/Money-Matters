@@ -73,6 +73,7 @@ class ParseService {
       sender: ingest.sender,
       body: ingest.body,
       instrumentLast4: candidate.instrumentLast4,
+      merchant: candidate.merchant,
       sources: sources,
     );
   }

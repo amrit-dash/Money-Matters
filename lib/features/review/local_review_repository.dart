@@ -4,7 +4,10 @@ import 'package:money_matters/models/transaction.dart';
 
 import '../../core/auth/auth_service.dart';
 import '../../core/db/local_database.dart';
+import '../../parse/rules_parser.dart';
 import '../../services/category_service.dart';
+import '../../services/ingest_parse_pipeline.dart';
+import '../../services/payment_source_service.dart';
 import 'review_repository.dart';
 
 /// Review queue backed by local SQLite with Firestore sync on classify.
@@ -13,15 +16,23 @@ class LocalReviewRepository implements ReviewRepository {
     required LocalDatabase localDatabase,
     required AuthService authService,
     required CategoryService categoryService,
+    PaymentSourceService? paymentSourceService,
+    IngestParsePipeline? parsePipeline,
     FirebaseFirestore? firestore,
   })  : _db = localDatabase,
         _authService = authService,
         _categories = categoryService,
+        _paymentSources = paymentSourceService,
+        _parsePipeline = parsePipeline,
         _firestore = firestore ?? FirebaseFirestore.instance;
+
+  static const _rulesParser = RulesParser();
 
   final LocalDatabase _db;
   final AuthService _authService;
   final CategoryService _categories;
+  final PaymentSourceService? _paymentSources;
+  final IngestParsePipeline? _parsePipeline;
   final FirebaseFirestore _firestore;
 
   @override
@@ -87,6 +98,8 @@ class LocalReviewRepository implements ReviewRepository {
       },
     }, SetOptions(merge: true));
 
+    var learnedRules = false;
+
     // Teach a user-specific merchant rule so future SMS auto-categorize.
     if (input.saveMerchantRule) {
       final merchant = transaction.merchant;
@@ -95,8 +108,68 @@ class LocalReviewRepository implements ReviewRepository {
           categoryId: input.categoryId,
           merchant: merchant,
         );
+        learnedRules = true;
       }
     }
+
+    if (paymentSourceId != null) {
+      final ingestRow = await _db.getRawIngest(transaction.rawIngestId);
+      if (ingestRow != null) {
+        final body = ingestRow['body'] as String? ?? '';
+        final sender = ingestRow['sender'] as String? ?? '';
+        final last4 = _rulesParser.extractInstrumentLast4(body);
+        await _paymentSources?.learnFromTransaction(
+          paymentSourceId: paymentSourceId,
+          sender: sender,
+          body: body,
+          merchant: transaction.merchant,
+          instrumentLast4: last4,
+        );
+        learnedRules = true;
+      }
+    }
+
+    if (learnedRules) {
+      await _parsePipeline?.processBacklog();
+    }
+  }
+
+  @override
+  Future<void> updatePaymentSource({
+    required String transactionId,
+    required String paymentSourceId,
+  }) async {
+    await _db.updateTransactionPaymentSource(transactionId, paymentSourceId);
+
+    final uid = _authService.requireUid();
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('transactions')
+        .doc(transactionId)
+        .set({
+      'paymentSourceId': paymentSourceId,
+      'unmatched': false,
+    }, SetOptions(merge: true));
+
+    final tx = await transactionById(transactionId);
+    if (tx == null) return;
+
+    final ingestRow = await _db.getRawIngest(tx.rawIngestId);
+    if (ingestRow == null) return;
+
+    final body = ingestRow['body'] as String? ?? '';
+    final sender = ingestRow['sender'] as String? ?? '';
+    final last4 = _rulesParser.extractInstrumentLast4(body);
+    await _paymentSources?.learnFromTransaction(
+      paymentSourceId: paymentSourceId,
+      sender: sender,
+      body: body,
+      merchant: tx.merchant,
+      instrumentLast4: last4,
+    );
+    _categories.invalidateCache();
+    await _parsePipeline?.processBacklog();
   }
 
   @override

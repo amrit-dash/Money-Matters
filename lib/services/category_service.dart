@@ -316,10 +316,31 @@ class CategoryService {
       await col.doc(categoryId).set({
         'merchantRules': FieldValue.arrayUnion([rule]),
       }, SetOptions(merge: true));
-      _cache = null;
+      _appendRuleToCache(categoryId, rule);
     } catch (e) {
       debugPrint('CategoryService.addMerchantRule: $e');
     }
+  }
+
+  void _appendRuleToCache(String categoryId, String rule) {
+    final cached = _cache;
+    if (cached == null) {
+      _cache = null;
+      return;
+    }
+    _cache = cached.map((category) {
+      if (category.id != categoryId) return category;
+      final existing = category.merchantRules
+          .map((r) => r.toUpperCase())
+          .toSet();
+      if (existing.contains(rule)) return category;
+      return Category(
+        id: category.id,
+        name: category.name,
+        system: category.system,
+        merchantRules: [...category.merchantRules, rule],
+      );
+    }).toList();
   }
 
   /// Forces a reload on next [loadCategories].

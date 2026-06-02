@@ -85,6 +85,14 @@ class PaymentSourceService {
               ?.map((e) => e as String)
               .toList() ??
           const [],
+      merchantHints: (data['merchantHints'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+      bodyPatterns: (data['bodyPatterns'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
       createdAt: _toDateTime(data['createdAt']),
     );
   }
@@ -96,6 +104,8 @@ class PaymentSourceService {
       'type': source.type.name,
       if (source.last4 != null) 'last4': source.last4,
       'senderHints': source.senderHints,
+      'merchantHints': source.merchantHints,
+      'bodyPatterns': source.bodyPatterns,
       'createdAt': Timestamp.fromDate(source.createdAt),
     };
   }
@@ -107,5 +117,81 @@ class PaymentSourceService {
       return DateTime.tryParse(value) ?? DateTime.now();
     }
     return DateTime.now();
+  }
+
+  /// Persists user-learned SMS patterns after manual payment-source assignment.
+  Future<void> learnFromTransaction({
+    required String paymentSourceId,
+    required String sender,
+    required String body,
+    String? merchant,
+    String? instrumentLast4,
+  }) async {
+    final col = _collection();
+    final doc = await col.doc(paymentSourceId).get();
+    if (!doc.exists) return;
+
+    final data = doc.data() ?? {};
+    final updates = <String, dynamic>{};
+
+    final senderHint = _normalizeSenderHint(sender);
+    if (senderHint != null) {
+      updates['senderHints'] = FieldValue.arrayUnion([senderHint]);
+    }
+
+    final merchantHint = merchant?.trim().toUpperCase();
+    if (merchantHint != null && merchantHint.isNotEmpty) {
+      updates['merchantHints'] = FieldValue.arrayUnion([merchantHint]);
+    }
+
+    final bodyPattern = _extractBodyPattern(body, sender);
+    if (bodyPattern != null) {
+      updates['bodyPatterns'] = FieldValue.arrayUnion([bodyPattern]);
+    }
+
+    final last4 = normalizeLast4(instrumentLast4);
+    final existingLast4 = data['last4'] as String?;
+    if (last4.length == 4 &&
+        (existingLast4 == null || existingLast4.isEmpty)) {
+      updates['last4'] = last4;
+    }
+
+    if (updates.isEmpty) return;
+
+    try {
+      await col.doc(paymentSourceId).set(updates, SetOptions(merge: true));
+      debugPrint(
+        'PaymentSourceService.learnFromTransaction: updated $paymentSourceId',
+      );
+    } catch (e) {
+      debugPrint('PaymentSourceService.learnFromTransaction: $e');
+    }
+  }
+
+  String? _normalizeSenderHint(String sender) {
+    final trimmed = sender.trim();
+    if (trimmed.length < 4) return null;
+    return trimmed.toUpperCase();
+  }
+
+  /// Picks a short distinctive substring from the SMS body for rematching.
+  String? _extractBodyPattern(String body, String sender) {
+    final normalized = body.trim();
+    if (normalized.length < 8) return null;
+
+    final senderHint = _normalizeSenderHint(sender);
+    if (senderHint != null &&
+        normalized.toUpperCase().contains(senderHint)) {
+      return senderHint;
+    }
+
+    final lines = normalized.split(RegExp(r'[\r\n]+'));
+    for (final line in lines.reversed) {
+      final trimmed = line.trim();
+      if (trimmed.length >= 8 && trimmed.length <= 48) {
+        return trimmed;
+      }
+    }
+    return null;
   }
 }

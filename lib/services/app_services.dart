@@ -38,6 +38,8 @@ class AppServices {
               localDatabase: localDatabase,
               authService: authService,
               categoryService: categoryService,
+              paymentSourceService: paymentSourceService,
+              parsePipeline: parsePipeline,
             ),
         recoveryRepository = recoveryRepository ??
             LocalRecoveryRepository(

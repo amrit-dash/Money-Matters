@@ -35,6 +35,12 @@ abstract class ReviewRepository {
     required ClassifyInput input,
   });
 
+  /// Updates only the linked bank/card for an existing transaction.
+  Future<void> updatePaymentSource({
+    required String transactionId,
+    required String paymentSourceId,
+  });
+
   /// Legacy single-field relabel (category only). Delegates to [classify].
   Future<void> relabel({
     required String transactionId,

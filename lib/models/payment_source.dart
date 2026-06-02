@@ -18,6 +18,8 @@ class PaymentSource {
     required this.type,
     this.last4,
     this.senderHints = const [],
+    this.merchantHints = const [],
+    this.bodyPatterns = const [],
     required this.createdAt,
   });
 
@@ -26,6 +28,12 @@ class PaymentSource {
   final PaymentSourceType type;
   final String? last4;
   final List<String> senderHints;
+
+  /// User-learned merchant substrings correlated with this account.
+  final List<String> merchantHints;
+
+  /// User-learned SMS body substrings (e.g. bank footer) for this account.
+  final List<String> bodyPatterns;
   final DateTime createdAt;
 
   Map<String, dynamic> toJson() => {
@@ -34,6 +42,8 @@ class PaymentSource {
         'type': type.name,
         if (last4 != null) 'last4': last4,
         'senderHints': senderHints,
+        'merchantHints': merchantHints,
+        'bodyPatterns': bodyPatterns,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -44,6 +54,14 @@ class PaymentSource {
       type: PaymentSourceType.fromString(json['type'] as String? ?? 'bank'),
       last4: json['last4'] as String?,
       senderHints: (json['senderHints'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      merchantHints: (json['merchantHints'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      bodyPatterns: (json['bodyPatterns'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           const [],
@@ -68,7 +86,28 @@ class PaymentSource {
   bool matchesBody(String body) {
     final normalizedName = name.trim().toLowerCase();
     if (normalizedName.isEmpty) return false;
-    return body.toLowerCase().contains(normalizedName);
+    if (body.toLowerCase().contains(normalizedName)) return true;
+    return matchesBodyPattern(body);
+  }
+
+  /// User-learned body substrings from past manual account assignments.
+  bool matchesBodyPattern(String body) {
+    if (bodyPatterns.isEmpty) return false;
+    final normalized = body.toLowerCase();
+    return bodyPatterns.any(
+      (pattern) => pattern.isNotEmpty && normalized.contains(pattern.toLowerCase()),
+    );
+  }
+
+  /// User-learned merchant substrings from past manual account assignments.
+  bool matchesMerchant(String? merchant) {
+    if (merchant == null || merchant.isEmpty || merchantHints.isEmpty) {
+      return false;
+    }
+    final upper = merchant.toUpperCase();
+    return merchantHints.any(
+      (hint) => hint.isNotEmpty && upper.contains(hint.toUpperCase()),
+    );
   }
 }
 
@@ -82,13 +121,31 @@ String normalizeLast4(String? value) {
 }
 
 /// Rules-first payment source resolution from SMS sender and body text.
+///
+/// User-learned [PaymentSource.merchantHints] and [PaymentSource.bodyPatterns]
+/// are checked before generic last4/sender/name matching.
 String? matchPaymentSourceFromIngest({
   required String sender,
   required String body,
   String? instrumentLast4,
+  String? merchant,
   required List<PaymentSource> sources,
 }) {
   if (sources.isEmpty) return null;
+
+  if (merchant != null && merchant.isNotEmpty) {
+    for (final source in sources) {
+      if (source.matchesMerchant(merchant)) {
+        return source.id;
+      }
+    }
+  }
+
+  for (final source in sources) {
+    if (source.matchesBodyPattern(body)) {
+      return source.id;
+    }
+  }
 
   if (instrumentLast4 != null) {
     for (final source in sources) {
