@@ -1,5 +1,9 @@
 # Money Matters
 
+<p align="center">
+  <img src="docs/assets/app-icon-preview.png" alt="Money Matters app icon (Bloom Insight concept)" width="128" height="128" />
+</p>
+
 **Turn bank and wallet SMS into a personal spending ledger — automatically, on your iPhone.**
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.11+-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
@@ -15,6 +19,7 @@ Designed for sideload install via Xcode or GitHub Actions — not the App Store.
 
 ## Table of contents
 
+- [App branding](#app-branding)
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
 - [Features](#features)
@@ -25,6 +30,24 @@ Designed for sideload install via Xcode or GitHub Actions — not the App Store.
 - [Contributing](#contributing)
 - [Project structure](#project-structure)
 - [License](#license)
+
+---
+
+## App branding
+
+| Asset | Location | Status |
+|-------|----------|--------|
+| **Icon concepts** (SVG) | [`assets/icons/concepts/`](assets/icons/concepts/) | Three directions (A/B/C); see [`assets/icons/concepts/README.md`](assets/icons/concepts/README.md) |
+| **Documented preview** | [`docs/assets/app-icon-preview.png`](docs/assets/app-icon-preview.png) | Exported from **Bloom Insight** (`concept_a.svg`) for README and docs |
+| **iOS home-screen icon** | [`ios/Runner/Assets.xcassets/AppIcon.appiconset/`](ios/Runner/Assets.xcassets/AppIcon.appiconset/) | `Contents.json` defines slots; **PNG sizes not committed yet** — export from the chosen concept, then sideload to see the icon on device |
+
+**Production path:** pick a concept (A is the current docs reference), export @1x–@3x PNGs into `AppIcon.appiconset`, then build and install:
+
+```bash
+./scripts/build_ipa.sh    # or Xcode → Run on device
+```
+
+Until PNGs are in the asset catalog, the iPhone may show a generic placeholder; the preview image above reflects the intended mark.
 
 ---
 
@@ -110,6 +133,8 @@ All data syncs to your personal Firebase project and is cached locally in SQLite
 
 ## Screenshots
 
+App UI captures below (hosted for README rendering). To add repo-local copies, place PNGs under [`docs/screenshots/`](docs/screenshots/) and link them here — same filenames as in the table are fine.
+
 | Dashboard | Needs your input |
 | :---: | :---: |
 | ![Dashboard](https://i.ibb.co/RkwbYx0P/image-2026-06-02-164708714.png) | ![Needs your input](https://i.ibb.co/fVkKpHhY/image.png) |
@@ -164,7 +189,8 @@ flutter analyze && flutter test
 
 | Document | Description |
 |----------|-------------|
-| [`docs/HANDOFF.md`](docs/HANDOFF.md) | Build status, production pass notes, next steps |
+| [`docs/HANDOFF.md`](docs/HANDOFF.md) | Build status, icon/branding status, next steps |
+| [`assets/icons/concepts/README.md`](assets/icons/concepts/README.md) | App icon concepts and export notes |
 | [`USER-FIX.md`](USER-FIX.md) | Post-deploy verification (Gemini, sender hints, FCM) |
 | [`docs/plans/money-matters-build-plan.md`](docs/plans/money-matters-build-plan.md) | Architecture, file ownership, integration plan |
 | [`docs/brainstorms/money-matters-sms-ledger-requirements.md`](docs/brainstorms/money-matters-sms-ledger-requirements.md) | Product requirements and acceptance criteria |
@@ -199,6 +225,9 @@ Additional setup guides (signing, Xcode, App Check) are in [`docs/`](docs/).
 ## Project structure
 
 ```
+assets/icons/concepts/   SVG icon directions (A/B/C); export → AppIcon.appiconset
+docs/assets/             README/doc previews (e.g. app-icon-preview.png)
+docs/screenshots/        Optional local UI captures (see Screenshots section)
 lib/
 ├── features/
 │   ├── onboarding/     Auth, payment sources, Shortcuts setup
