@@ -35,7 +35,6 @@ class TransactionDetailScreen extends StatefulWidget {
 }
 
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
-  late Transaction _tx;
   String? _resolvedPaymentSourceName;
   bool _aiLoading = false;
 
@@ -45,16 +44,15 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _tx = widget.transaction;
-    _resolvePaymentSourceName();
+    _resolvePaymentSourceName(widget.transaction);
   }
 
-  Future<void> _resolvePaymentSourceName() async {
+  Future<void> _resolvePaymentSourceName(Transaction tx) async {
     if (widget.paymentSourceName != null) {
-      _resolvedPaymentSourceName = widget.paymentSourceName;
+      setState(() => _resolvedPaymentSourceName = widget.paymentSourceName);
       return;
     }
-    final sourceId = _tx.paymentSourceId;
+    final sourceId = tx.paymentSourceId;
     if (sourceId == null) return;
     try {
       final sources = await widget.paymentSourceService.loadAll();
@@ -65,42 +63,29 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     } catch (_) {}
   }
 
-  Future<void> _reloadTransaction() async {
-    final id = _tx.id;
-    if (id == null) return;
-    final updated = await widget.reviewRepository.transactionById(id);
-    if (updated != null && mounted) {
-      setState(() {
-        _tx = updated;
-        if (widget.paymentSourceName == null) {
-          _resolvedPaymentSourceName = null;
-        }
-      });
-      await _resolvePaymentSourceName();
-    }
-  }
-
-  Future<void> _openReclassify() async {
+  Future<void> _openReclassify(Transaction tx) async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (ctx) => ClassifyScreen(
           repository: widget.reviewRepository,
           paymentSourceService: AppScope.of(ctx).paymentSourceService,
-          transaction: _tx,
+          transaction: tx,
         ),
       ),
     );
-    if (changed == true) await _reloadTransaction();
+    if (changed == true && mounted) {
+      Navigator.pop(context, true);
+    }
   }
 
-  Future<void> _reclassifyWithAi() async {
+  Future<void> _reclassifyWithAi(Transaction tx) async {
     if (_aiLoading) return;
     setState(() => _aiLoading = true);
     try {
       final services = AppScope.of(context);
       final outcome =
-          await services.aiClassifyService.applyToTransaction(_tx);
+          await services.aiClassifyService.applyToTransaction(tx);
       if (!mounted) return;
       if (outcome.needsConfig) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -120,7 +105,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         return;
       }
       final updated = outcome.transaction;
-      if (updated == null || updated == _tx) {
+      if (updated == null || updated == tx) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('AI had no changes to suggest')),
         );
@@ -128,8 +113,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       }
       await widget.reviewRepository.persistAiClassification(updated);
       if (!mounted) return;
-      setState(() => _tx = updated);
-      await _resolvePaymentSourceName();
+      await _resolvePaymentSourceName(updated);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Updated with AI classification')),
@@ -139,18 +123,15 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     }
   }
 
-  Future<void> _viewOriginalMessage() async {
+  Future<void> _viewOriginalMessage(Transaction tx) async {
     await showOriginalIngestSheet(
       context,
       localDatabase: AppScope.of(context).localDatabase,
-      rawIngestId: _tx.rawIngestId,
+      rawIngestId: tx.rawIngestId,
     );
   }
 
-  Future<void> _exclude() async {
-    final id = _tx.id;
-    if (id == null) return;
-
+  Future<void> _exclude(String id) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -178,10 +159,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     Navigator.pop(context, true);
   }
 
-  Future<void> _delete() async {
-    final id = _tx.id;
-    if (id == null) return;
-
+  Future<void> _delete(String id) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -211,24 +189,45 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     Navigator.pop(context, true);
   }
 
-  String _paymentSourceLabel() {
-    if (_tx.excluded) return 'Excluded from totals';
+  String _paymentSourceLabel(Transaction tx) {
+    if (tx.excluded) return 'Excluded from totals';
     final name = _resolvedPaymentSourceName ?? widget.paymentSourceName;
     if (name != null) return name;
-    if (_tx.unmatched) return 'No linked account';
-    if (_tx.paymentSourceId != null) return 'Unknown account';
+    if (tx.unmatched) return 'No linked account';
+    if (tx.paymentSourceId != null) return 'Unknown account';
     return '—';
   }
 
-  String _categoryName() {
-    final cat = widget.categoryService.findById(_tx.categoryId);
-    return cat?.name ?? (_tx.categoryId ?? 'Uncategorized');
+  String _categoryName(Transaction tx) {
+    final cat = widget.categoryService.findById(tx.categoryId);
+    return cat?.name ?? (tx.categoryId ?? 'Uncategorized');
   }
 
   @override
   Widget build(BuildContext context) {
+    final txId = widget.transaction.id;
+    if (txId == null) {
+      return _buildScaffold(context, widget.transaction);
+    }
+
+    return StreamBuilder<Transaction?>(
+      stream: widget.reviewRepository.watchTransaction(txId),
+      initialData: widget.transaction,
+      builder: (context, snapshot) {
+        final tx = snapshot.data ?? widget.transaction;
+        if (tx.paymentSourceId != widget.transaction.paymentSourceId ||
+            tx.categoryId != widget.transaction.categoryId) {
+          _resolvePaymentSourceName(tx);
+        }
+        return _buildScaffold(context, tx);
+      },
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context, Transaction tx) {
     final scheme = Theme.of(context).colorScheme;
-    final isCredit = _tx.type == TransactionType.credit;
+    final isCredit = tx.type == TransactionType.credit;
+    final txId = tx.id;
 
     return Scaffold(
       appBar: AppBar(
@@ -237,21 +236,24 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Reclassify',
-            onPressed: _openReclassify,
+            onPressed: () => _openReclassify(tx),
           ),
-          IconButton(
-            icon: _aiLoading
-                ? SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: scheme.onSurface,
-                    ),
-                  )
-                : const Icon(Icons.auto_awesome_outlined),
-            tooltip: 'Reclassify using AI',
-            onPressed: _aiLoading ? null : _reclassifyWithAi,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: _aiLoading
+                  ? SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: scheme.onSurface,
+                      ),
+                    )
+                  : const Icon(Icons.auto_awesome_outlined),
+              tooltip: 'Use AI',
+              onPressed: _aiLoading ? null : () => _reclassifyWithAi(tx),
+            ),
           ),
         ],
       ),
@@ -266,12 +268,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _tx.displayMerchant ?? 'Unknown merchant',
+                    tx.displayMerchant ?? 'Unknown merchant',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${isCredit ? '+' : '-'}${_currency.format(_tx.amount)}',
+                    '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: isCredit ? scheme.primary : scheme.onSurface,
@@ -284,50 +286,54 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           const SizedBox(height: AppSpacing.section),
           _EditableDetailRow(
             label: 'Category',
-            value: _categoryName(),
-            onTap: _openReclassify,
+            value: _categoryName(tx),
+            onTap: () => _openReclassify(tx),
           ),
           _EditableDetailRow(
             label: 'Payment source',
-            value: _paymentSourceLabel(),
-            onTap: _openReclassify,
+            value: _paymentSourceLabel(tx),
+            onTap: () => _openReclassify(tx),
           ),
-          _DetailRow(label: 'Type', value: _tx.type.name.toUpperCase()),
-          _DetailRow(label: 'When', value: _dateFormat.format(_tx.timestamp)),
-          if (_tx.merchant != null)
-            _DetailRow(label: 'Raw merchant', value: _tx.merchant!),
-          if (_tx.classifiedBy != null)
+          _DetailRow(label: 'Type', value: tx.type.name.toUpperCase()),
+          _DetailRow(label: 'When', value: _dateFormat.format(tx.timestamp)),
+          if (tx.merchant != null)
+            _DetailRow(label: 'Raw merchant', value: tx.merchant!),
+          if (tx.classifiedBy != null)
             _DetailRow(
               label: 'Classified by',
-              value: _tx.classifiedBy!.name.toUpperCase(),
+              value: tx.classifiedBy!.name.toUpperCase(),
             ),
-          if (_tx.userNotes != null && _tx.userNotes!.isNotEmpty)
-            _DetailRow(label: 'Notes', value: _tx.userNotes!),
-          if (_tx.shoppingItems.isNotEmpty)
+          if (tx.userNotes != null && tx.userNotes!.isNotEmpty)
+            _DetailRow(label: 'Notes', value: tx.userNotes!),
+          if (tx.shoppingItems.isNotEmpty)
             _DetailRow(
               label: 'Shopping list',
-              value: _tx.shoppingItems.join(', '),
+              value: tx.shoppingItems.join(', '),
             ),
-          if (_tx.travelProvider != null && _tx.travelProvider!.isNotEmpty)
-            _DetailRow(label: 'Travel provider', value: _tx.travelProvider!),
-          _DetailRow(label: 'Currency', value: _tx.currency),
+          if (tx.travelProvider != null && tx.travelProvider!.isNotEmpty)
+            _DetailRow(label: 'Travel provider', value: tx.travelProvider!),
+          if (tx.categoryId == CategoryService.transferCategoryId &&
+              tx.transferTo != null &&
+              tx.transferTo!.isNotEmpty)
+            _DetailRow(label: 'To', value: tx.transferTo!),
+          _DetailRow(label: 'Currency', value: tx.currency),
           const SizedBox(height: AppSpacing.item),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
-              if (_tx.needsClassification)
+              if (tx.needsClassification)
                 AppStatusChip(label: 'Needs category', tone: AppStatTone.warning),
-              if (_tx.ambiguous)
+              if (tx.ambiguous)
                 AppStatusChip(label: 'Ambiguous', tone: AppStatTone.warning),
-              if (_tx.unmatched)
+              if (tx.unmatched)
                 AppStatusChip(label: 'Unmatched', tone: AppStatTone.warning),
-              if (_tx.excluded)
+              if (tx.excluded)
                 AppStatusChip(label: 'Excluded', tone: AppStatTone.neutral),
-              if (!_tx.needsClassification &&
-                  !_tx.ambiguous &&
-                  !_tx.unmatched &&
-                  !_tx.excluded)
+              if (!tx.needsClassification &&
+                  !tx.ambiguous &&
+                  !tx.unmatched &&
+                  !tx.excluded)
                 AppStatusChip(label: 'Classified', tone: AppStatTone.success),
             ],
           ),
@@ -340,27 +346,29 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                   leading: const Icon(Icons.sms_outlined),
                   title: const Text('View original message'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: _viewOriginalMessage,
+                  onTap: () => _viewOriginalMessage(tx),
                 ),
-                if (!_tx.excluded) ...[
+                if (!tx.excluded && txId != null) ...[
                   const Divider(height: 1),
                   ListTile(
                     leading: Icon(Icons.block_outlined, color: scheme.outline),
                     title: const Text('Not a real transaction'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: _exclude,
+                    onTap: () => _exclude(txId),
                   ),
                 ],
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.delete_outline, color: scheme.error),
-                  title: Text(
-                    'Delete',
-                    style: TextStyle(color: scheme.error),
+                if (txId != null) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Icon(Icons.delete_outline, color: scheme.error),
+                    title: Text(
+                      'Delete',
+                      style: TextStyle(color: scheme.error),
+                    ),
+                    trailing: Icon(Icons.chevron_right, color: scheme.error),
+                    onTap: () => _delete(txId),
                   ),
-                  trailing: Icon(Icons.chevron_right, color: scheme.error),
-                  onTap: _delete,
-                ),
+                ],
               ],
             ),
           ),

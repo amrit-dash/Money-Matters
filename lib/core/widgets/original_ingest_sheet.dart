@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/db/local_database.dart';
 import '../theme/app_theme.dart';
@@ -22,32 +23,33 @@ Future<void> showOriginalIngestSheet(
     showDragHandle: true,
     builder: (ctx) {
       final scheme = Theme.of(ctx).colorScheme;
-      return DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.55,
-        minChildSize: 0.35,
-        maxChildSize: 0.92,
-        builder: (context, scrollController) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.page,
-              0,
-              AppSpacing.page,
-              AppSpacing.page,
-            ),
+      final maxHeight = MediaQuery.sizeOf(ctx).height * 0.85;
+      final receivedLabel = _formatReceivedAt(receivedAt);
+
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.page,
+            0,
+            AppSpacing.page,
+            AppSpacing.page,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
                   'Original SMS',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: Theme.of(ctx).textTheme.titleMedium,
                 ),
                 if (body == null || body.isEmpty) ...[
                   const SizedBox(height: AppSpacing.section),
                   Text(
                     'Original message not found on this device. '
                     'Try Recovery → Sync and parse now to download SMS from cloud.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),
                   ),
@@ -56,37 +58,44 @@ Future<void> showOriginalIngestSheet(
                     const SizedBox(height: AppSpacing.tight),
                     Text(
                       'From: $sender',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                     ),
                   ],
-                  if (receivedAt != null) ...[
+                  if (receivedLabel != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Received: $receivedAt',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      'Received: $receivedLabel',
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                     ),
                   ],
                   const SizedBox(height: AppSpacing.item),
-                  Expanded(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest
-                            .withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: SingleChildScrollView(
-                        controller: scrollController,
-                        padding: const EdgeInsets.all(12),
-                        child: SelectableText(
-                          body,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(fontFamily: 'monospace'),
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: SingleChildScrollView(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
+                          borderRadius:
+                              BorderRadius.circular(AppRadii.control),
+                          border: Border.all(
+                            color: scheme.outlineVariant
+                                .withValues(alpha: 0.6),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: SelectableText(
+                            body,
+                            style: Theme.of(ctx)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontFamily: 'monospace'),
+                          ),
                         ),
                       ),
                     ),
@@ -94,9 +103,16 @@ Future<void> showOriginalIngestSheet(
                 ],
               ],
             ),
-          );
-        },
+          ),
+        ),
       );
     },
   );
+}
+
+String? _formatReceivedAt(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null) return raw;
+  return DateFormat('d MMM yyyy, h:mm a').format(parsed.toLocal());
 }

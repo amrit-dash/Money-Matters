@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/auth/auth_service.dart';
+import '../core/db/local_data_streams.dart';
 import '../models/payment_source.dart';
 
 /// Persists payment sources to Firestore under users/{uid}/payment_sources.
@@ -15,6 +18,13 @@ class PaymentSourceService {
   final AuthService _authService;
   final FirebaseFirestore _firestore;
 
+  List<PaymentSource>? _cache;
+  final StreamController<void> _sourceChanges =
+      StreamController<void>.broadcast();
+
+  /// Fires when payment sources are updated from Firestore snapshots.
+  Stream<void> get paymentSourceChanges => _sourceChanges.stream;
+
   CollectionReference<Map<String, dynamic>> _collection() {
     final uid = _authService.requireUid();
     return _firestore
@@ -23,16 +33,33 @@ class PaymentSourceService {
         .collection('payment_sources');
   }
 
+  /// Re-emits whenever payment sources change locally or from Firestore snapshots.
+  Stream<List<PaymentSource>> watchAll() {
+    return watchLocalData(paymentSourceChanges, loadAll);
+  }
+
   Future<List<PaymentSource>> loadAll() async {
+    if (_cache != null) return _cache!;
     final uid = _requireSignedInUid();
     final snapshot =
         await _collection().orderBy('createdAt').get();
     final sources = snapshot.docs.map(_fromDoc).toList();
+    _cache = sources;
     debugPrint(
       'PaymentSourceService.loadAll: uid=$uid count=${sources.length}',
     );
     return sources;
   }
+
+  /// Updates the in-memory cache from a Firestore payment_sources snapshot.
+  void applyRemoteSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
+    _cache = snapshot.docs.map(_fromDoc).toList();
+    if (!_sourceChanges.isClosed) {
+      _sourceChanges.add(null);
+    }
+  }
+
+  void invalidateCache() => _cache = null;
 
   Future<void> saveAll(List<PaymentSource> sources) async {
     final uid = _requireSignedInUid();
@@ -60,6 +87,10 @@ class PaymentSourceService {
     }
 
     await batch.commit();
+    _cache = List<PaymentSource>.from(sources);
+    if (!_sourceChanges.isClosed) {
+      _sourceChanges.add(null);
+    }
     debugPrint(
       'PaymentSourceService.saveAll: uid=$uid wrote=${sources.length} ops=$ops',
     );
