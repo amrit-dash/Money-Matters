@@ -14,6 +14,7 @@ on:
       - 'pubspec.lock'
       - 'analysis_options.yaml'
       - 'scripts/prepare_export_options_ci.sh'
+      - 'scripts/generate_firebase_options_from_plist.sh'
       - '.github/workflows/ios-ipa.yml'
 
 concurrency:
@@ -53,6 +54,11 @@ jobs:
             echo "::error::Add secret GOOGLE_SERVICE_INFO_PLIST_BASE64 or commit plist in a private repo."
             exit 1
           fi
+
+      - name: Generate firebase_options.dart for CI
+        run: |
+          chmod +x scripts/generate_firebase_options_from_plist.sh
+          ./scripts/generate_firebase_options_from_plist.sh
 
       - name: Detect signing secrets
         id: signing

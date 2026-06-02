@@ -8,6 +8,8 @@ Primary cloud path: [`.github/workflows/ios-ipa.yml`](../.github/workflows/ios-i
 
 **Automated:** `GOOGLE_SERVICE_INFO_PLIST_BASE64` can be set via `./scripts/setup_github_secrets.sh` (already run if you used it after push).
 
+**CI `firebase_options.dart`:** The workflow writes this file from the plist secret via `./scripts/generate_firebase_options_from_plist.sh` (gitignored — not in the repo).
+
 **Installable IPA:**  
 - **Free Apple account (Personal Team):** **[SETUP-SIGNING-FREE-ACCOUNT.md](SETUP-SIGNING-FREE-ACCOUNT.md)** — Xcode only; ignore developer.apple.com Certificates pages.  
 - **Paid $99/year program:** [SETUP-SIGNING.md](SETUP-SIGNING.md) / portal guides.
