@@ -117,19 +117,33 @@ The Cloud Function uses the **Firebase Admin SDK** with default application cred
 | `INGEST_URL` | Shortcuts + app onboarding | Function URL from deploy output |
 | Device ingest token | Keychain + Shortcuts | Created by app onboarding; stored as `sha256` in Firestore |
 | `deviceId` | App onboarding | UUID sent in POST body; must match `device_tokens` doc ID |
-| `GEMINI_API_KEY` | Functions secret | **Optional.** Enables LLM auto-classify via Gemini (`gemini-2.0-flash`). Set with `firebase functions:secrets:set GEMINI_API_KEY`. **Never paste keys in chat/Cursor** — only Firebase secrets. Without it, `classifyTransaction` returns `needsConfig` and the app uses rules + in-app classify. |
+| `GEMINI_API_KEY` | Functions secret | **Optional legacy fallback.** Used only when the user has not saved BYOK settings in the app. Prefer **Profile → Agent settings** (provider + API key + model stored at `users/{uid}/settings/llm`). |
 
 ### LLM classify (`classifyTransaction`)
 
-Rules-first parsing runs on-device; the callable CF only handles uncategorized/ambiguous debits. **No API key is required** for normal use — merchant rules and the in-app "Needs your input" inbox cover everything. To enable automatic LLM categorization:
+Rules-first parsing runs on-device; the callable CF only handles uncategorized/ambiguous debits. **No API key is required** for normal use — merchant rules and the in-app "Needs your input" inbox cover everything.
+
+**Recommended:** In the app, open **Profile → Agent settings**, enable LLM, pick a provider (Gemini, Open Router, Grok, Mistral, or Other), enter your API key, test it, fetch models, and save. Cloud Functions read that config per user.
+
+**Legacy:** Project-wide Gemini via Firebase secret:
 
 ```bash
 cd firebase/functions
 firebase functions:secrets:set GEMINI_API_KEY
-firebase deploy --only functions:classifyTransaction,functions:notifyClassification
+firebase deploy --only functions:classifyTransaction,functions:testLlmApiKey,functions:fetchLlmModels,functions:notifyClassification
 ```
 
-Get a free key at [Google AI Studio](https://aistudio.google.com/apikey). **Never paste API keys in chat or Cursor** — only set them via Firebase secrets as above.
+**Never paste API keys in chat or Cursor** — only Firebase secrets or in-app Agent settings.
+
+### Agent settings callables
+
+| Callable | Purpose |
+|----------|---------|
+| `testLlmApiKey` | Verifies provider + API key (uses inline key from the request or saved settings) |
+| `fetchLlmModels` | Lists models for the chosen provider |
+| `classifyTransaction` | Auto-classify using saved user config (or legacy `GEMINI_API_KEY`) |
+
+LLM errors and warnings are written to `users/{uid}/llm_logs` and shown in **Agent settings → LLM logs**.
 
 ### Push notifications (optional)
 
@@ -293,6 +307,8 @@ If transactions stay in "Needs your input" and you want automatic categorization
 | `users/{uid}/transactions/{auto}` | auto | Parsed ledger rows (app-written) |
 | `users/{uid}/payment_sources/{auto}` | auto | Banks/cards (app-written) |
 | `users/{uid}/categories/{id}` | category id | Seeded from app defaults; merged on upgrade |
+| `users/{uid}/settings/llm` | `llm` | BYOK LLM: `enabled`, `provider`, `apiKey`, `model`, optional `baseUrl` |
+| `users/{uid}/llm_logs/{auto}` | auto | LLM classify / test / fetch errors (app-readable) |
 
 ## TODOs for project owner
 

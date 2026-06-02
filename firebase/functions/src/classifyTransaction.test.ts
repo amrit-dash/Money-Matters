@@ -6,7 +6,7 @@ import {
   parseClassifyResponse,
   resolveSelectedCategory,
   type ClassifyRequest,
-} from "./classifyTransaction";
+} from "./classifyTransaction.schema";
 
 describe("buildPrompt", () => {
   it("includes user-selected category when provided", () => {

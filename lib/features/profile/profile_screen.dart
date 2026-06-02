@@ -193,8 +193,19 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: AppSpacing.section),
           const AppearanceSettingsSection(),
           const SizedBox(height: AppSpacing.section),
-          AppSectionHeader(title: 'Auto-classify (Gemini)'),
-          _GeminiStatusCard(),
+          AppSectionHeader(
+            title: 'AI / Agent',
+            subtitle: 'LLM provider, API key, and model for auto-classify',
+          ),
+          const SizedBox(height: AppSpacing.tight),
+          AppMenuTile(
+            icon: Icons.smart_toy_outlined,
+            title: 'Agent settings',
+            subtitle: 'Enable LLM, pick provider, test API key, choose model',
+            onTap: () => Navigator.pushNamed(context, AppRoutes.agentSettings),
+          ),
+          const SizedBox(height: AppSpacing.tight),
+          _AgentStatusCard(),
           const SizedBox(height: AppSpacing.section),
           AppSectionHeader(title: 'Setup'),
           AppMenuTile(
@@ -305,7 +316,7 @@ class _TypeDeleteDialogState extends State<_TypeDeleteDialog> {
   }
 }
 
-class _GeminiStatusCard extends StatelessWidget {
+class _AgentStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -318,10 +329,10 @@ class _GeminiStatusCard extends StatelessWidget {
         needsConfig
             ? (
                 scheme.tertiaryContainer.withValues(alpha: 0.35),
-                'Gemini not configured',
-                'Cloud auto-classify needs GEMINI_API_KEY on Firebase Functions. '
-                    'Rules + Review inbox still work. Set the secret and redeploy '
-                    'classifyTransaction — see USER-FIX.md.',
+                'LLM not ready',
+                'Open Agent settings to enable LLM and save a provider API key, '
+                    'or set GEMINI_API_KEY on Cloud Functions (legacy). '
+                    'Rules + Review inbox still work.',
                 AppStatTone.warning,
               )
             : error != null
@@ -341,8 +352,8 @@ class _GeminiStatusCard extends StatelessWidget {
                     : (
                         scheme.surfaceContainerHighest.withValues(alpha: 0.5),
                         'Auto-classify ready',
-                        'Run Recovery → Sync and parse now to classify backlog. '
-                            'New ambiguous debits are sent to classifyTransaction on sync.',
+                        'Configure Agent settings or run Recovery → Sync to '
+                            'classify ambiguous debits via the cloud.',
                         AppStatTone.neutral,
                       );
 
@@ -361,7 +372,7 @@ class _GeminiStatusCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
-                AppStatusChip(label: 'Cloud LLM', tone: tone),
+                AppStatusChip(label: 'Session', tone: tone),
               ],
             ),
             const SizedBox(height: AppSpacing.tight),

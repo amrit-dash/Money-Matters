@@ -7,5 +7,6 @@ void main() {
     expect(AppRoutes.dashboard, '/dashboard');
     expect(AppRoutes.profile, '/profile');
     expect(AppRoutes.accounts, '/accounts');
+    expect(AppRoutes.agentSettings, '/agent-settings');
   });
 }

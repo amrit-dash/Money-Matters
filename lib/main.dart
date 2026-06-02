@@ -12,7 +12,9 @@ import 'features/setup/firebase_setup_screen.dart';
 import 'ingest/ingest_queue_drain.dart';
 import 'ingest/ingest_repository.dart';
 import 'ingest/url_ingest_handler.dart';
+import 'parse/llm_aware_classifier.dart';
 import 'parse/llm_parser.dart';
+import 'services/llm_settings_service.dart';
 import 'services/app_services.dart';
 import 'services/category_service.dart';
 import 'services/fcm_service.dart';
@@ -34,12 +36,17 @@ Future<void> main() async {
   final localDatabase = LocalDatabase();
   final paymentSourceService = PaymentSourceService(authService: authService);
   final categoryService = CategoryService(authService: authService);
+  final llmSettingsService = LlmSettingsService(authService: authService);
+  final classifier = LlmAwareClassifier(
+    delegate: CloudFunctionsClassifier(),
+    settingsService: llmSettingsService,
+  );
   final parsePipeline = IngestParsePipeline(
     localDatabase: localDatabase,
     authService: authService,
     paymentSourceService: paymentSourceService,
     categoryService: categoryService,
-    classifier: CloudFunctionsClassifier(),
+    classifier: classifier,
   );
   final ingestRepository = IngestRepository(
     authService: authService,
@@ -60,7 +67,8 @@ Future<void> main() async {
     parsePipeline: parsePipeline,
     paymentSourceService: paymentSourceService,
     categoryService: categoryService,
-    transactionClassifier: CloudFunctionsClassifier(),
+    llmSettingsService: llmSettingsService,
+    transactionClassifier: classifier,
   );
   appServices.firestoreRealtimeSync.start();
   final themeController = ThemeController();

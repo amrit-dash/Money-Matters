@@ -16,6 +16,8 @@ import 'ingest_parse_pipeline.dart';
 import 'ai_classify_service.dart';
 import 'payment_source_service.dart';
 import 'user_data_deletion_service.dart';
+import 'llm_logs_service.dart';
+import 'llm_settings_service.dart';
 import '../parse/llm_parser.dart';
 
 /// Root dependency container for Money Matters.
@@ -34,8 +36,14 @@ class AppServices {
     TransactionClassifier? transactionClassifier,
     AiClassifyService? aiClassifyService,
     UserDataDeletionService? userDataDeletionService,
+    LlmSettingsService? llmSettingsService,
+    LlmLogsService? llmLogsService,
     FirestoreRealtimeSyncService? firestoreRealtimeSync,
-  })  : userDataDeletionService = userDataDeletionService ??
+  })  : llmSettingsService = llmSettingsService ??
+            LlmSettingsService(authService: authService),
+        llmLogsService = llmLogsService ??
+            LlmLogsService(authService: authService),
+        userDataDeletionService = userDataDeletionService ??
             UserDataDeletionService(
               authService: authService,
               localDatabase: localDatabase,
@@ -89,6 +97,8 @@ class AppServices {
   final RecoveryRepository recoveryRepository;
   final AiClassifyService aiClassifyService;
   final UserDataDeletionService userDataDeletionService;
+  final LlmSettingsService llmSettingsService;
+  final LlmLogsService llmLogsService;
   final FirestoreRealtimeSyncService firestoreRealtimeSync;
 }
 

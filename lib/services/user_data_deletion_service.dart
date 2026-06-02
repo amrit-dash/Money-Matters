@@ -33,6 +33,8 @@ class UserDataDeletionService {
     'categories',
     'device_tokens',
     'fcm_tokens',
+    'llm_logs',
+    'settings',
   ];
 
   /// Clears local SQLite and all Firestore subcollections for [uid].

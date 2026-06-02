@@ -246,11 +246,11 @@ class CloudFunctionsClassifier implements TransactionClassifier {
       if (result.needsConfig) {
         ClassifierDiagnostics.recordAttempt(
           needsConfig: true,
-          error: 'GEMINI_API_KEY not set on Cloud Functions',
+          error: 'LLM not configured — enable in Profile → Agent settings',
         );
         debugPrint(
-          'CloudFunctionsClassifier: needsConfig — set secret with '
-          'firebase functions:secrets:set GEMINI_API_KEY',
+          'CloudFunctionsClassifier: needsConfig — configure Agent settings '
+          'or firebase functions:secrets:set GEMINI_API_KEY',
         );
       }
       return result;

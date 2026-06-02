@@ -4,6 +4,7 @@ import 'features/accounts/accounts_screen.dart';
 import 'core/widgets/app_shell.dart';
 import 'features/onboarding/connect_sms_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
+import 'features/profile/agent_settings_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/recovery/recovery_screen.dart';
 import 'features/review/classify_screen.dart';
@@ -20,6 +21,7 @@ class AppRoutes {
   static const recovery = '/recovery';
   static const profile = '/profile';
   static const accounts = '/accounts';
+  static const agentSettings = '/agent-settings';
 }
 
 /// Builds [MaterialApp] routes. Coordinator wires [initialRoute] from auth state.
@@ -123,6 +125,17 @@ class AppRouter {
             paymentSourceService: AppScope.of(ctx).paymentSourceService,
             parsePipeline: AppScope.of(ctx).parsePipeline,
           ),
+        );
+      case AppRoutes.agentSettings:
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (ctx) {
+            final services = AppScope.of(ctx);
+            return AgentSettingsScreen(
+              llmSettingsService: services.llmSettingsService,
+              llmLogsService: services.llmLogsService,
+            );
+          },
         );
       default:
         return MaterialPageRoute<void>(

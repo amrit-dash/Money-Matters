@@ -14,9 +14,11 @@ void main() {
           'categories',
           'device_tokens',
           'fcm_tokens',
+          'llm_logs',
+          'settings',
         ]),
       );
-      expect(UserDataDeletionService.userSubcollectionNames.length, 7);
+      expect(UserDataDeletionService.userSubcollectionNames.length, 9);
     });
   });
 }
