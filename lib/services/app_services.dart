@@ -14,6 +14,7 @@ import 'category_service.dart';
 import 'ingest_parse_pipeline.dart';
 import 'ai_classify_service.dart';
 import 'payment_source_service.dart';
+import 'user_data_deletion_service.dart';
 import '../parse/llm_parser.dart';
 
 /// Root dependency container for Money Matters.
@@ -31,7 +32,14 @@ class AppServices {
     RecoveryRepository? recoveryRepository,
     TransactionClassifier? transactionClassifier,
     AiClassifyService? aiClassifyService,
-  })  : aiClassifyService = aiClassifyService ??
+    UserDataDeletionService? userDataDeletionService,
+  })  : userDataDeletionService = userDataDeletionService ??
+            UserDataDeletionService(
+              authService: authService,
+              localDatabase: localDatabase,
+              categoryService: categoryService,
+            ),
+        aiClassifyService = aiClassifyService ??
             AiClassifyService(
               classifier: transactionClassifier,
               localDatabase: localDatabase,
@@ -71,6 +79,7 @@ class AppServices {
   final ReviewRepository reviewRepository;
   final RecoveryRepository recoveryRepository;
   final AiClassifyService aiClassifyService;
+  final UserDataDeletionService userDataDeletionService;
 }
 
 /// InheritedWidget exposing [AppServices] to the widget tree.

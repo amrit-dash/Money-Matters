@@ -110,6 +110,7 @@ class AppRouter {
             final services = AppScope.of(ctx);
             return ProfileScreen(
               authService: services.authService,
+              userDataDeletionService: services.userDataDeletionService,
             );
           },
         );
