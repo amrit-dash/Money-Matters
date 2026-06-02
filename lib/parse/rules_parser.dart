@@ -33,10 +33,38 @@ class RulesParser {
     caseSensitive: false,
   );
 
-  static final RegExp _upiPathMerchantPattern = RegExp(
-    r'UPI/([^/]+)/',
+  static final RegExp _upiMaskedNamePattern = RegExp(
+    r'UPI/.+?\*\*([^*\n]{2,60}?)\*\*',
     caseSensitive: false,
   );
+
+  static final RegExp _upiFullPathPattern = RegExp(
+    r'UPI/(.+?)(?:\s+on\s|\.\s|$)',
+    caseSensitive: false,
+  );
+
+  static const _upiTypeCodes = {
+    'P2A',
+    'P2M',
+    'P2P',
+    'PAY',
+    'COLLECT',
+    'INTENT',
+    'MANDATE',
+  };
+
+  static const _upiProviderSuffixes = {
+    'PAYTM',
+    'YBL',
+    'OKAXIS',
+    'OKICICI',
+    'OKHDFCBANK',
+    'OKSBI',
+    'AXL',
+    'IBL',
+    'APL',
+    'UPI',
+  };
 
   /// Federal Bank: Rs 10.00 sent via UPI on 31-05-2026 at 02:50:52 to vpa@.
   static final RegExp _federalSentUpiPattern = RegExp(
@@ -283,9 +311,9 @@ class RulesParser {
       return _cleanMerchant(colonMatch.group(1)!);
     }
 
-    final upiPathMatch = _upiPathMerchantPattern.firstMatch(body);
-    if (upiPathMatch != null) {
-      return _cleanMerchant(upiPathMatch.group(1)!);
+    final upiMerchant = _extractMerchantFromUpiPath(body);
+    if (upiMerchant != null) {
+      return upiMerchant;
     }
 
     final vpaMatch = _upiToVpaPattern.firstMatch(body);
@@ -296,6 +324,60 @@ class RulesParser {
     final upiMatch = _upiPattern.firstMatch(body);
     if (upiMatch != null) {
       return _cleanMerchant(upiMatch.group(1)!);
+    }
+
+    return null;
+  }
+
+  String? _extractMerchantFromUpiPath(String body) {
+    if (!RegExp(r'\bUPI\b', caseSensitive: false).hasMatch(body)) {
+      return null;
+    }
+
+    final masked = _upiMaskedNamePattern.firstMatch(body);
+    if (masked != null) {
+      final name = masked.group(1)!.trim();
+      if (name.isNotEmpty && RegExp(r'[A-Za-z]').hasMatch(name)) {
+        return _cleanMerchant(name);
+      }
+    }
+
+    final pathMatch = _upiFullPathPattern.firstMatch(body);
+    if (pathMatch == null) return null;
+
+    final segments = pathMatch
+        .group(1)!
+        .split('/')
+        .map((s) => s.replaceAll('*', '').trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    for (final seg in segments) {
+      if (seg.contains('@')) {
+        return _cleanVpaMerchant(seg);
+      }
+    }
+
+    for (final seg in segments.reversed) {
+      final upper = seg.toUpperCase();
+      if (_upiTypeCodes.contains(upper)) continue;
+      if (_upiProviderSuffixes.contains(upper)) continue;
+      if (RegExp(r'^\d{6,}$').hasMatch(seg)) continue;
+      if (RegExp(r'^[A-Z0-9]{2,4}$').hasMatch(upper)) continue;
+      if (RegExp(r'[A-Za-z]').hasMatch(seg)) {
+        return _cleanMerchant(seg);
+      }
+    }
+
+    for (final seg in segments) {
+      final upper = seg.toUpperCase();
+      if (_upiTypeCodes.contains(upper)) continue;
+      if (_upiProviderSuffixes.contains(upper)) continue;
+      if (RegExp(r'^\d{6,}$').hasMatch(seg)) continue;
+      if (RegExp(r'^[A-Z0-9]{2,4}$').hasMatch(upper)) continue;
+      if (RegExp(r'[A-Za-z]').hasMatch(seg)) {
+        return _cleanMerchant(seg);
+      }
     }
 
     return null;
@@ -415,8 +497,9 @@ class RulesParser {
 
     // Person-name or personal VPA UPI payments (AE8 / Federal Bank).
     if (upiHint != null || merchant.contains(' ') || merchant.contains('@')) {
-      final looksLikePerson = RegExp(r'^[A-Z]+(?: [A-Z]+)?$').hasMatch(merchant);
-      if (looksLikePerson && merchant.split(' ').length <= 3) {
+      final looksLikePerson =
+          RegExp(r'^[A-Z]+(?: [A-Z]+)*$').hasMatch(merchant);
+      if (looksLikePerson && merchant.split(' ').length <= 4) {
         return true;
       }
       if (merchant.contains('@')) return true;

@@ -58,6 +58,36 @@ void main() {
     expect(updated.categoryId, 'transfer');
   });
 
+  test('ClassificationApplier updates merchant for opaque UPI type codes', () {
+    final tx = Transaction(
+      id: '1',
+      rawIngestId: 'ingest',
+      amount: 500,
+      timestamp: DateTime.parse('2026-05-29T00:00:00+05:30'),
+      type: TransactionType.debit,
+      merchant: 'P2A',
+    );
+    const categories = [Category(id: 'transfer', name: 'Transfers')];
+    const result = ClassificationResult(
+      categoryId: 'transfer',
+      merchantNormalized: 'Srawan Kumar Sah',
+      transferTo: 'Srawan Kumar Sah',
+      needsUserInput: false,
+    );
+
+    final updated = ClassificationApplier.apply(
+      tx: tx,
+      result: result,
+      categories: categories,
+      knownSourceIds: {},
+      forceCategory: true,
+    );
+
+    expect(updated.merchant, 'Srawan Kumar Sah');
+    expect(updated.merchantNormalized, 'Srawan Kumar Sah');
+    expect(updated.classifiedBy, ClassifiedBy.llm);
+  });
+
   test('ClassificationApplier respects selectedCategoryId', () {
     final tx = Transaction(
       id: '1',

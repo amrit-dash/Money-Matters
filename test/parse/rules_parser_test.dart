@@ -78,6 +78,16 @@ void main() {
       expect(result.candidate!.ambiguous, isTrue);
     });
 
+    test('extracts payee name from UPI P2A path with masked name', () {
+      final result = parser.parse(sampleIngest(
+        'Rs.500 debited from A/c **4567 for UPI/P2A/652088379375/**SRAWAN KUMAR SAH** on 29-05-26.',
+      ));
+
+      expect(result.classification, IngestClassification.transaction);
+      expect(result.candidate!.merchant, 'SRAWAN KUMAR SAH');
+      expect(result.candidate!.ambiguous, isTrue);
+    });
+
     test('classifies promo SMS without creating transaction', () {
       final result = parser.parse(sampleIngest(
         'Congratulations! Pre-approved personal loan offer up to Rs.5,00,000. Apply now.',
