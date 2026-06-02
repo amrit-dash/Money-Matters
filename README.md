@@ -37,10 +37,10 @@ Designed for sideload install via Xcode or GitHub Actions — not the App Store.
 
 | Asset | Location | Status |
 |-------|----------|--------|
-| **App icon** | TBD — externally generated | Final mark not chosen yet |
-| **iOS home-screen icon** | [`ios/Runner/Assets.xcassets/AppIcon.appiconset/`](ios/Runner/Assets.xcassets/AppIcon.appiconset/) | Placeholder PNGs in asset catalog; replace with final art when ready |
+| **App icon (SVG)** | [`docs/assets/app-icon/`](docs/assets/app-icon/) | Light + dark 1024×1024 masters |
+| **iOS home-screen icon** | [`ios/Runner/Assets.xcassets/AppIcon.appiconset/`](ios/Runner/Assets.xcassets/AppIcon.appiconset/) | Light + dark PNGs (regenerate: `./scripts/export_app_icons.sh`) |
 
-**Production path:** once the final icon is ready, export @1x–@3x PNGs into `AppIcon.appiconset`, then build and install:
+**Production path:** edit SVG masters if needed, run `./scripts/export_app_icons.sh`, then build and install:
 
 ```bash
 ./scripts/build_ipa.sh    # or Xcode → Run on device

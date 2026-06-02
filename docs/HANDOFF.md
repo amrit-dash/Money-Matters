@@ -1,6 +1,6 @@
 # Handoff: Money Matters
 
-**Status:** MVP skeleton **built** (2026-05-29). Production feature pass **complete** (2026-05-31). **App icon:** placeholder PNGs in `AppIcon.appiconset` (see [App icon & branding](#app-icon--branding) below). false-positive hardening, per-source dashboard, real Firestore-backed categories, LLM classify Cloud Function + FCM trigger, and in-app "Needs your input" inbox. **`classifyTransaction` deployed live** on `money-matters-amrit` (2026-05-31); **`notifyClassification` optional** — Eventarc IAM may fail on first deploy (see `USER-FIX.md`); in-app Review inbox is primary. Not device-tested by agent.
+**Status:** MVP skeleton **built** (2026-05-29). Production feature pass **complete** (2026-05-31). **App icon:** vector masters + light/dark PNGs in `AppIcon.appiconset` (see [App icon & branding](#app-icon--branding) below). false-positive hardening, per-source dashboard, real Firestore-backed categories, LLM classify Cloud Function + FCM trigger, and in-app "Needs your input" inbox. **`classifyTransaction` deployed live** on `money-matters-amrit` (2026-05-31); **`notifyClassification` optional** — Eventarc IAM may fail on first deploy (see `USER-FIX.md`); in-app Review inbox is primary. Not device-tested by agent.
 
 **Selected direction:** S1 Cloud-handoff-first — Shortcuts POST → Firebase `ingestSms` → Flutter drain → rules parse → (LLM gate for ambiguous) → ledger UI + in-app classify.
 
@@ -10,11 +10,11 @@
 
 | Item | Status |
 |------|--------|
-| Final app icon | **TBD** — replace placeholder PNGs when external art is ready |
-| iOS `AppIcon.appiconset` | **Placeholder** — all PNG slots committed; swap files in place |
+| Final app icon | **Done** — hub-and-spoke ₹ mark; teal light / slate dark |
+| SVG masters | `docs/assets/app-icon/app-icon-master-{light,dark}.svg` |
+| iOS `AppIcon.appiconset` | **Exported** — light PNGs + `*-dark.png` variants in `Contents.json` |
+| Regenerate PNGs | `./scripts/export_app_icons.sh` (requires `librsvg`, Python Pillow) |
 | On-device home screen | **Verify** — `./scripts/build_ipa.sh` or Xcode Run on a physical iPhone |
-
-Exploratory SVG concept dirs and `docs/assets/app-icon-preview*.png` were removed from the repo.
 
 **Screenshots for README:** UI images are linked from external hosting in root `README.md`. Optional repo copies: add PNGs under `docs/screenshots/` (directory not created yet).
 
@@ -59,7 +59,7 @@ After saving hints, run **Recovery / re-sync** (or wait for the next ingest drai
 | Flutter app | `lib/`, `ios/`, `pubspec.yaml` | iOS-only target |
 | Parser tests | `test/parse/rules_parser_test.dart` | AE3, AE4, AE8 style fixtures |
 | Shortcuts docs | `docs/shortcuts/setup.md`, `payload-examples.json` | Automation A/B |
-| App icon | `ios/Runner/Assets.xcassets/AppIcon.appiconset/` | Final art TBD (externally generated); placeholder PNGs in catalog |
+| App icon | `ios/Runner/Assets.xcassets/AppIcon.appiconset/` | Light + dark PNGs from `docs/assets/app-icon/*.svg` |
 | Integration | `lib/services/ingest_parse_pipeline.dart` | Drain → parse → Firestore + SQLite |
 
 ---
@@ -77,7 +77,7 @@ After saving hints, run **Recovery / re-sync** (or wait for the next ingest drai
 
 ## Next implementation passes
 
-- **App icon on device:** generate final icon externally, export to all `AppIcon.appiconset` PNG slots, commit assets, run `./scripts/build_ipa.sh` and install on iPhone to verify home-screen icon
+- **App icon on device:** run `./scripts/build_ipa.sh` and install on iPhone to verify light/dark home-screen icons
 - Set `GEMINI_API_KEY` + deploy the two new functions (see USER ACTIONS above) — **optional**; rules + in-app classify work without it
 - Redacted real SMS samples to expand rules beyond HDFC/ICICI/Federal templates
 - Category management UI (add/rename/delete) — currently seeded defaults + implicit merchant-rule learning
