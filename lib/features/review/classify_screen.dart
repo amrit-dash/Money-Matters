@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:money_matters/models/category.dart';
+import 'package:money_matters/models/category_taxonomy.dart';
 import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
@@ -52,6 +53,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   final List<String> _shoppingItems = [];
   String? _selectedTravelProvider;
   bool _travelProviderCustom = false;
+  bool _serviceProviderCustom = false;
   String? _selectedCategoryId;
   String? _selectedSubcategoryId;
   String? _selectedPaymentSourceId;
@@ -144,6 +146,10 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         ..clear()
         ..addAll(tx.shoppingItems);
       _initTravelProvider(tx.travelProvider);
+      _initServiceProviderFromMerchant(
+        categoryId: tx.categoryId,
+        subcategoryId: tx.subcategoryId,
+      );
       setState(() {
         _tx = tx;
         _categories = categories;
@@ -190,12 +196,49 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       ..clear()
       ..addAll(tx.shoppingItems);
     _initTravelProvider(tx.travelProvider);
+    _initServiceProviderFromMerchant(
+      categoryId: tx.categoryId,
+      subcategoryId: tx.subcategoryId,
+    );
     setState(() {
       _tx = tx;
       _selectedCategoryId = tx.categoryId;
       _selectedSubcategoryId = tx.subcategoryId;
       _selectedPaymentSourceId = tx.paymentSourceId;
     });
+  }
+
+  void _initServiceProviderFromMerchant({
+    String? categoryId,
+    String? subcategoryId,
+  }) {
+    final merchant = _merchantController.text.trim();
+    if (merchant.isEmpty) {
+      _serviceProviderCustom = false;
+      return;
+    }
+    final presets = serviceProvidersFor(
+      categoryId ?? _selectedCategoryId,
+      subcategoryId ?? _selectedSubcategoryId,
+    );
+    if (presets.isEmpty) {
+      _serviceProviderCustom = false;
+      return;
+    }
+    _serviceProviderCustom = !presets.any(
+      (p) => p.toLowerCase() == merchant.toLowerCase(),
+    );
+  }
+
+  String? get _selectedServiceProvider {
+    final text = _merchantController.text.trim();
+    if (text.isEmpty) return null;
+    final presets =
+        serviceProvidersFor(_selectedCategoryId, _selectedSubcategoryId);
+    for (final preset in presets) {
+      if (preset.toLowerCase() == text.toLowerCase()) return preset;
+    }
+    return _serviceProviderCustom ? text : null;
   }
 
   void _maybeAutofillTransferTo(Transaction tx) {
@@ -615,10 +658,15 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           selectedId: _selectedCategoryId,
           onSelected: (id) => setState(() {
             _markFormDirty();
+            final categoryChanged = id != _selectedCategoryId;
             _selectedCategoryId = id;
             if (!CategoryService.subcategoriesFor(id)
                 .any((s) => s.id == _selectedSubcategoryId)) {
               _selectedSubcategoryId = null;
+            }
+            if (categoryChanged) {
+              _merchantController.clear();
+              _serviceProviderCustom = false;
             }
             if (_tx != null) {
               _maybeAutofillTransferTo(_tx!);
@@ -626,13 +674,30 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           }),
         ),
         if (_showSubcategoryPicker && _selectedCategoryId != null) ...[
-          const SizedBox(height: AppSpacing.tight),
+          const SizedBox(height: AppSpacing.item),
           SubcategoryClassifyPicker(
             categoryId: _selectedCategoryId!,
             selectedSubcategoryId: _selectedSubcategoryId,
             onSelected: (id) => setState(() {
               _markFormDirty();
+              if (id != _selectedSubcategoryId) {
+                _merchantController.clear();
+                _serviceProviderCustom = false;
+              }
               _selectedSubcategoryId = id;
+            }),
+            selectedServiceProvider: _selectedServiceProvider,
+            serviceProviderCustom: _serviceProviderCustom,
+            customServiceProviderController: _merchantController,
+            onServiceProviderSelected: (provider) => setState(() {
+              _markFormDirty();
+              _serviceProviderCustom = false;
+              _merchantController.text = provider;
+            }),
+            onServiceProviderCustomMode: () => setState(() {
+              _markFormDirty();
+              _serviceProviderCustom = true;
+              _merchantController.clear();
             }),
           ),
         ],

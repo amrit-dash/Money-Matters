@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app_router.dart';
 import 'core/auth/auth_service.dart';
+import 'core/widgets/keyboard_done_bar.dart';
 import 'core/config/firebase_options.dart';
 import 'core/db/local_database.dart';
 import 'core/theme/theme_controller.dart';
@@ -166,6 +167,9 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
           themeMode: widget.themeController.themeMode,
           initialRoute: initialRoute,
           onGenerateRoute: AppRouter.onGenerateRoute,
+          builder: (context, child) => KeyboardDoneBar(
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
     );

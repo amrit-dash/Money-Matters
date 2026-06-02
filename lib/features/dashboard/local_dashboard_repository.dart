@@ -323,4 +323,34 @@ class LocalDashboardRepository implements DashboardRepository {
       transactions: await _db.countTransactions(),
     );
   }
+
+  /// Non-excluded debits and credits in a period, newest first.
+  static List<Transaction> filterPeriodTransactions(
+    List<Transaction> transactions,
+  ) {
+    return transactions.where((tx) => !tx.excluded).toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  }
+
+  @override
+  Future<List<Transaction>> periodTransactions({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final rows = await _db.getTransactionsBetween(start, end);
+    return filterPeriodTransactions(
+      rows.map(Transaction.fromSqlite).toList(),
+    );
+  }
+
+  @override
+  Stream<List<Transaction>> watchPeriodTransactions({
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return watchLocalData(
+      watchDataChanges(),
+      () => periodTransactions(start: start, end: end),
+    );
+  }
 }

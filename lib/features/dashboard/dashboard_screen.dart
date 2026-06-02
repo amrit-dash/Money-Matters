@@ -54,6 +54,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _transactionCount = 0;
   bool _showPipelineSummary = false;
   bool _syncing = false;
+  Timer? _syncMessageTimer;
+  Timer? _pipelineTimer;
   StreamSubscription<IngestDrainResult>? _drainSubscription;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
@@ -73,8 +75,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _syncMessageTimer?.cancel();
+    _pipelineTimer?.cancel();
     _drainSubscription?.cancel();
     super.dispose();
+  }
+
+  void _scheduleSyncMessageDismiss() {
+    _syncMessageTimer?.cancel();
+    if (_syncMessage != null && _syncMessage != 'Syncing queue…') {
+      _syncMessageTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _syncMessage = null);
+      });
+    }
+  }
+
+  void _schedulePipelineSummaryDismiss() {
+    _pipelineTimer?.cancel();
+    if (_showPipelineSummary) {
+      _pipelineTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _showPipelineSummary = false);
+      });
+    }
   }
 
   Future<void> _loadAuxiliaryData() async {
@@ -107,6 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _transactionCount = counts.transactions;
       _showPipelineSummary = showPipeline;
     });
+    if (showPipeline) _schedulePipelineSummaryDismiss();
     widget.onInboxCountChanged?.call();
   }
 
@@ -122,6 +145,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _syncing = false;
       _syncMessage = result?.formatSyncMessage();
     });
+    _scheduleSyncMessageDismiss();
     await _loadAuxiliaryData();
   }
 
@@ -329,36 +353,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 totalSpend: summary.totalSpend,
               ),
             ],
-            const SizedBox(height: AppSpacing.section),
-            AppSectionHeader(
-              title: 'By category',
-              subtitle: summary.breakdown.isEmpty
-                  ? null
-                  : 'Tap a category to see its transactions',
-              icon: Icons.pie_chart_outline,
-            ),
-            if (summary.breakdown.isEmpty)
-              Text(
-                'No categorized spend in this period.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              )
-            else
-              ...summary.breakdown.asMap().entries.map(
-                (entry) => _CategoryRow(
-                  name: entry.value.category.name,
-                  amount: _currency.format(entry.value.amount),
-                  share: entry.value.shareOf(summary.totalSpend),
-                  count: entry.value.transactionCount,
-                  accentIndex: entry.key,
-                  onTap: () => _openCategory(
-                    summary,
-                    entry.value.category.id,
-                    entry.value.category.name,
-                  ),
-                ),
-              ),
             if (_hasPriorComparisonData) ...[
               const SizedBox(height: AppSpacing.section),
               PeriodComparisonCard(
@@ -400,6 +394,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onTap: () => _openSource(null, 'Unmatched'),
                 ),
             ],
+            const SizedBox(height: AppSpacing.section),
+            AppSectionHeader(
+              title: 'By category',
+              subtitle: summary.breakdown.isEmpty
+                  ? null
+                  : 'Tap a category to see its transactions',
+              icon: Icons.pie_chart_outline,
+            ),
+            if (summary.breakdown.isEmpty)
+              Text(
+                'No categorized spend in this period.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              )
+            else
+              ...summary.breakdown.asMap().entries.map(
+                (entry) => _CategoryRow(
+                  name: entry.value.category.name,
+                  amount: _currency.format(entry.value.amount),
+                  share: entry.value.shareOf(summary.totalSpend),
+                  count: entry.value.transactionCount,
+                  accentIndex: entry.key,
+                  onTap: () => _openCategory(
+                    summary,
+                    entry.value.category.id,
+                    entry.value.category.name,
+                  ),
+                ),
+              ),
           ],
         ],
       ),

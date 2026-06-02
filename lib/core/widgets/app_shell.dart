@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../features/dashboard/analytics_screen.dart';
 import '../../features/dashboard/dashboard_repository.dart';
 import '../../features/dashboard/dashboard_screen.dart';
 import '../../features/profile/profile_screen.dart';
@@ -13,7 +14,7 @@ import '../../services/payment_source_service.dart';
 import '../../services/user_data_deletion_service.dart';
 import '../auth/auth_service.dart';
 
-/// Main signed-in shell: bottom nav across home, inbox, recovery, and profile.
+/// Main signed-in shell: home, analytics, inbox, recovery, and profile.
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
@@ -68,6 +69,13 @@ class _AppShellState extends State<AppShell> {
                   queueDrain: widget.queueDrain,
                   embeddedInShell: true,
                 ),
+                AnalyticsScreen(
+                  repository: widget.dashboardRepository,
+                  reviewRepository: widget.reviewRepository,
+                  categoryService: widget.categoryService,
+                  paymentSourceService: widget.paymentSourceService,
+                  embeddedInShell: true,
+                ),
                 ReviewScreen(
                   repository: widget.reviewRepository,
                   embeddedInShell: true,
@@ -91,6 +99,11 @@ class _AppShellState extends State<AppShell> {
                   icon: Icon(Icons.home_outlined),
                   selectedIcon: Icon(Icons.home),
                   label: 'Home',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.insights_outlined),
+                  selectedIcon: Icon(Icons.insights),
+                  label: 'Analytics',
                 ),
                 NavigationDestination(
                   icon: Badge(

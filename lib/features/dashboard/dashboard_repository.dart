@@ -99,4 +99,14 @@ abstract class DashboardRepository {
 
   /// Local SQLite counts for empty-state messaging.
   Future<({int rawIngests, int transactions})> localCounts();
+
+  /// All non-excluded transactions in [start, end], newest first.
+  Future<List<Transaction>> periodTransactions({
+    required DateTime start,
+    required DateTime end,
+  });
+  Stream<List<Transaction>> watchPeriodTransactions({
+    required DateTime start,
+    required DateTime end,
+  });
 }

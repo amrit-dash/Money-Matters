@@ -45,7 +45,39 @@ const Map<String, List<CategorySubcategory>> categorySubcategories = {
     CategorySubcategory(id: 'train', label: 'Train / Bus ticket'),
     CategorySubcategory(id: 'package', label: 'Holiday package'),
   ],
+  'shopping': [
+    CategorySubcategory(id: 'online', label: 'Online'),
+    CategorySubcategory(id: 'offline', label: 'In-store'),
+  ],
 };
+
+/// Preset merchants / apps for a subcategory (classify chips → merchant field).
+const Map<String, Map<String, List<String>>> subcategoryServiceProviders = {
+  'groceries': {
+    'quick_commerce': ['Zepto', 'Blinkit', 'Instamart', 'BigBasket'],
+    'supermarket': ['DMart', 'Reliance Fresh', 'More', 'Spencer\'s'],
+  },
+  'food': {
+    'delivery': ['Swiggy', 'Zomato', 'EatSure', 'Dunzo'],
+    'takeaway': ['Swiggy', 'Zomato'],
+  },
+  'shopping': {
+    'online': ['Amazon', 'Flipkart', 'Myntra', 'Ajio'],
+  },
+};
+
+List<String> serviceProvidersFor(String? categoryId, String? subcategoryId) {
+  if (categoryId == null ||
+      categoryId.isEmpty ||
+      subcategoryId == null ||
+      subcategoryId.isEmpty) {
+    return const [];
+  }
+  return subcategoryServiceProviders[categoryId]?[subcategoryId] ?? const [];
+}
+
+bool subcategoryHasServiceProviders(String? categoryId, String? subcategoryId) =>
+    serviceProvidersFor(categoryId, subcategoryId).isNotEmpty;
 
 List<CategorySubcategory> subcategoriesForCategory(String? categoryId) {
   if (categoryId == null || categoryId.isEmpty) return const [];

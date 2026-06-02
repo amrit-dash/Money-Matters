@@ -1,6 +1,6 @@
 # Handoff: Money Matters
 
-**Status:** MVP skeleton **built** (2026-05-29). Production feature pass **complete** (2026-05-31). **App icon:** concept-only in repo (2026-06-02) — see [App icon & branding](#app-icon--branding) below. false-positive hardening, per-source dashboard, real Firestore-backed categories, LLM classify Cloud Function + FCM trigger, and in-app "Needs your input" inbox. **`classifyTransaction` deployed live** on `money-matters-amrit` (2026-05-31); **`notifyClassification` optional** — Eventarc IAM may fail on first deploy (see `USER-FIX.md`); in-app Review inbox is primary. Not device-tested by agent.
+**Status:** MVP skeleton **built** (2026-05-29). Production feature pass **complete** (2026-05-31). **App icon:** placeholder PNGs in `AppIcon.appiconset` (see [App icon & branding](#app-icon--branding) below). false-positive hardening, per-source dashboard, real Firestore-backed categories, LLM classify Cloud Function + FCM trigger, and in-app "Needs your input" inbox. **`classifyTransaction` deployed live** on `money-matters-amrit` (2026-05-31); **`notifyClassification` optional** — Eventarc IAM may fail on first deploy (see `USER-FIX.md`); in-app Review inbox is primary. Not device-tested by agent.
 
 **Selected direction:** S1 Cloud-handoff-first — Shortcuts POST → Firebase `ingestSms` → Flutter drain → rules parse → (LLM gate for ambiguous) → ledger UI + in-app classify.
 
@@ -10,12 +10,11 @@
 
 | Item | Status |
 |------|--------|
-| Vector concepts (A/B/C) | **Done** — `assets/icons/concepts/*.svg` + comparison in `assets/icons/concepts/README.md` |
-| Docs preview | **Done** — `docs/assets/app-icon-preview.png` (512px, from **concept A — Bloom Insight**) |
-| iOS `AppIcon.appiconset` | **Partial** — `Contents.json` lists required PNG filenames; **no PNG files in tree yet** |
-| On-device home screen | **Pending** — export squircle PNGs into `AppIcon.appiconset`, then `./scripts/build_ipa.sh` or Xcode Run on a physical iPhone |
+| Final app icon | **TBD** — replace placeholder PNGs when external art is ready |
+| iOS `AppIcon.appiconset` | **Placeholder** — all PNG slots committed; swap files in place |
+| On-device home screen | **Verify** — `./scripts/build_ipa.sh` or Xcode Run on a physical iPhone |
 
-**Reference for production:** `concept_a.svg` (Bloom Insight) is the default documented direction; B/C remain alternatives until you lock the mark.
+Exploratory SVG concept dirs and `docs/assets/app-icon-preview*.png` were removed from the repo.
 
 **Screenshots for README:** UI images are linked from external hosting in root `README.md`. Optional repo copies: add PNGs under `docs/screenshots/` (directory not created yet).
 
@@ -60,7 +59,7 @@ After saving hints, run **Recovery / re-sync** (or wait for the next ingest drai
 | Flutter app | `lib/`, `ios/`, `pubspec.yaml` | iOS-only target |
 | Parser tests | `test/parse/rules_parser_test.dart` | AE3, AE4, AE8 style fixtures |
 | Shortcuts docs | `docs/shortcuts/setup.md`, `payload-examples.json` | Automation A/B |
-| App icon concepts | `assets/icons/concepts/`, `docs/assets/app-icon-preview.png` | SVG concepts; iOS PNG export pending |
+| App icon | `ios/Runner/Assets.xcassets/AppIcon.appiconset/` | Final art TBD (externally generated); placeholder PNGs in catalog |
 | Integration | `lib/services/ingest_parse_pipeline.dart` | Drain → parse → Firestore + SQLite |
 
 ---
@@ -78,7 +77,7 @@ After saving hints, run **Recovery / re-sync** (or wait for the next ingest drai
 
 ## Next implementation passes
 
-- **App icon on device:** export `concept_a.svg` (or chosen concept) to all `AppIcon.appiconset` PNG slots, commit assets, run `./scripts/build_ipa.sh` and install on iPhone to verify home-screen icon
+- **App icon on device:** generate final icon externally, export to all `AppIcon.appiconset` PNG slots, commit assets, run `./scripts/build_ipa.sh` and install on iPhone to verify home-screen icon
 - Set `GEMINI_API_KEY` + deploy the two new functions (see USER ACTIONS above) — **optional**; rules + in-app classify work without it
 - Redacted real SMS samples to expand rules beyond HDFC/ICICI/Federal templates
 - Category management UI (add/rename/delete) — currently seeded defaults + implicit merchant-rule learning

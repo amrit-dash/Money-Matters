@@ -36,7 +36,6 @@ class TransactionDetailScreen extends StatefulWidget {
 
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   String? _resolvedPaymentSourceName;
-  bool _aiLoading = false;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
   final _dateFormat = DateFormat('EEE, d MMM yyyy · h:mm:ss a');
@@ -76,50 +75,6 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     );
     if (changed == true && mounted) {
       Navigator.pop(context, true);
-    }
-  }
-
-  Future<void> _reclassifyWithAi(Transaction tx) async {
-    if (_aiLoading) return;
-    setState(() => _aiLoading = true);
-    try {
-      final services = AppScope.of(context);
-      final outcome =
-          await services.aiClassifyService.applyToTransaction(tx);
-      if (!mounted) return;
-      if (outcome.needsConfig) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'AI classify needs GEMINI_API_KEY on Cloud Functions. '
-              'Set the secret in Firebase, then try again.',
-            ),
-          ),
-        );
-        return;
-      }
-      if (outcome.error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI classify failed: ${outcome.error}')),
-        );
-        return;
-      }
-      final updated = outcome.transaction;
-      if (updated == null || updated == tx) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI had no changes to suggest')),
-        );
-        return;
-      }
-      await widget.reviewRepository.persistAiClassification(updated);
-      if (!mounted) return;
-      await _resolvePaymentSourceName(updated);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Updated with AI classification')),
-      );
-    } finally {
-      if (mounted) setState(() => _aiLoading = false);
     }
   }
 
@@ -238,23 +193,6 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             tooltip: 'Reclassify',
             onPressed: () => _openReclassify(tx),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: IconButton(
-              icon: _aiLoading
-                  ? SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: scheme.onSurface,
-                      ),
-                    )
-                  : const Icon(Icons.auto_awesome_outlined),
-              tooltip: 'Use AI',
-              onPressed: _aiLoading ? null : () => _reclassifyWithAi(tx),
-            ),
-          ),
         ],
       ),
       body: ListView(
@@ -279,20 +217,56 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                           color: isCredit ? scheme.primary : scheme.onSurface,
                         ),
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Spacer(),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        alignment: WrapAlignment.end,
+                        children: [
+                          if (tx.needsClassification)
+                            AppStatusChip(
+                              label: 'Needs category',
+                              tone: AppStatTone.warning,
+                            ),
+                          if (tx.ambiguous)
+                            AppStatusChip(
+                              label: 'Ambiguous',
+                              tone: AppStatTone.warning,
+                            ),
+                          if (tx.unmatched)
+                            AppStatusChip(
+                              label: 'Unmatched',
+                              tone: AppStatTone.warning,
+                            ),
+                          if (tx.excluded)
+                            AppStatusChip(
+                              label: 'Excluded',
+                              tone: AppStatTone.neutral,
+                            ),
+                          if (!tx.needsClassification &&
+                              !tx.ambiguous &&
+                              !tx.unmatched &&
+                              !tx.excluded)
+                            AppStatusChip(
+                              label: 'Classified',
+                              tone: AppStatTone.success,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: AppSpacing.section),
-          _EditableDetailRow(
-            label: 'Category',
-            value: _categoryName(tx),
-            onTap: () => _openReclassify(tx),
-          ),
-          _EditableDetailRow(
+          _DetailRow(label: 'Category', value: _categoryName(tx)),
+          _DetailRow(
             label: 'Payment source',
             value: _paymentSourceLabel(tx),
-            onTap: () => _openReclassify(tx),
           ),
           _DetailRow(label: 'Type', value: tx.type.name.toUpperCase()),
           _DetailRow(label: 'When', value: _dateFormat.format(tx.timestamp)),
@@ -317,113 +291,42 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               tx.transferTo!.isNotEmpty)
             _DetailRow(label: 'To', value: tx.transferTo!),
           _DetailRow(label: 'Currency', value: tx.currency),
-          const SizedBox(height: AppSpacing.item),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              if (tx.needsClassification)
-                AppStatusChip(label: 'Needs category', tone: AppStatTone.warning),
-              if (tx.ambiguous)
-                AppStatusChip(label: 'Ambiguous', tone: AppStatTone.warning),
-              if (tx.unmatched)
-                AppStatusChip(label: 'Unmatched', tone: AppStatTone.warning),
-              if (tx.excluded)
-                AppStatusChip(label: 'Excluded', tone: AppStatTone.neutral),
-              if (!tx.needsClassification &&
-                  !tx.ambiguous &&
-                  !tx.unmatched &&
-                  !tx.excluded)
-                AppStatusChip(label: 'Classified', tone: AppStatTone.success),
-            ],
-          ),
           const SizedBox(height: AppSpacing.section),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: Column(
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _viewOriginalMessage(tx),
+              icon: const Icon(Icons.sms_outlined),
+              label: const Text('View original message'),
+            ),
+          ),
+          if (txId != null) ...[
+            const SizedBox(height: AppSpacing.item),
+            Row(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.sms_outlined),
-                  title: const Text('View original message'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _viewOriginalMessage(tx),
-                ),
-                if (!tx.excluded && txId != null) ...[
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: Icon(Icons.block_outlined, color: scheme.outline),
-                    title: const Text('Not a real transaction'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _exclude(txId),
-                  ),
-                ],
-                if (txId != null) ...[
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: Icon(Icons.delete_outline, color: scheme.error),
-                    title: Text(
-                      'Delete',
-                      style: TextStyle(color: scheme.error),
+                if (!tx.excluded) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _exclude(txId),
+                      child: const Text('Exclude'),
                     ),
-                    trailing: Icon(Icons.chevron_right, color: scheme.error),
-                    onTap: () => _delete(txId),
                   ),
+                  const SizedBox(width: AppSpacing.item),
                 ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EditableDetailRow extends StatelessWidget {
-  const _EditableDetailRow({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Material(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 120,
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                  ),
-                ),
                 Expanded(
-                  child: Text(
-                    value,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  child: OutlinedButton(
+                    onPressed: () => _delete(txId),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: scheme.error,
+                      side: BorderSide(color: scheme.error),
+                    ),
+                    child: const Text('Delete'),
                   ),
                 ),
-                Icon(Icons.edit_outlined, size: 18, color: scheme.outline),
               ],
             ),
-          ),
-        ),
+          ],
+        ],
       ),
     );
   }
