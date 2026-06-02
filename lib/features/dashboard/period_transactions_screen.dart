@@ -5,6 +5,7 @@ import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/transaction_list_item.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
 import '../accounts/payment_source_widgets.dart';
@@ -134,42 +135,19 @@ class PeriodTransactionsScreen extends StatelessWidget {
                         final amountLabel = _currency.format(tx.amount);
                         final prefix = isCredit ? '+' : '-';
 
-                        return Card(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 6,
-                            ),
-                            title: Text(
+                        return TransactionListItem(
+                          dateLabel: _dateFormat.format(tx.timestamp),
+                          categoryName: _categoryLabel(tx, categoryNames),
+                          merchantName:
                               tx.displayMerchant ?? 'Unknown merchant',
-                            ),
-                            subtitle: Text(
-                              '${_categoryLabel(tx, categoryNames)} · '
-                              '${_sourceLabel(tx, sourceNames)} · '
-                              '${_dateFormat.format(tx.timestamp)}',
-                            ),
-                            trailing: Text(
-                              '$prefix$amountLabel',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: isCredit
-                                        ? Theme.of(context)
-                                            .colorScheme
-                                            .primary
-                                        : Theme.of(context)
-                                            .colorScheme
-                                            .onSurface,
-                                  ),
-                            ),
-                            onTap: () => _openTransaction(
-                              context,
-                              tx: tx,
-                              sourceNames: sourceNames,
-                              categoryNames: categoryNames,
-                            ),
+                          amountLabel: '$prefix$amountLabel',
+                          paymentSourceLabel: _sourceLabel(tx, sourceNames),
+                          isCredit: isCredit,
+                          onTap: () => _openTransaction(
+                            context,
+                            tx: tx,
+                            sourceNames: sourceNames,
+                            categoryNames: categoryNames,
                           ),
                         );
                       },

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:money_matters/models/category_taxonomy.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/category_icons.dart';
 import '../../core/widgets/original_ingest_sheet.dart';
 import '../../services/app_services.dart';
 import '../../services/category_service.dart';
@@ -157,6 +159,32 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     return cat?.name ?? (tx.categoryId ?? 'Uncategorized');
   }
 
+  List<Widget> _headerStatusChips(Transaction tx) {
+    final chips = <Widget>[];
+    final isClassified = !tx.needsClassification &&
+        !tx.ambiguous &&
+        !tx.unmatched &&
+        !tx.excluded;
+    if (isClassified) {
+      chips.add(AppStatusChip(label: 'Classified', tone: AppStatTone.success));
+    }
+    if (tx.needsClassification) {
+      chips.add(
+        AppStatusChip(label: 'Needs category', tone: AppStatTone.warning),
+      );
+    }
+    if (tx.ambiguous) {
+      chips.add(AppStatusChip(label: 'Ambiguous', tone: AppStatTone.warning));
+    }
+    if (tx.unmatched) {
+      chips.add(AppStatusChip(label: 'Unmatched', tone: AppStatTone.warning));
+    }
+    if (tx.excluded) {
+      chips.add(AppStatusChip(label: 'Excluded', tone: AppStatTone.neutral));
+    }
+    return chips;
+  }
+
   @override
   Widget build(BuildContext context) {
     final txId = widget.transaction.id;
@@ -180,8 +208,15 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
 
   Widget _buildScaffold(BuildContext context, Transaction tx) {
     final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
     final isCredit = tx.type == TransactionType.credit;
     final txId = tx.id;
+    final categoryName = _categoryName(tx);
+    final categoryIcon = categoryIconFor(
+      categoryId: tx.categoryId,
+      subcategoryId: tx.subcategoryId,
+    );
+    final statusChips = _headerStatusChips(tx);
 
     return Scaffold(
       appBar: AppBar(
@@ -200,99 +235,111 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.page),
         children: [
-          Card(
-            color: scheme.primaryContainer.withValues(alpha: 0.3),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    tx.displayMerchant ?? 'Unknown merchant',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: isCredit ? scheme.primary : scheme.onSurface,
-                        ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Spacer(),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        alignment: WrapAlignment.end,
+          AppCard(
+            color: scheme.secondaryContainer.withValues(alpha: 0.35),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(AppRadii.badge),
+                      ),
+                      child: Icon(
+                        categoryIcon,
+                        size: 22,
+                        color: scheme.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (tx.needsClassification)
-                            AppStatusChip(
-                              label: 'Needs category',
-                              tone: AppStatTone.warning,
+                          Text(
+                            tx.displayMerchant ?? 'Unknown merchant',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
-                          if (tx.ambiguous)
-                            AppStatusChip(
-                              label: 'Ambiguous',
-                              tone: AppStatTone.warning,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: isCredit
+                                  ? scheme.primary
+                                  : scheme.onSurface,
                             ),
-                          if (tx.unmatched)
-                            AppStatusChip(
-                              label: 'Unmatched',
-                              tone: AppStatTone.warning,
-                            ),
-                          if (tx.excluded)
-                            AppStatusChip(
-                              label: 'Excluded',
-                              tone: AppStatTone.neutral,
-                            ),
-                          if (!tx.needsClassification &&
-                              !tx.ambiguous &&
-                              !tx.unmatched &&
-                              !tx.excluded)
-                            AppStatusChip(
-                              label: 'Classified',
-                              tone: AppStatTone.success,
-                            ),
+                          ),
                         ],
                       ),
-                    ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (statusChips.isNotEmpty) statusChips.first,
+                        const SizedBox(height: 6),
+                        AppStatusChip(
+                          label: categoryName,
+                          tone: AppStatTone.success,
+                          showDot: false,
+                        ),
+                        if (tx.classifiedBy != null) ...[
+                          const SizedBox(height: 6),
+                          _ClassifiedByChip(classifiedBy: tx.classifiedBy!),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+                if (statusChips.length > 1) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    alignment: WrapAlignment.end,
+                    children: statusChips.skip(1).toList(),
                   ),
                 ],
-              ),
+              ],
             ),
           ),
           const SizedBox(height: AppSpacing.section),
-          _DetailRow(label: 'Category', value: _categoryName(tx)),
+          _DetailRow(label: 'Category', value: categoryName),
+          if (tx.subcategoryId != null && tx.subcategoryId!.isNotEmpty)
+            _DetailRow(
+              label: 'Subcategory',
+              value: subcategoryLabel(tx.categoryId, tx.subcategoryId) ??
+                  tx.subcategoryId!,
+            ),
+          if (tx.travelProvider != null && tx.travelProvider!.isNotEmpty)
+            _DetailRow(label: 'Travel mode', value: tx.travelProvider!),
+          if (tx.categoryId == CategoryService.transferCategoryId &&
+              tx.transferTo != null &&
+              tx.transferTo!.isNotEmpty)
+            _DetailRow(label: 'Paid to', value: tx.transferTo!),
+          if (tx.merchant != null)
+            _DetailRow(label: 'Raw merchant', value: tx.merchant!),
+          if (tx.shoppingItems.isNotEmpty)
+            _DetailRow(
+              label: 'Shopping list',
+              value: tx.shoppingItems.join(', '),
+            ),
           _DetailRow(
             label: 'Payment source',
             value: _paymentSourceLabel(tx),
           ),
           _DetailRow(label: 'Type', value: tx.type.name.toUpperCase()),
           _DetailRow(label: 'When', value: _dateFormat.format(tx.timestamp)),
-          if (tx.merchant != null)
-            _DetailRow(label: 'Raw merchant', value: tx.merchant!),
-          if (tx.classifiedBy != null)
-            _DetailRow(
-              label: 'Classified by',
-              value: tx.classifiedBy!.name.toUpperCase(),
-            ),
+          _DetailRow(label: 'Currency', value: tx.currency),
           if (tx.userNotes != null && tx.userNotes!.isNotEmpty)
             _DetailRow(label: 'Notes', value: tx.userNotes!),
-          if (tx.shoppingItems.isNotEmpty)
-            _DetailRow(
-              label: 'Shopping list',
-              value: tx.shoppingItems.join(', '),
-            ),
-          if (tx.travelProvider != null && tx.travelProvider!.isNotEmpty)
-            _DetailRow(label: 'Travel provider', value: tx.travelProvider!),
-          if (tx.categoryId == CategoryService.transferCategoryId &&
-              tx.transferTo != null &&
-              tx.transferTo!.isNotEmpty)
-            _DetailRow(label: 'To', value: tx.transferTo!),
-          _DetailRow(label: 'Currency', value: tx.currency),
           const SizedBox(height: AppSpacing.section),
           SizedBox(
             width: double.infinity,
@@ -308,26 +355,70 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               children: [
                 if (!tx.excluded) ...[
                   Expanded(
-                    child: OutlinedButton(
+                    child: OutlinedButton.icon(
                       onPressed: () => _exclude(txId),
-                      child: const Text('Exclude'),
+                      icon: const Icon(Icons.block_outlined),
+                      label: const Text('Exclude'),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.item),
                 ],
                 Expanded(
-                  child: OutlinedButton(
+                  child: OutlinedButton.icon(
                     onPressed: () => _delete(txId),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Delete'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: scheme.error,
                       side: BorderSide(color: scheme.error),
                     ),
-                    child: const Text('Delete'),
                   ),
                 ),
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ClassifiedByChip extends StatelessWidget {
+  const _ClassifiedByChip({required this.classifiedBy});
+
+  final ClassifiedBy classifiedBy;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final label = switch (classifiedBy) {
+      ClassifiedBy.llm => 'AI',
+      ClassifiedBy.user => 'You',
+      ClassifiedBy.rules => 'Rules',
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(AppRadii.chip),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            classifiedByIcon(classifiedBy.name),
+            size: 14,
+            color: scheme.onTertiaryContainer,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: scheme.onTertiaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
         ],
       ),
     );

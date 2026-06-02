@@ -485,7 +485,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         title: const Text('Reclassify'),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.only(right: 4),
             child: _aiLoading
                 ? const Padding(
                     padding: EdgeInsets.all(12),
@@ -505,6 +505,15 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
                     label: const Text('Use AI'),
                   ),
           ),
+          if (_formDirty && !_loading && _error == null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                icon: const Icon(Icons.save_outlined),
+                tooltip: 'Save',
+                onPressed: _saving ? null : _save,
+              ),
+            ),
         ],
       ),
       body: _loading
@@ -649,31 +658,6 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           ),
         ),
         const SizedBox(height: AppSpacing.section),
-        AppSectionHeader(title: 'Merchant'),
-        TextField(
-          controller: _merchantController,
-          onChanged: (_) => _markFormDirty(),
-          decoration: const InputDecoration(
-            labelText: 'Display name',
-            hintText: 'e.g. Zepto, Swiggy',
-          ),
-        ),
-        const SizedBox(height: AppSpacing.section),
-        AppSectionHeader(
-          title: 'Account',
-          subtitle: tx.unmatched
-              ? 'Which bank or card was this charge on?'
-              : 'Change if the wrong bank or card was matched',
-        ),
-        PaymentSourceClassifyPicker(
-          sources: _paymentSources,
-          selectedId: _selectedPaymentSourceId,
-          onSelected: (id) => setState(() {
-            _markFormDirty();
-            _selectedPaymentSourceId = id;
-          }),
-        ),
-        const SizedBox(height: AppSpacing.section),
         AppSectionHeader(title: 'Category'),
         CategoryClassifyPicker(
           categories: _categories,
@@ -723,43 +707,6 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             }),
           ),
         ],
-        if (_merchantNameForRule != null) ...[
-          const SizedBox(height: AppSpacing.tight),
-          CheckboxListTile(
-            value: _saveRule,
-            onChanged: (v) => setState(() => _saveRule = v ?? false),
-            title: Text('Remember "${_merchantNameForRule!}" → this category'),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ],
-        const SizedBox(height: AppSpacing.section),
-        AppSectionHeader(
-          title: 'Notes',
-          subtitle: 'What was this for? (optional)',
-        ),
-        TextField(
-          controller: _notesController,
-          onChanged: (_) => _markFormDirty(),
-          maxLines: 2,
-          decoration: const InputDecoration(
-            hintText: 'e.g. weekly groceries, gift for mom',
-          ),
-        ),
-        if (_showTransferTo) ...[
-          const SizedBox(height: AppSpacing.section),
-          AppSectionHeader(
-            title: 'Transfer to',
-            subtitle: 'Who or what received this transfer? (optional)',
-          ),
-          TextField(
-            controller: _transferToController,
-            decoration: const InputDecoration(
-              labelText: 'To',
-              hintText: 'e.g. John, HDFC Savings',
-            ),
-          ),
-        ],
         if (_showTravelProvider) ...[
           const SizedBox(height: AppSpacing.section),
           AppSectionHeader(
@@ -771,14 +718,52 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             customMode: _travelProviderCustom,
             customController: _customTravelProviderController,
             onPresetSelected: (provider) => setState(() {
+              _markFormDirty();
               _travelProviderCustom = false;
               _selectedTravelProvider = provider;
               _customTravelProviderController.clear();
             }),
             onCustomMode: () => setState(() {
+              _markFormDirty();
               _travelProviderCustom = true;
               _selectedTravelProvider = null;
             }),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(
+          title: 'Account',
+          subtitle: tx.unmatched
+              ? 'Which bank or card was this charge on?'
+              : 'Change if the wrong bank or card was matched',
+        ),
+        PaymentSourceClassifyPicker(
+          sources: _paymentSources,
+          selectedId: _selectedPaymentSourceId,
+          onSelected: (id) => setState(() {
+            _markFormDirty();
+            _selectedPaymentSourceId = id;
+          }),
+        ),
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(title: 'Paid to'),
+        TextField(
+          controller: _merchantController,
+          onChanged: (_) => _markFormDirty(),
+          decoration: const InputDecoration(
+            labelText: 'Display name',
+            hintText: 'e.g. Zepto, Swiggy',
+          ),
+        ),
+        if (_showTransferTo) ...[
+          const SizedBox(height: AppSpacing.item),
+          TextField(
+            controller: _transferToController,
+            onChanged: (_) => _markFormDirty(),
+            decoration: const InputDecoration(
+              labelText: 'Transfer to',
+              hintText: 'e.g. John, HDFC Savings',
+            ),
           ),
         ],
         if (_showShoppingList) ...[
@@ -812,14 +797,39 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
                   .map(
                     (item) => InputChip(
                       label: Text(item),
-                      onDeleted: () =>
-                          setState(() => _shoppingItems.remove(item)),
+                      onDeleted: () => setState(() {
+                        _shoppingItems.remove(item);
+                        _markFormDirty();
+                      }),
                     ),
                   )
                   .toList(),
             ),
           ],
         ],
+        if (_merchantNameForRule != null) ...[
+          const SizedBox(height: AppSpacing.tight),
+          CheckboxListTile(
+            value: _saveRule,
+            onChanged: (v) => setState(() => _saveRule = v ?? false),
+            title: Text('Remember "${_merchantNameForRule!}" → this category'),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ],
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(
+          title: 'Notes',
+          subtitle: 'What was this for? (optional)',
+        ),
+        TextField(
+          controller: _notesController,
+          onChanged: (_) => _markFormDirty(),
+          maxLines: 2,
+          decoration: const InputDecoration(
+            hintText: 'e.g. weekly groceries, gift for mom',
+          ),
+        ),
         const SizedBox(height: AppSpacing.section),
         OutlinedButton.icon(
           onPressed: () => showOriginalIngestSheet(

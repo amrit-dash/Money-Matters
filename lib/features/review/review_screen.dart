@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/transaction_list_item.dart';
 import '../../services/app_services.dart';
 import 'classify_screen.dart';
 import 'review_repository.dart';
@@ -89,11 +90,42 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   );
                 }
                 final tx = items[index - 1];
-                return _FlaggedTile(
-                  transaction: tx,
-                  amountLabel: _currency.format(tx.amount),
-                  dateLabel: _dateFormat.format(tx.timestamp),
-                  onTap: () => _openClassify(tx),
+                final categoryService = AppScope.of(context).categoryService;
+                final categoryName =
+                    categoryService.findById(tx.categoryId)?.name ??
+                        'Uncategorized';
+                final isCredit = tx.type == TransactionType.credit;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TransactionListItem(
+                      dateLabel: _dateFormat.format(tx.timestamp),
+                      categoryName: categoryName,
+                      merchantName: tx.displayMerchant ?? 'Unknown merchant',
+                      amountLabel:
+                          '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
+                      paymentSourceLabel: tx.unmatched
+                          ? 'No linked account'
+                          : (tx.paymentSourceId ?? 'Account'),
+                      isCredit: isCredit,
+                      onTap: () => _openClassify(tx),
+                    ),
+                    if (_flagLabels(tx).isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.tight),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: _flagLabels(tx)
+                            .map(
+                              (f) => AppStatusChip(
+                                label: f,
+                                tone: AppStatTone.warning,
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ],
+                  ],
                 );
               },
             ),
@@ -104,91 +136,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 }
 
-class _FlaggedTile extends StatelessWidget {
-  const _FlaggedTile({
-    required this.transaction,
-    required this.amountLabel,
-    required this.dateLabel,
-    required this.onTap,
-  });
-
-  final Transaction transaction;
-  final String amountLabel;
-  final String dateLabel;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final flags = <String>[
-      if (transaction.needsClassification) 'Needs category',
-      if (transaction.ambiguous) 'Ambiguous',
-      if (transaction.unmatched) 'Unmatched',
+List<String> _flagLabels(Transaction tx) => [
+      if (tx.needsClassification) 'Needs category',
+      if (tx.ambiguous) 'Ambiguous',
+      if (tx.unmatched) 'Unmatched',
     ];
-
-    final scheme = Theme.of(context).colorScheme;
-
-    return AppCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor:
-                    scheme.tertiaryContainer.withValues(alpha: 0.75),
-                child: Icon(
-                  Icons.receipt_long_outlined,
-                  size: 20,
-                  color: scheme.onTertiaryContainer,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      transaction.displayMerchant ?? 'Unknown merchant',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      dateLabel,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                amountLabel,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ],
-          ),
-          if (flags.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.tight),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: flags
-                  .map(
-                    (f) => AppStatusChip(
-                      label: f,
-                      tone: AppStatTone.warning,
-                    ),
-                  )
-                  .toList(),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}

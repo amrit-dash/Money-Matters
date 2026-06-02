@@ -5,6 +5,7 @@ import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/transaction_list_item.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
 import '../review/review_repository.dart';
@@ -101,57 +102,23 @@ class SourceDetailScreen extends StatelessWidget {
                   );
                 }
                 final tx = items[index - 1];
-                return _TransactionTile(
-                  transaction: tx,
-                  amountLabel: _currency.format(tx.amount),
+                final isCredit = tx.type == TransactionType.credit;
+                return TransactionListItem(
                   dateLabel: _dateFormat.format(tx.timestamp),
                   categoryName:
                       categoryService.findById(tx.categoryId)?.name ??
                           'Uncategorized',
+                  merchantName: tx.displayMerchant ?? 'Unknown merchant',
+                  amountLabel:
+                      '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
+                  paymentSourceLabel: title,
+                  isCredit: isCredit,
                   onTap: () => _openTransaction(context, tx),
                 );
               },
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _TransactionTile extends StatelessWidget {
-  const _TransactionTile({
-    required this.transaction,
-    required this.amountLabel,
-    required this.dateLabel,
-    required this.categoryName,
-    required this.onTap,
-  });
-
-  final Transaction transaction;
-  final String amountLabel;
-  final String dateLabel;
-  final String categoryName;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isCredit = transaction.type == TransactionType.credit;
-
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        title: Text(transaction.displayMerchant ?? 'Unknown merchant'),
-        subtitle: Text('$categoryName · $dateLabel'),
-        trailing: Text(
-          '${isCredit ? '+' : '-'}$amountLabel',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: isCredit ? scheme.primary : scheme.onSurface,
-              ),
-        ),
-        onTap: onTap,
       ),
     );
   }
