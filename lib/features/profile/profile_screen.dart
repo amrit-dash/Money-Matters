@@ -4,9 +4,10 @@ import '../../app_router.dart';
 import '../../core/auth/auth_service.dart';
 import '../../core/config/firebase_options.dart';
 import '../../core/widgets/app_ui.dart';
-import '../../parse/llm_parser.dart';
+import '../../services/app_services.dart';
 import '../../services/user_data_deletion_service.dart';
 import 'appearance_settings_section.dart';
+import 'llm_logs_screen.dart';
 
 /// Lightweight settings hub: accounts, SMS setup, sign out.
 class ProfileScreen extends StatelessWidget {
@@ -204,7 +205,20 @@ class ProfileScreen extends StatelessWidget {
             onTap: () => Navigator.pushNamed(context, AppRoutes.agentSettings),
           ),
           const SizedBox(height: AppSpacing.tight),
-          _AgentStatusCard(),
+          AppMenuTile(
+            icon: Icons.receipt_long_outlined,
+            title: 'LLM logs & errors',
+            subtitle: 'Cloud classify, test key, and fetch model events',
+            onTap: () {
+              final logs = AppScope.of(context).llmLogsService;
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => LlmLogsScreen(llmLogsService: logs),
+                ),
+              );
+            },
+          ),
           const SizedBox(height: AppSpacing.section),
           AppSectionHeader(title: 'Setup'),
           AppMenuTile(
@@ -311,86 +325,6 @@ class _TypeDeleteDialogState extends State<_TypeDeleteDialog> {
           child: const Text('Delete all data'),
         ),
       ],
-    );
-  }
-}
-
-class _AgentStatusCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final needsConfig = ClassifierDiagnostics.lastNeedsConfig;
-    final error = ClassifierDiagnostics.lastError;
-    final lastAt = ClassifierDiagnostics.lastAttemptAt;
-    final successCount = ClassifierDiagnostics.lastSuccessCount;
-
-    final (Color bg, String title, String body, AppStatTone tone) =
-        needsConfig
-            ? (
-                scheme.tertiaryContainer.withValues(alpha: 0.35),
-                'LLM not ready',
-                'Open Agent settings to enable LLM and save a provider API key, '
-                    'or set GEMINI_API_KEY on Cloud Functions (legacy). '
-                    'Rules + Review inbox still work.',
-                AppStatTone.warning,
-              )
-            : error != null
-                ? (
-                    scheme.errorContainer.withValues(alpha: 0.35),
-                    'Last classify call failed',
-                    error,
-                    AppStatTone.error,
-                  )
-                : successCount > 0
-                    ? (
-                        scheme.primaryContainer.withValues(alpha: 0.35),
-                        'Auto-classify active',
-                        'Last sync auto-classified $successCount transaction(s).',
-                        AppStatTone.success,
-                      )
-                    : (
-                        scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                        'Auto-classify ready',
-                        'Configure Agent settings or run Recovery → Sync to '
-                            'classify ambiguous debits via the cloud.',
-                        AppStatTone.neutral,
-                      );
-
-    return Card(
-      color: bg,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                AppStatusChip(label: 'Session', tone: tone),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.tight),
-            Text(
-              body,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            if (lastAt != null) ...[
-              const SizedBox(height: AppSpacing.tight),
-              Text(
-                'Last attempt: ${lastAt.toLocal()}',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }

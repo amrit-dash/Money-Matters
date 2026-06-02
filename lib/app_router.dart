@@ -133,7 +133,6 @@ class AppRouter {
             final services = AppScope.of(ctx);
             return AgentSettingsScreen(
               llmSettingsService: services.llmSettingsService,
-              llmLogsService: services.llmLogsService,
             );
           },
         );

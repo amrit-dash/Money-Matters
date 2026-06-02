@@ -3,20 +3,16 @@ import 'package:flutter/material.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../models/llm_provider.dart';
 import '../../models/llm_settings.dart';
-import '../../services/llm_logs_service.dart';
 import '../../services/llm_settings_service.dart';
-import 'llm_logs_screen.dart';
 
 /// BYOK LLM provider, API key, and model selection for Cloud Functions.
 class AgentSettingsScreen extends StatefulWidget {
   const AgentSettingsScreen({
     super.key,
     required this.llmSettingsService,
-    required this.llmLogsService,
   });
 
   final LlmSettingsService llmSettingsService;
-  final LlmLogsService llmLogsService;
 
   @override
   State<AgentSettingsScreen> createState() => _AgentSettingsScreenState();
@@ -316,22 +312,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.section),
-                AppMenuTile(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'LLM logs & errors',
-                  subtitle: 'Cloud classify, test key, and fetch model events',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => LlmLogsScreen(
-                          llmLogsService: widget.llmLogsService,
-                        ),
-                      ),
-                    );
-                  },
                 ),
                 if (_busy) ...[
                   const SizedBox(height: AppSpacing.section),
