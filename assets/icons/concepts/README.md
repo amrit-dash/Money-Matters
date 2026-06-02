@@ -1,6 +1,8 @@
 # App icon concepts — Money Matters
 
-Three vector concepts for review. **Not wired into iOS AppIcon yet** — pick a direction (or mix elements) before export.
+Three vector concepts for review. **Default on iOS:** `concept_a.svg` (Bloom Insight) — exported to `ios/Runner/Assets.xcassets/AppIcon.appiconset/`.
+
+**Production icon:** **Concept A — Bloom Insight** (`concept_a.svg`), also referenced in the root README and [`docs/assets/app-icon-preview.png`](../../../docs/assets/app-icon-preview.png). iOS PNGs live in [`AppIcon.appiconset`](../../../ios/Runner/Assets.xcassets/AppIcon.appiconset/) per `Contents.json`. Rebuild with [`scripts/build_ipa.sh`](../../../scripts/build_ipa.sh) or Xcode to refresh the home-screen icon after changes.
 
 | File | Name | Idea |
 |------|------|------|
@@ -34,6 +36,6 @@ Three vector concepts for review. **Not wired into iOS AppIcon yet** — pick a 
 
 ## Next steps
 
-1. Pick A, B, or C (or note tweaks: palette, fewer elements, stronger center, etc.).
-2. Export @1x–@3x PNGs or use a squircle template for `AppIcon.appiconset`.
+1. To switch to B or C, re-export from that SVG into `AppIcon.appiconset` (same `Contents.json` slots).
+2. Regenerate `docs/assets/app-icon-preview.png` if the final art diverges from concept A (512px PNG is enough for README).
 3. Optional: align accent colors with app theme if you move off default Material teal seed.
