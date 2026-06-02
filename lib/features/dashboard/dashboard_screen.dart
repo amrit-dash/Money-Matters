@@ -8,6 +8,8 @@ import 'package:money_matters/models/transaction.dart';
 
 import '../../app_router.dart';
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/transaction_list_item.dart';
+import '../../core/widgets/dashboard_charts.dart';
 import '../../ingest/ingest_queue_drain.dart';
 import '../../ingest/ingest_repository.dart';
 import '../../services/category_service.dart';
@@ -17,8 +19,11 @@ import '../review/review_repository.dart';
 import '../../services/payment_source_service.dart';
 import '../transactions/transaction_detail_screen.dart';
 import 'dashboard_repository.dart';
+import 'overview_spend_calendar.dart';
 
-enum _OverviewMode { today, thisWeek }
+enum _OverviewLayout { calendar, list }
+
+enum _ListRangeFilter { today, pastThreeDays, pastSevenDays }
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -47,7 +52,11 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  _OverviewMode _mode = _OverviewMode.today;
+  _OverviewLayout _layout = _OverviewLayout.calendar;
+  _ListRangeFilter _listRange = _ListRangeFilter.today;
+  DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime? _selectedCalendarDate;
+
   String? _syncMessage;
   int _rawIngestCount = 0;
   int _transactionCount = 0;
@@ -59,27 +68,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
   static final _dateFormat = DateFormat('d MMM, h:mm a');
+  static final _selectedDateFormat = DateFormat('d MMMM yyyy');
 
-  Stream<PeriodSummary> get _summaryStream => _mode == _OverviewMode.today
-      ? widget.repository.watchDailySummary()
-      : widget.repository.watchWeeklySummary();
-
-  DateTime get _transactionListStart {
-    final now = DateTime.now();
-    if (_mode == _OverviewMode.today) {
-      return DateTime(now.year, now.month, now.day);
-    }
-    final endDay = DateTime(now.year, now.month, now.day);
-    return endDay.subtract(const Duration(days: 6));
-  }
-
-  DateTime get _transactionListEnd {
+  DateTime get _todayEnd {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
   }
 
-  String get _transactionSectionTitle =>
-      _mode == _OverviewMode.today ? 'Today\'s transactions' : 'Last 7 days';
+  DateTime get _listRangeStart {
+    final now = DateTime.now();
+    final endDay = DateTime(now.year, now.month, now.day);
+    return switch (_listRange) {
+      _ListRangeFilter.today => endDay,
+      _ListRangeFilter.pastThreeDays => endDay.subtract(const Duration(days: 2)),
+      _ListRangeFilter.pastSevenDays => endDay.subtract(const Duration(days: 6)),
+    };
+  }
+
+  String get _listRangeLabel => switch (_listRange) {
+        _ListRangeFilter.today => 'Today',
+        _ListRangeFilter.pastThreeDays => 'Past 3 days',
+        _ListRangeFilter.pastSevenDays => 'Past 7 days',
+      };
+
+  String get _spentLabel => switch (_listRange) {
+        _ListRangeFilter.today => 'Spent today',
+        _ListRangeFilter.pastThreeDays => 'Spent in past 3 days',
+        _ListRangeFilter.pastSevenDays => 'Spent in past 7 days',
+      };
+
+  String get _transactionSectionTitle => switch (_listRange) {
+        _ListRangeFilter.today => 'Today\'s transactions',
+        _ListRangeFilter.pastThreeDays => 'Past 3 days',
+        _ListRangeFilter.pastSevenDays => 'Past 7 days',
+      };
+
+  Stream<PeriodSummary> get _listSummaryStream =>
+      widget.repository.watchRangeSummary(
+        start: _listRangeStart,
+        end: _todayEnd,
+        label: _listRangeLabel,
+      );
 
   @override
   void initState() {
@@ -98,12 +127,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  void _toggleMode() {
+  void _toggleLayout() {
     setState(() {
-      _mode = _mode == _OverviewMode.today
-          ? _OverviewMode.thisWeek
-          : _OverviewMode.today;
+      _layout = _layout == _OverviewLayout.calendar
+          ? _OverviewLayout.list
+          : _OverviewLayout.calendar;
     });
+  }
+
+  void _selectListRange(_ListRangeFilter range) {
+    if (_listRange == range) return;
+    setState(() => _listRange = range);
+  }
+
+  void _shiftCalendarMonth(int direction) {
+    setState(() {
+      _calendarMonth = DateTime(
+        _calendarMonth.year,
+        _calendarMonth.month + direction,
+      );
+      _selectedCalendarDate = null;
+    });
+  }
+
+  void _selectCalendarDate(DateTime day) {
+    setState(() => _selectedCalendarDate = day);
   }
 
   void _scheduleSyncMessageDismiss() {
@@ -198,7 +246,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildTransactionList(BuildContext context) {
+  DateTime _dayStart(DateTime day) =>
+      DateTime(day.year, day.month, day.day);
+
+  DateTime _dayEnd(DateTime day) =>
+      DateTime(day.year, day.month, day.day, 23, 59, 59, 999);
+
+  Widget _buildTransactionList({
+    required DateTime start,
+    required DateTime end,
+    required String emptyMessage,
+  }) {
     return StreamBuilder<List<PaymentSource>>(
       stream: widget.paymentSourceService.watchAll(),
       builder: (context, sourcesSnapshot) {
@@ -217,8 +275,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             return StreamBuilder<List<Transaction>>(
               stream: widget.repository.watchPeriodTransactions(
-                start: _transactionListStart,
-                end: _transactionListEnd,
+                start: start,
+                end: end,
               ),
               builder: (context, snapshot) {
                 final items = snapshot.data;
@@ -233,9 +291,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   return Padding(
                     padding: const EdgeInsets.only(top: AppSpacing.item),
                     child: Text(
-                      _mode == _OverviewMode.today
-                          ? 'No transactions recorded today.'
-                          : 'No transactions in the last 7 days.',
+                      emptyMessage,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
@@ -250,43 +306,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Padding(
                         padding:
                             const EdgeInsets.only(bottom: AppSpacing.tight),
-                        child: Card(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 6,
-                            ),
-                            title: Text(
+                        child: TransactionListItem(
+                          dateLabel: _dateFormat.format(tx.timestamp),
+                          categoryName: _categoryLabel(tx, categoryNames),
+                          merchantName:
                               tx.displayMerchant ?? 'Unknown merchant',
-                            ),
-                            subtitle: Text(
-                              '${_categoryLabel(tx, categoryNames)} · '
-                              '${_sourceLabel(tx, sourceNames)} · '
-                              '${_dateFormat.format(tx.timestamp)}',
-                            ),
-                            trailing: Text(
+                          amountLabel:
                               '${tx.type == TransactionType.credit ? '+' : '-'}'
                               '${_currency.format(tx.amount)}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: tx.type == TransactionType.credit
-                                        ? Theme.of(context)
-                                            .colorScheme
-                                            .primary
-                                        : Theme.of(context)
-                                            .colorScheme
-                                            .onSurface,
-                                  ),
-                            ),
-                            onTap: () => _openTransaction(
-                              context,
-                              tx: tx,
-                              sourceNames: sourceNames,
-                              categoryNames: categoryNames,
-                            ),
+                          paymentSourceLabel:
+                              _sourceLabel(tx, sourceNames),
+                          isCredit: tx.type == TransactionType.credit,
+                          onTap: () => _openTransaction(
+                            context,
+                            tx: tx,
+                            sourceNames: sourceNames,
+                            categoryNames: categoryNames,
                           ),
                         ),
                       ),
@@ -312,7 +347,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return categoryNames[id] ?? 'Uncategorized';
   }
 
-  Widget _buildBody(BuildContext context, PeriodSummary summary) {
+  Widget _buildSyncAndPipelineBanner() {
+    return Column(
+      children: [
+        if (_syncMessage != null) ...[
+          Card(
+            color: Theme.of(context)
+                .colorScheme
+                .primaryContainer
+                .withValues(alpha: 0.4),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(
+                    _syncing ? Icons.sync : Icons.check_circle_outline,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _syncMessage!,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.item),
+        ],
+        if (_showPipelineSummary) ...[
+          _PipelineSummary(
+            synced: _rawIngestCount,
+            parsed: _transactionCount,
+            onOpenRecovery: () =>
+                Navigator.pushNamed(context, AppRoutes.recovery),
+          ),
+          const SizedBox(height: AppSpacing.item),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildListRangeFilters() {
+    return Wrap(
+      spacing: AppSpacing.tight,
+      runSpacing: AppSpacing.tight,
+      children: [
+        for (final range in _ListRangeFilter.values)
+          FilterChip(
+            label: Text(switch (range) {
+              _ListRangeFilter.today => 'Today',
+              _ListRangeFilter.pastThreeDays => 'Past three days',
+              _ListRangeFilter.pastSevenDays => 'Past seven days',
+            }),
+            selected: _listRange == range,
+            onSelected: (_) => _selectListRange(range),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildListBody(PeriodSummary summary) {
     final shell = widget.embeddedInShell;
 
     return RefreshIndicator(
@@ -329,57 +427,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
             ),
           if (shell) const SizedBox(height: AppSpacing.item),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: _toggleMode,
-              icon: Icon(
-                _mode == _OverviewMode.today
-                    ? Icons.today_outlined
-                    : Icons.date_range_outlined,
-              ),
-              label: Text(
-                _mode == _OverviewMode.today ? 'Today' : 'This Week',
-              ),
-            ),
-          ),
-          if (_syncMessage != null) ...[
-            const SizedBox(height: AppSpacing.item),
-            Card(
-              color: Theme.of(context)
-                  .colorScheme
-                  .primaryContainer
-                  .withValues(alpha: 0.4),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Icon(
-                      _syncing ? Icons.sync : Icons.check_circle_outline,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _syncMessage!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          if (_showPipelineSummary) ...[
-            const SizedBox(height: AppSpacing.item),
-            _PipelineSummary(
-              synced: _rawIngestCount,
-              parsed: _transactionCount,
-              onOpenRecovery: () =>
-                  Navigator.pushNamed(context, AppRoutes.recovery),
-            ),
-          ],
+          _buildListRangeFilters(),
+          const SizedBox(height: AppSpacing.item),
+          _buildSyncAndPipelineBanner(),
           const SizedBox(height: AppSpacing.section),
           if (_isEmpty(summary))
             Center(
@@ -394,13 +444,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             )
           else ...[
             HeroSpendCard(
-              label: _mode == _OverviewMode.today ? 'Spent today' : 'Spent this week',
+              label: _spentLabel,
               amount: _currency.format(summary.totalSpend),
-              secondaryLabel:
-                  summary.totalIncome > 0 ? 'Credits' : null,
+              secondaryLabel: summary.totalIncome > 0 ? 'Credits' : null,
               secondaryAmount: summary.totalIncome > 0
                   ? _currency.format(summary.totalIncome)
                   : null,
+            ),
+          ],
+          if (summary.breakdown.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.section),
+            CategorySpendBarChart(
+              breakdown: summary.breakdown,
+              totalSpend: summary.totalSpend,
+              maxBars: 10,
             ),
           ],
           const SizedBox(height: AppSpacing.section),
@@ -408,8 +465,151 @@ class _DashboardScreenState extends State<DashboardScreen> {
             title: _transactionSectionTitle,
             icon: Icons.receipt_long_outlined,
           ),
-          _buildTransactionList(context),
+          _buildTransactionList(
+            start: _listRangeStart,
+            end: _todayEnd,
+            emptyMessage: _modeEmptyMessage(),
+          ),
         ],
+      ),
+    );
+  }
+
+  String _modeEmptyMessage() => switch (_listRange) {
+        _ListRangeFilter.today => 'No transactions recorded today.',
+        _ListRangeFilter.pastThreeDays =>
+          'No transactions in the past three days.',
+        _ListRangeFilter.pastSevenDays =>
+          'No transactions in the past seven days.',
+      };
+
+  Widget _buildCalendarBody() {
+    final shell = widget.embeddedInShell;
+    final selected = _selectedCalendarDate;
+
+    return RefreshIndicator(
+      onRefresh: _syncQueue,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final calendarHeight = (constraints.maxHeight * 0.62)
+              .clamp(320.0, constraints.maxHeight - 120);
+
+          return CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.page,
+                  AppSpacing.page,
+                  AppSpacing.page,
+                  0,
+                ),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    if (shell)
+                      Text(
+                        'Your spend at a glance',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    if (shell) const SizedBox(height: AppSpacing.item),
+                    _buildSyncAndPipelineBanner(),
+                  ]),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
+                sliver: SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: calendarHeight,
+                    child: StreamBuilder<Map<DateTime, double>>(
+                      stream: widget.repository
+                          .watchDailySpendForMonth(_calendarMonth),
+                      builder: (context, snapshot) {
+                        final dailySpend = snapshot.data ?? const {};
+                        return OverviewSpendCalendar(
+                          month: _calendarMonth,
+                          dailySpend: dailySpend,
+                          selectedDate: selected,
+                          onDateSelected: _selectCalendarDate,
+                          onPreviousMonth: () => _shiftCalendarMonth(-1),
+                          onNextMonth: () => _shiftCalendarMonth(1),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              if (selected != null)
+                SliverPadding(
+                  padding: const EdgeInsets.all(AppSpacing.page),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      StreamBuilder<PeriodSummary>(
+                        stream: widget.repository.watchDailySummary(
+                          anchor: selected,
+                        ),
+                        builder: (context, summarySnapshot) {
+                          final summary = summarySnapshot.data;
+                          if (summary == null) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child:
+                                  Center(child: CircularProgressIndicator()),
+                            );
+                          }
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              AppSectionHeader(
+                                title:
+                                    'Spent on ${_selectedDateFormat.format(selected)}',
+                                icon: Icons.calendar_today_outlined,
+                              ),
+                              if (_isEmpty(summary))
+                                Text(
+                                  'No spend recorded on this day.',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                )
+                              else
+                                HeroSpendCard(
+                                  label: 'Total spend',
+                                  amount: _currency.format(summary.totalSpend),
+                                  secondaryLabel: summary.totalIncome > 0
+                                      ? 'Credits'
+                                      : null,
+                                  secondaryAmount: summary.totalIncome > 0
+                                      ? _currency.format(summary.totalIncome)
+                                      : null,
+                                ),
+                              const SizedBox(height: AppSpacing.section),
+                              _buildTransactionList(
+                                start: _dayStart(selected),
+                                end: _dayEnd(selected),
+                                emptyMessage:
+                                    'No transactions on this day.',
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ]),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -417,94 +617,91 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final shell = widget.embeddedInShell;
-    final scaffold = StreamBuilder<PeriodSummary>(
-      stream: _summaryStream,
-      builder: (context, snapshot) {
-        final body = snapshot.data == null
-            ? const Center(child: CircularProgressIndicator())
-            : _buildBody(context, snapshot.data!);
+    final isList = _layout == _OverviewLayout.list;
 
-        return Scaffold(
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            title: Text(shell ? 'Overview' : 'Dashboard'),
-            actions: shell
-                ? [
-                    StreamBuilder<int>(
-                      stream: widget.reviewRepository.watchNeedsInputCount(),
-                      builder: (context, countSnapshot) {
-                        final inboxCount = countSnapshot.data ?? 0;
-                        return IconButton(
-                          icon: Badge(
-                            isLabelVisible: inboxCount > 0,
-                            label: Text('$inboxCount'),
-                            child: const Icon(Icons.inbox_outlined),
-                          ),
-                          tooltip: 'Needs your input',
-                          onPressed: () {
-                            Navigator.pushNamed(context, AppRoutes.review);
-                          },
-                        );
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.cloud_sync_outlined),
-                      tooltip: 'Recovery queue',
-                      onPressed: () =>
-                          Navigator.pushNamed(context, AppRoutes.recovery),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: IconButton(
-                        icon: const Icon(Icons.person_outline),
-                        tooltip: 'Profile',
-                        onPressed: () =>
-                            Navigator.pushNamed(context, AppRoutes.profile),
-                      ),
-                    ),
-                  ]
-                : [
-                    StreamBuilder<int>(
-                      stream: widget.reviewRepository.watchNeedsInputCount(),
-                      builder: (context, countSnapshot) {
-                        final inboxCount = countSnapshot.data ?? 0;
-                        return IconButton(
-                          icon: Badge(
-                            isLabelVisible: inboxCount > 0,
-                            label: Text('$inboxCount'),
-                            child: const Icon(Icons.inbox_outlined),
-                          ),
-                          tooltip: 'Needs your input',
-                          onPressed: () {
-                            Navigator.pushNamed(context, AppRoutes.review);
-                          },
-                        );
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.cloud_sync_outlined),
-                      tooltip: 'Recovery queue',
-                      onPressed: () =>
-                          Navigator.pushNamed(context, AppRoutes.recovery),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: IconButton(
-                        icon: const Icon(Icons.person_outline),
-                        tooltip: 'Profile',
-                        onPressed: () =>
-                            Navigator.pushNamed(context, AppRoutes.profile),
-                      ),
-                    ),
-                  ],
-          ),
-          body: body,
-        );
-      },
-    );
+    final scaffold = isList
+        ? StreamBuilder<PeriodSummary>(
+            stream: _listSummaryStream,
+            builder: (context, snapshot) {
+              final body = snapshot.data == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : _buildListBody(snapshot.data!);
+              return _buildScaffold(context, shell: shell, body: body);
+            },
+          )
+        : _buildScaffold(
+            context,
+            shell: shell,
+            body: _buildCalendarBody(),
+          );
 
     if (shell) return scaffold;
     return PopScope(canPop: false, child: scaffold);
+  }
+
+  Widget _buildScaffold(
+    BuildContext context, {
+    required bool shell,
+    required Widget body,
+  }) {
+    final isList = _layout == _OverviewLayout.list;
+
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: Text(shell ? 'Overview' : 'Dashboard'),
+        actions: shell
+            ? [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    icon: Icon(
+                      isList
+                          ? Icons.calendar_month_outlined
+                          : Icons.view_list_outlined,
+                    ),
+                    tooltip: isList ? 'Calendar view' : 'List view',
+                    onPressed: _toggleLayout,
+                  ),
+                ),
+              ]
+            : [
+                StreamBuilder<int>(
+                  stream: widget.reviewRepository.watchNeedsInputCount(),
+                  builder: (context, countSnapshot) {
+                    final inboxCount = countSnapshot.data ?? 0;
+                    return IconButton(
+                      icon: Badge(
+                        isLabelVisible: inboxCount > 0,
+                        label: Text('$inboxCount'),
+                        child: const Icon(Icons.inbox_outlined),
+                      ),
+                      tooltip: 'Needs your input',
+                      onPressed: () {
+                        Navigator.pushNamed(context, AppRoutes.review);
+                      },
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.cloud_sync_outlined),
+                  tooltip: 'Recovery queue',
+                  onPressed: () =>
+                      Navigator.pushNamed(context, AppRoutes.recovery),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    icon: const Icon(Icons.person_outline),
+                    tooltip: 'Profile',
+                    onPressed: () =>
+                        Navigator.pushNamed(context, AppRoutes.profile),
+                  ),
+                ),
+              ],
+      ),
+      body: body,
+    );
   }
 }
 

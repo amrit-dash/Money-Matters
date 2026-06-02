@@ -67,6 +67,13 @@ class PeriodSummary {
   double get net => totalIncome - totalSpend;
 }
 
+/// Saved for analytics charts: only when credits exist; never negative.
+double periodSavedAmount(PeriodSummary summary) {
+  if (summary.totalIncome <= 0) return 0;
+  final remainder = summary.totalIncome - summary.totalSpend;
+  return remainder > 0 ? remainder : 0;
+}
+
 /// Read-only analytics contract for dashboard UI.
 abstract class DashboardRepository {
   Future<PeriodSummary> dailySummary({DateTime? anchor});
@@ -117,4 +124,20 @@ abstract class DashboardRepository {
     required DateTime start,
     required DateTime end,
   });
+
+  /// Arbitrary inclusive date range summary (e.g. past 3 days on Overview).
+  Future<PeriodSummary> rangeSummary({
+    required DateTime start,
+    required DateTime end,
+    required String label,
+  });
+  Stream<PeriodSummary> watchRangeSummary({
+    required DateTime start,
+    required DateTime end,
+    required String label,
+  });
+
+  /// Matched debit spend keyed by calendar day (start-of-day) for heatmap UI.
+  Future<Map<DateTime, double>> dailySpendForMonth(DateTime monthAnchor);
+  Stream<Map<DateTime, double>> watchDailySpendForMonth(DateTime monthAnchor);
 }

@@ -389,4 +389,75 @@ class LocalDashboardRepository implements DashboardRepository {
       () => periodTransactions(start: start, end: end),
     );
   }
+
+  @override
+  Future<PeriodSummary> rangeSummary({
+    required DateTime start,
+    required DateTime end,
+    required String label,
+  }) =>
+      _buildSummary(label: label, start: start, end: end);
+
+  @override
+  Stream<PeriodSummary> watchRangeSummary({
+    required DateTime start,
+    required DateTime end,
+    required String label,
+  }) {
+    return watchLocalData(
+      watchDataChanges(),
+      () => rangeSummary(start: start, end: end, label: label),
+    );
+  }
+
+  /// Aggregates matched debit spend by calendar day for heatmap coloring.
+  static Map<DateTime, double> aggregateDailySpend({
+    required List<Transaction> transactions,
+    required Set<String> knownSourceIds,
+  }) {
+    final byDay = <DateTime, double>{};
+    for (final tx in transactions) {
+      if (tx.excluded) continue;
+      if (tx.type != TransactionType.debit) continue;
+      if (isUnmatched(tx, knownSourceIds)) continue;
+      final day = DateTime(
+        tx.timestamp.year,
+        tx.timestamp.month,
+        tx.timestamp.day,
+      );
+      byDay[day] = (byDay[day] ?? 0) + tx.amount;
+    }
+    return byDay;
+  }
+
+  @override
+  Future<Map<DateTime, double>> dailySpendForMonth(DateTime monthAnchor) async {
+    _sourceCache = null;
+    final start = DateTime(monthAnchor.year, monthAnchor.month);
+    final end = DateTime(
+      monthAnchor.year,
+      monthAnchor.month + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+    final rows = await _db.getTransactionsBetween(start, end);
+    final transactions = rows.map(Transaction.fromSqlite).toList();
+    final sources = await _loadSources();
+    final knownSourceIds = sources.map((s) => s.id).toSet();
+    return aggregateDailySpend(
+      transactions: transactions,
+      knownSourceIds: knownSourceIds,
+    );
+  }
+
+  @override
+  Stream<Map<DateTime, double>> watchDailySpendForMonth(DateTime monthAnchor) {
+    return watchLocalData(
+      watchDataChanges(),
+      () => dailySpendForMonth(monthAnchor),
+    );
+  }
 }
