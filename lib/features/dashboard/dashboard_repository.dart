@@ -69,11 +69,19 @@ class PeriodSummary {
 
 /// Read-only analytics contract for dashboard UI.
 abstract class DashboardRepository {
+  Future<PeriodSummary> dailySummary({DateTime? anchor});
   Future<PeriodSummary> weeklySummary({DateTime? anchor});
   Future<PeriodSummary> monthlySummary({DateTime? anchor});
 
+  Stream<PeriodSummary> watchDailySummary({DateTime? anchor});
   Stream<PeriodSummary> watchWeeklySummary({DateTime? anchor});
   Stream<PeriodSummary> watchMonthlySummary({DateTime? anchor});
+
+  /// Monthly summaries ending at [anchor], oldest first (for trend charts).
+  Future<List<PeriodSummary>> recentMonthlySummaries({
+    required DateTime anchor,
+    int count = 6,
+  });
 
   /// All transactions for a payment source (null = unmatched), newest first.
   Future<List<Transaction>> sourceTransactions(String? paymentSourceId);

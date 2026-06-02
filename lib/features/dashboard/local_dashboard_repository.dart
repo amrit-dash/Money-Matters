@@ -48,6 +48,28 @@ class LocalDashboardRepository implements DashboardRepository {
   }
 
   @override
+  Future<PeriodSummary> dailySummary({DateTime? anchor}) async {
+    final ref = anchor ?? DateTime.now();
+    final start = DateTime(ref.year, ref.month, ref.day);
+    final end = _endOfDay(ref);
+    final label = _isToday(ref) ? 'Today' : DateFormat('d MMM yyyy').format(start);
+    return _buildSummary(label: label, start: start, end: end);
+  }
+
+  bool _isToday(DateTime dt) {
+    final now = DateTime.now();
+    return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+  }
+
+  @override
+  Stream<PeriodSummary> watchDailySummary({DateTime? anchor}) {
+    return watchLocalData(
+      watchDataChanges(),
+      () => dailySummary(anchor: anchor),
+    );
+  }
+
+  @override
   Future<PeriodSummary> weeklySummary({DateTime? anchor}) async {
     final end = _endOfDay(anchor ?? DateTime.now());
     final startDay = end.subtract(const Duration(days: 6));
@@ -85,6 +107,20 @@ class LocalDashboardRepository implements DashboardRepository {
       watchDataChanges(),
       () => monthlySummary(anchor: anchor),
     );
+  }
+
+  @override
+  Future<List<PeriodSummary>> recentMonthlySummaries({
+    required DateTime anchor,
+    int count = 6,
+  }) async {
+    final results = <PeriodSummary>[];
+    var ref = anchor;
+    for (var i = 0; i < count; i++) {
+      results.add(await monthlySummary(anchor: ref));
+      ref = DateTime(ref.year, ref.month - 1, 15);
+    }
+    return results.reversed.toList();
   }
 
   Future<PeriodSummary> _buildSummary({

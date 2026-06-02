@@ -2,22 +2,24 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:money_matters/models/category.dart';
+import 'package:money_matters/models/payment_source.dart';
+import 'package:money_matters/models/transaction.dart';
 
 import '../../app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
-import '../../core/widgets/dashboard_charts.dart';
 import '../../ingest/ingest_queue_drain.dart';
 import '../../ingest/ingest_repository.dart';
 import '../../services/category_service.dart';
+import '../accounts/payment_source_widgets.dart';
 import '../recovery/recovery_repository.dart';
 import '../review/review_repository.dart';
 import '../../services/payment_source_service.dart';
+import '../transactions/transaction_detail_screen.dart';
 import 'dashboard_repository.dart';
-import 'category_detail_screen.dart';
-import 'source_detail_screen.dart';
 
-enum _PeriodMode { weekly, monthly }
+enum _OverviewMode { today, thisWeek }
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -46,9 +48,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  _PeriodMode _mode = _PeriodMode.weekly;
-  DateTime _periodAnchor = DateTime.now();
-  PeriodSummary? _priorSummary;
+  _OverviewMode _mode = _OverviewMode.today;
   String? _syncMessage;
   int _rawIngestCount = 0;
   int _transactionCount = 0;
@@ -59,10 +59,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   StreamSubscription<IngestDrainResult>? _drainSubscription;
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
+  static final _dateFormat = DateFormat('d MMM, h:mm a');
 
-  Stream<PeriodSummary> get _summaryStream => _mode == _PeriodMode.weekly
-      ? widget.repository.watchWeeklySummary(anchor: _periodAnchor)
-      : widget.repository.watchMonthlySummary(anchor: _periodAnchor);
+  Stream<PeriodSummary> get _summaryStream => _mode == _OverviewMode.today
+      ? widget.repository.watchDailySummary()
+      : widget.repository.watchWeeklySummary();
+
+  DateTime get _transactionListStart {
+    final now = DateTime.now();
+    if (_mode == _OverviewMode.today) {
+      return DateTime(now.year, now.month, now.day);
+    }
+    final endDay = DateTime(now.year, now.month, now.day);
+    return endDay.subtract(const Duration(days: 6));
+  }
+
+  DateTime get _transactionListEnd {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+  }
+
+  String get _transactionSectionTitle =>
+      _mode == _OverviewMode.today ? 'Today\'s transactions' : 'Last 7 days';
 
   @override
   void initState() {
@@ -79,6 +97,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _pipelineTimer?.cancel();
     _drainSubscription?.cancel();
     super.dispose();
+  }
+
+  void _toggleMode() {
+    setState(() {
+      _mode = _mode == _OverviewMode.today
+          ? _OverviewMode.thisWeek
+          : _OverviewMode.today;
+    });
   }
 
   void _scheduleSyncMessageDismiss() {
@@ -100,13 +126,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadAuxiliaryData() async {
-    final priorSummary = _mode == _PeriodMode.weekly
-        ? await widget.repository.weeklySummary(
-            anchor: _periodAnchor.subtract(const Duration(days: 7)),
-          )
-        : await widget.repository.monthlySummary(
-            anchor: DateTime(_periodAnchor.year, _periodAnchor.month - 1, 15),
-          );
     final counts = await widget.repository.localCounts();
     var showPipeline = false;
     final recovery = widget.recoveryRepository;
@@ -124,7 +143,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _priorSummary = priorSummary;
       _rawIngestCount = counts.rawIngests;
       _transactionCount = counts.transactions;
       _showPipelineSummary = showPipeline;
@@ -149,102 +167,154 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _loadAuxiliaryData();
   }
 
-  bool _isCurrentPeriodFor(PeriodSummary summary) {
-    final now = DateTime.now();
-    return !now.isBefore(summary.start) && !now.isAfter(summary.end);
-  }
-
-  void _shiftPeriod(int direction) {
-    setState(() {
-      if (_mode == _PeriodMode.weekly) {
-        _periodAnchor = _periodAnchor.add(Duration(days: 7 * direction));
-      } else {
-        _periodAnchor = DateTime(
-          _periodAnchor.year,
-          _periodAnchor.month + direction,
-          _periodAnchor.day,
-        );
-      }
-    });
-    _loadAuxiliaryData();
-  }
-
-  void _resetToCurrentPeriod() {
-    setState(() => _periodAnchor = DateTime.now());
-    _loadAuxiliaryData();
-  }
-
-  String get _priorPeriodLabel {
-    if (_mode == _PeriodMode.weekly) return 'prior week';
-    final prior = DateTime(_periodAnchor.year, _periodAnchor.month - 1);
-    return DateFormat('MMMM').format(prior);
-  }
-
   bool _isEmpty(PeriodSummary summary) =>
       summary.totalSpend == 0 &&
       summary.totalIncome == 0 &&
       summary.breakdown.isEmpty &&
       summary.unmatchedCount == 0;
 
-  bool get _hasPriorComparisonData =>
-      _priorSummary != null && _priorSummary!.totalSpend > 0;
-
-  String _sourceSubtitle(SourceBreakdown row) {
-    final source = row.source;
-    final type = source.type.name;
-    final last4 = source.last4;
-    final suffix = last4 != null ? ' ···· $last4' : '';
-    return '$type$suffix · ${row.transactionCount} transactions';
-  }
-
-  Future<void> _openCategory(
-    PeriodSummary summary,
-    String categoryId,
-    String title,
-  ) async {
-    if (!mounted) return;
-    await Navigator.push<void>(
+  Future<void> _openTransaction(
+    BuildContext context, {
+    required Transaction tx,
+    required Map<String, String> sourceNames,
+    required Map<String, String> categoryNames,
+  }) async {
+    PaymentSource? source;
+    final sourceId = tx.paymentSourceId;
+    if (sourceId != null) {
+      source = await widget.repository.paymentSourceById(sourceId);
+    }
+    if (!context.mounted) return;
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => CategoryDetailScreen(
-          dashboardRepository: widget.repository,
+        builder: (_) => TransactionDetailScreen(
+          transaction: tx,
           reviewRepository: widget.reviewRepository,
           categoryService: widget.categoryService,
           paymentSourceService: widget.paymentSourceService,
-          categoryId: categoryId,
-          title: title,
-          periodStart: summary.start,
-          periodEnd: summary.end,
-          periodLabel: summary.label,
+          paymentSourceName: source?.name ?? sourceNames[sourceId],
         ),
       ),
     );
   }
 
-  Future<void> _openSource(String? sourceId, String title) async {
-    final source = sourceId == null
-        ? null
-        : await widget.repository.paymentSourceById(sourceId);
-    if (!mounted) return;
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SourceDetailScreen(
-          dashboardRepository: widget.repository,
-          reviewRepository: widget.reviewRepository,
-          categoryService: widget.categoryService,
-          paymentSourceService: widget.paymentSourceService,
-          paymentSourceId: sourceId,
-          title: title,
-          source: source,
-        ),
-      ),
+  Widget _buildTransactionList(BuildContext context) {
+    return StreamBuilder<List<PaymentSource>>(
+      stream: widget.paymentSourceService.watchAll(),
+      builder: (context, sourcesSnapshot) {
+        final sourceNames = {
+          for (final s
+              in visiblePaymentSources(sourcesSnapshot.data ?? const []))
+            s.id: s.name,
+        };
+
+        return StreamBuilder<List<Category>>(
+          stream: widget.categoryService.watchCategories(),
+          builder: (context, categoriesSnapshot) {
+            final categoryNames = <String, String>{
+              for (final c in categoriesSnapshot.data ?? const []) c.id: c.name,
+            };
+
+            return StreamBuilder<List<Transaction>>(
+              stream: widget.repository.watchPeriodTransactions(
+                start: _transactionListStart,
+                end: _transactionListEnd,
+              ),
+              builder: (context, snapshot) {
+                final items = snapshot.data;
+                if (items == null) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                if (items.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.item),
+                    child: Text(
+                      _mode == _OverviewMode.today
+                          ? 'No transactions recorded today.'
+                          : 'No transactions in the last 7 days.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  );
+                }
+
+                return Column(
+                  children: [
+                    for (final tx in items)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(bottom: AppSpacing.tight),
+                        child: Card(
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
+                            title: Text(
+                              tx.displayMerchant ?? 'Unknown merchant',
+                            ),
+                            subtitle: Text(
+                              '${_categoryLabel(tx, categoryNames)} · '
+                              '${_sourceLabel(tx, sourceNames)} · '
+                              '${_dateFormat.format(tx.timestamp)}',
+                            ),
+                            trailing: Text(
+                              '${tx.type == TransactionType.credit ? '+' : '-'}'
+                              '${_currency.format(tx.amount)}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: tx.type == TransactionType.credit
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurface,
+                                  ),
+                            ),
+                            onTap: () => _openTransaction(
+                              context,
+                              tx: tx,
+                              sourceNames: sourceNames,
+                              categoryNames: categoryNames,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
     );
+  }
+
+  String _sourceLabel(Transaction tx, Map<String, String> sourceNames) {
+    final id = tx.paymentSourceId;
+    if (id == null) return 'Unknown account';
+    return sourceNames[id] ?? 'Unknown account';
+  }
+
+  String _categoryLabel(Transaction tx, Map<String, String> categoryNames) {
+    final id = tx.categoryId;
+    if (id == null) return 'Uncategorized';
+    return categoryNames[id] ?? 'Uncategorized';
   }
 
   Widget _buildBody(BuildContext context, PeriodSummary summary) {
     final shell = widget.embeddedInShell;
-    final isCurrentPeriod = _isCurrentPeriodFor(summary);
 
     return RefreshIndicator(
       onRefresh: _syncQueue,
@@ -260,32 +330,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
             ),
           if (shell) const SizedBox(height: AppSpacing.item),
-          SegmentedButton<_PeriodMode>(
-            segments: const [
-              ButtonSegment(
-                value: _PeriodMode.weekly,
-                label: Text('Weekly'),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _toggleMode,
+              icon: Icon(
+                _mode == _OverviewMode.today
+                    ? Icons.today_outlined
+                    : Icons.date_range_outlined,
               ),
-              ButtonSegment(
-                value: _PeriodMode.monthly,
-                label: Text('Monthly'),
+              label: Text(
+                _mode == _OverviewMode.today ? 'Today' : 'This Week',
               ),
-            ],
-            selected: {_mode},
-            onSelectionChanged: (s) {
-              setState(() {
-                _mode = s.first;
-                _periodAnchor = DateTime.now();
-              });
-              _loadAuxiliaryData();
-            },
-          ),
-          const SizedBox(height: AppSpacing.item),
-          _PeriodNavigator(
-            label: summary.label,
-            canGoNext: !isCurrentPeriod,
-            onPrevious: () => _shiftPeriod(-1),
-            onNext: isCurrentPeriod ? null : () => _shiftPeriod(1),
+            ),
           ),
           if (_syncMessage != null) ...[
             const SizedBox(height: AppSpacing.item),
@@ -338,93 +395,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
             )
           else ...[
             HeroSpendCard(
-              label: 'Total spend',
+              label: _mode == _OverviewMode.today ? 'Spent today' : 'Spent this week',
               amount: _currency.format(summary.totalSpend),
               secondaryLabel:
-                  summary.totalIncome > 0 ? 'Income' : null,
+                  summary.totalIncome > 0 ? 'Credits' : null,
               secondaryAmount: summary.totalIncome > 0
                   ? _currency.format(summary.totalIncome)
                   : null,
             ),
-            if (summary.breakdown.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.item),
-              CategorySpendBarChart(
-                breakdown: summary.breakdown,
-                totalSpend: summary.totalSpend,
-              ),
-            ],
-            if (_hasPriorComparisonData) ...[
-              const SizedBox(height: AppSpacing.section),
-              PeriodComparisonCard(
-                currentSpend: summary.totalSpend,
-                priorSpend: _priorSummary!.totalSpend,
-                priorLabel: _priorPeriodLabel,
-              ),
-            ],
-            if (summary.sources.isNotEmpty || summary.unmatchedCount > 0) ...[
-              const SizedBox(height: AppSpacing.section),
-              AppSectionHeader(
-                title: 'By account',
-                subtitle: 'Tap a bank or card to see its transactions',
-                icon: Icons.account_balance_outlined,
-              ),
-              ...summary.sources.map(
-                (row) => _SourceRow(
-                  name: row.displayName,
-                  subtitle: _sourceSubtitle(row),
-                  amount: _currency.format(row.amount),
-                  share: row.shareOf(summary.totalSpend),
-                  count: row.transactionCount,
-                  onTap: () => _openSource(
-                    row.source.id,
-                    row.displayName,
-                  ),
-                ),
-              ),
-              if (summary.unmatchedCount > 0)
-                _SourceRow(
-                  name: 'Unmatched',
-                  subtitle:
-                      '${summary.unmatchedCount} transactions · '
-                      'not linked to a saved account',
-                  amount: _currency.format(summary.unmatchedSpend),
-                  share: 0,
-                  count: summary.unmatchedCount,
-                  muted: true,
-                  onTap: () => _openSource(null, 'Unmatched'),
-                ),
-            ],
-            const SizedBox(height: AppSpacing.section),
-            AppSectionHeader(
-              title: 'By category',
-              subtitle: summary.breakdown.isEmpty
-                  ? null
-                  : 'Tap a category to see its transactions',
-              icon: Icons.pie_chart_outline,
-            ),
-            if (summary.breakdown.isEmpty)
-              Text(
-                'No categorized spend in this period.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              )
-            else
-              ...summary.breakdown.asMap().entries.map(
-                (entry) => _CategoryRow(
-                  name: entry.value.category.name,
-                  amount: _currency.format(entry.value.amount),
-                  share: entry.value.shareOf(summary.totalSpend),
-                  count: entry.value.transactionCount,
-                  accentIndex: entry.key,
-                  onTap: () => _openCategory(
-                    summary,
-                    entry.value.category.id,
-                    entry.value.category.name,
-                  ),
-                ),
-              ),
           ],
+          const SizedBox(height: AppSpacing.section),
+          AppSectionHeader(
+            title: _transactionSectionTitle,
+            icon: Icons.receipt_long_outlined,
+          ),
+          _buildTransactionList(context),
         ],
       ),
     );
@@ -436,37 +421,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final scaffold = StreamBuilder<PeriodSummary>(
       stream: _summaryStream,
       builder: (context, snapshot) {
-        final summary = snapshot.data;
-        final isCurrentPeriod =
-            summary != null && _isCurrentPeriodFor(summary);
-        final showTodayAction = summary != null && !isCurrentPeriod;
-        final todayAction = showTodayAction
-            ? IconButton(
-                icon: const Icon(Icons.today_outlined),
-                tooltip: 'Back to today',
-                onPressed: _resetToCurrentPeriod,
-              )
-            : null;
-
-        final body = summary == null
+        final body = snapshot.data == null
             ? const Center(child: CircularProgressIndicator())
-            : _buildBody(context, summary);
+            : _buildBody(context, snapshot.data!);
 
         return Scaffold(
           appBar: AppBar(
             automaticallyImplyLeading: false,
             title: Text(shell ? 'Overview' : 'Dashboard'),
             actions: shell
-                ? (todayAction == null
-                    ? null
-                    : [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: todayAction,
-                        ),
-                      ])
+                ? [
+                    StreamBuilder<int>(
+                      stream: widget.reviewRepository.watchNeedsInputCount(),
+                      builder: (context, countSnapshot) {
+                        final inboxCount = countSnapshot.data ?? 0;
+                        return IconButton(
+                          icon: Badge(
+                            isLabelVisible: inboxCount > 0,
+                            label: Text('$inboxCount'),
+                            child: const Icon(Icons.inbox_outlined),
+                          ),
+                          tooltip: 'Needs your input',
+                          onPressed: () {
+                            Navigator.pushNamed(context, AppRoutes.review);
+                          },
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.cloud_sync_outlined),
+                      tooltip: 'Recovery queue',
+                      onPressed: () =>
+                          Navigator.pushNamed(context, AppRoutes.recovery),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: IconButton(
+                        icon: const Icon(Icons.person_outline),
+                        tooltip: 'Profile',
+                        onPressed: () =>
+                            Navigator.pushNamed(context, AppRoutes.profile),
+                      ),
+                    ),
+                  ]
                 : [
-                    ?todayAction,
                     StreamBuilder<int>(
                       stream: widget.reviewRepository.watchNeedsInputCount(),
                       builder: (context, countSnapshot) {
@@ -508,50 +506,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (shell) return scaffold;
     return PopScope(canPop: false, child: scaffold);
-  }
-}
-
-class _PeriodNavigator extends StatelessWidget {
-  const _PeriodNavigator({
-    required this.label,
-    required this.onPrevious,
-    this.onNext,
-    this.canGoNext = true,
-  });
-
-  final String label;
-  final VoidCallback onPrevious;
-  final VoidCallback? onNext;
-  final bool canGoNext;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              tooltip: 'Previous period',
-              onPressed: onPrevious,
-            ),
-            Expanded(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              tooltip: 'Next period',
-              onPressed: canGoNext ? onNext : null,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -623,7 +577,7 @@ class _EmptyState extends StatelessWidget {
     if (rawIngestCount > 0 && transactionCount == 0) {
       return 'Messages synced, nothing parsed';
     }
-    return 'No spend in this period';
+    return 'No spend yet';
   }
 
   String get _message {
@@ -632,8 +586,8 @@ class _EmptyState extends StatelessWidget {
           'Check bank SMS format in Recovery, or add payment sources in Accounts.';
     }
     if (rawIngestCount > 0) {
-      return '$rawIngestCount SMS synced but none fall in this period. '
-          'Try Monthly view or pull down to sync.';
+      return '$rawIngestCount SMS synced but none fall in this window. '
+          'Pull down to sync or check Analytics for longer periods.';
     }
     return 'Connect bank SMS via Shortcuts, then pull down to sync. '
         'Paste missed messages in Recovery.';
@@ -654,174 +608,6 @@ class _EmptyState extends StatelessWidget {
         onPressed: onRecovery,
         icon: const Icon(Icons.inbox_outlined),
         label: const Text('Open Recovery'),
-      ),
-    );
-  }
-}
-
-class _SourceRow extends StatelessWidget {
-  const _SourceRow({
-    required this.name,
-    required this.subtitle,
-    required this.amount,
-    required this.share,
-    required this.count,
-    this.onTap,
-    this.muted = false,
-  });
-
-  final String name;
-  final String subtitle;
-  final String amount;
-  final double share;
-  final int count;
-  final VoidCallback? onTap;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.tight),
-      child: Card(
-        color: muted ? scheme.surfaceContainerHighest.withValues(alpha: 0.4) : null,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: muted
-                      ? scheme.surfaceContainerHighest
-                      : scheme.primaryContainer,
-                  child: Icon(
-                    muted ? Icons.help_outline : Icons.account_balance_wallet_outlined,
-                    size: 18,
-                    color: muted ? scheme.onSurfaceVariant : scheme.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name, style: Theme.of(context).textTheme.titleSmall),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  amount,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: muted ? scheme.onSurfaceVariant : scheme.onSurface,
-                      ),
-                ),
-                if (onTap != null)
-                  Icon(Icons.chevron_right, color: scheme.outline),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow({
-    required this.name,
-    required this.amount,
-    required this.share,
-    required this.count,
-    this.accentIndex = 0,
-    this.onTap,
-  });
-
-  final String name;
-  final String amount;
-  final double share;
-  final int count;
-  final int accentIndex;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final barColor = categoryAccentColor(scheme, accentIndex);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.tight),
-      child: Card(
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: barColor,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        name,
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                    ),
-                    Text(
-                      amount,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    if (onTap != null) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.chevron_right, color: scheme.outline),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.tight),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: share.clamp(0, 1),
-                    minHeight: 6,
-                    backgroundColor:
-                        scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                    color: barColor,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '$count transactions · ${(share * 100).toStringAsFixed(0)}%',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -39,6 +39,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   _PeriodMode _mode = _PeriodMode.weekly;
   DateTime _periodAnchor = DateTime.now();
   PeriodSummary? _priorSummary;
+  List<PeriodSummary> _monthlyTrend = const [];
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
 
@@ -49,10 +50,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPriorSummary();
+    _loadAuxiliarySummaries();
   }
 
-  Future<void> _loadPriorSummary() async {
+  Future<void> _loadAuxiliarySummaries() async {
     final priorSummary = _mode == _PeriodMode.weekly
         ? await widget.repository.weeklySummary(
             anchor: _periodAnchor.subtract(const Duration(days: 7)),
@@ -60,8 +61,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         : await widget.repository.monthlySummary(
             anchor: DateTime(_periodAnchor.year, _periodAnchor.month - 1, 15),
           );
+    List<PeriodSummary> trend = const [];
+    if (_mode == _PeriodMode.monthly) {
+      trend = await widget.repository.recentMonthlySummaries(
+        anchor: _periodAnchor,
+        count: 6,
+      );
+    }
     if (!mounted) return;
-    setState(() => _priorSummary = priorSummary);
+    setState(() {
+      _priorSummary = priorSummary;
+      _monthlyTrend = trend;
+    });
   }
 
   bool _isCurrentPeriodFor(PeriodSummary summary) {
@@ -81,12 +92,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         );
       }
     });
-    _loadPriorSummary();
+    _loadAuxiliarySummaries();
   }
 
   void _resetToCurrentPeriod() {
     setState(() => _periodAnchor = DateTime.now());
-    _loadPriorSummary();
+    _loadAuxiliarySummaries();
   }
 
   String get _priorPeriodLabel {
@@ -179,6 +190,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final isCurrentPeriod = _isCurrentPeriodFor(summary);
     final showIncomeOrNet =
         summary.totalIncome > 0 || summary.net != 0;
+    final saved = summary.net;
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.page),
@@ -202,7 +214,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               _mode = s.first;
               _periodAnchor = DateTime.now();
             });
-            _loadPriorSummary();
+            _loadAuxiliarySummaries();
           },
         ),
         const SizedBox(height: AppSpacing.item),
@@ -226,13 +238,28 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           HeroSpendCard(
             label: 'Total spend',
             amount: _currency.format(summary.totalSpend),
-            secondaryLabel: showIncomeOrNet ? 'Income · Net' : null,
+            secondaryLabel: showIncomeOrNet ? 'Income' : null,
             secondaryAmount: showIncomeOrNet
-                ? '${_currency.format(summary.totalIncome)} · '
-                    '${_currency.format(summary.net)}'
+                ? _currency.format(summary.totalIncome)
                 : null,
+            additionalMetrics: showIncomeOrNet
+                ? [
+                    HeroSpendMetric(
+                      label: 'Net',
+                      amount: _currency.format(summary.net),
+                    ),
+                  ]
+                : const [],
             icon: Icons.insights_outlined,
           ),
+          if (showIncomeOrNet) ...[
+            const SizedBox(height: AppSpacing.item),
+            CreditsSpendSavedChart(
+              totalIncome: summary.totalIncome,
+              totalSpend: summary.totalSpend,
+              saved: saved,
+            ),
+          ],
           if (summary.breakdown.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.item),
             CategorySpendBarChart(
@@ -240,6 +267,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               totalSpend: summary.totalSpend,
               maxBars: 10,
             ),
+            const SizedBox(height: AppSpacing.item),
+            CategorySpendPieChart(
+              breakdown: summary.breakdown,
+              totalSpend: summary.totalSpend,
+            ),
+          ],
+          if (_mode == _PeriodMode.monthly && _monthlyTrend.length >= 2) ...[
+            const SizedBox(height: AppSpacing.item),
+            MonthlyTrendLineChart(summaries: _monthlyTrend),
           ],
           if (_hasPriorComparisonData) ...[
             const SizedBox(height: AppSpacing.section),

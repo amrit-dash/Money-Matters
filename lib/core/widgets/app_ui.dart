@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-export '../theme/app_theme.dart' show AppStatTone, AppRadii;
+export '../theme/app_theme.dart' show AppSpacing, AppStatTone, AppRadii;
 
 /// Standard surface card — 16px radius, outline, optional hero gradient.
 class AppCard extends StatelessWidget {
@@ -443,6 +443,14 @@ class OnboardingStepIndicator extends StatelessWidget {
   }
 }
 
+/// Label + amount pair shown below the hero total on [HeroSpendCard].
+class HeroSpendMetric {
+  const HeroSpendMetric({required this.label, required this.amount});
+
+  final String label;
+  final String amount;
+}
+
 /// Large hero metric for dashboard spend / income.
 class HeroSpendCard extends StatelessWidget {
   const HeroSpendCard({
@@ -451,6 +459,7 @@ class HeroSpendCard extends StatelessWidget {
     required this.amount,
     this.secondaryLabel,
     this.secondaryAmount,
+    this.additionalMetrics = const [],
     this.icon = Icons.account_balance_wallet_outlined,
   });
 
@@ -458,6 +467,7 @@ class HeroSpendCard extends StatelessWidget {
   final String amount;
   final String? secondaryLabel;
   final String? secondaryAmount;
+  final List<HeroSpendMetric> additionalMetrics;
   final IconData icon;
 
   @override
@@ -492,22 +502,50 @@ class HeroSpendCard extends StatelessWidget {
               height: 1.1,
             ),
           ),
-          if (secondaryLabel != null && secondaryAmount != null) ...[
-            const SizedBox(height: AppSpacing.item),
-            Text(
-              '$secondaryLabel · $secondaryAmount',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onPrimaryContainer.withValues(alpha: 0.85),
-              ),
-            ),
-          ],
+          ..._buildMetricRows(
+            theme,
+            scheme,
+            [
+              if (secondaryLabel != null && secondaryAmount != null)
+                HeroSpendMetric(
+                  label: secondaryLabel!,
+                  amount: secondaryAmount!,
+                ),
+              ...additionalMetrics,
+            ],
+          ),
         ],
       ),
     );
   }
+
+  static List<Widget> _buildMetricRows(
+    ThemeData theme,
+    ColorScheme scheme,
+    List<HeroSpendMetric> metrics,
+  ) {
+    if (metrics.isEmpty) return const [];
+
+    final labelStyle = theme.textTheme.labelMedium?.copyWith(
+      color: scheme.onPrimaryContainer.withValues(alpha: 0.75),
+    );
+    final amountStyle = theme.textTheme.titleMedium?.copyWith(
+      color: scheme.onPrimaryContainer.withValues(alpha: 0.9),
+      fontWeight: FontWeight.w600,
+    );
+
+    return [
+      const SizedBox(height: AppSpacing.item),
+      for (final metric in metrics) ...[
+        Text(metric.label, style: labelStyle),
+        const SizedBox(height: 2),
+        Text(metric.amount, style: amountStyle),
+        if (metric != metrics.last) const SizedBox(height: AppSpacing.tight),
+      ],
+    ];
+  }
 }
 
-/// Onboarding welcome block with friendly copy.
 class AppWelcomeHero extends StatelessWidget {
   const AppWelcomeHero({
     super.key,
