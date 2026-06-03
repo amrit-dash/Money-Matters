@@ -37,11 +37,12 @@ Designed for sideload install via Xcode or GitHub Actions — not the App Store.
 
 | Asset | Location | Status |
 |-------|----------|--------|
-| **App icon (SVG)** | [`docs/assets/app-icon/`](docs/assets/app-icon/) | Light + dark 1024×1024 masters (source of truth) |
-| **iOS home-screen icon** | [`ios/Runner/Assets.xcassets/AppIcon.appiconset/`](ios/Runner/Assets.xcassets/AppIcon.appiconset/) | Light + dark PNGs (regenerate: `./scripts/export_app_icons.sh`) |
-| **Launch splash** | [`ios/Runner/Assets.xcassets/LaunchImage.imageset/`](ios/Runner/Assets.xcassets/LaunchImage.imageset/) | Same branding as light app icon |
+| **App icon brief** | [`docs/app-icon-brief.md`](docs/app-icon-brief.md) | Creative + technical constraints for new artwork |
+| **App icon (SVG)** | [`docs/assets/app-icon/`](docs/assets/app-icon/) | **Pending** — add `app-icon-master-{light,dark}.svg` when ready |
+| **iOS home-screen icon** | [`ios/Runner/Assets.xcassets/AppIcon.appiconset/`](ios/Runner/Assets.xcassets/AppIcon.appiconset/) | Built PNGs; may be stale until re-exported from new SVGs |
+| **Launch splash** | [`ios/Runner/Assets.xcassets/LaunchImage.imageset/`](ios/Runner/Assets.xcassets/LaunchImage.imageset/) | Regenerated with app icon export (light master) |
 
-**Production path:** edit SVG masters if needed, run `./scripts/export_app_icons.sh`, then build and install:
+**Production path (after SVG masters exist):** place files per [`docs/assets/app-icon/README.md`](docs/assets/app-icon/README.md), run `./scripts/export_app_icons.sh`, then build and install:
 
 ```bash
 ./scripts/build_ipa.sh    # or Xcode → Run on device
@@ -222,7 +223,8 @@ Additional setup guides (signing, Xcode, App Check) are in [`docs/`](docs/).
 ## Project structure
 
 ```
-ios/Runner/Assets.xcassets/AppIcon.appiconset/   iOS home-screen icon PNGs
+docs/assets/app-icon/   SVG masters (pending new artwork)
+ios/Runner/Assets.xcassets/AppIcon.appiconset/   iOS home-screen icon PNGs (export script)
 docs/screenshots/        Optional local UI captures (see Screenshots section)
 lib/
 ├── features/

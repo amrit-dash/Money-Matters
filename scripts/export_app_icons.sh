@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Export docs/assets/app-icon masters into ios/Runner/Assets.xcassets PNGs.
-# Renders light/dark SVGs (source of truth) and derives AppIcon + LaunchImage sizes.
+# Export docs/assets/app-icon SVG masters into ios/Runner/Assets.xcassets PNGs.
+# Expects app-icon-master-{light,dark}.svg (see docs/assets/app-icon/README.md).
+# Does not run without both SVGs — add new masters before exporting.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PNG_MASTER="${ROOT}/docs/assets/app-icon/app-icon-master-1024.png"
-LIGHT_SVG="${ROOT}/docs/assets/app-icon/app-icon-master-light.svg"
-DARK_SVG="${ROOT}/docs/assets/app-icon/app-icon-master-dark.svg"
+ICON_DIR="${ROOT}/docs/assets/app-icon"
+LIGHT_SVG="${ICON_DIR}/app-icon-master-light.svg"
+DARK_SVG="${ICON_DIR}/app-icon-master-dark.svg"
 OUT_DIR="${ROOT}/ios/Runner/Assets.xcassets/AppIcon.appiconset"
 LAUNCH_DIR="${ROOT}/ios/Runner/Assets.xcassets/LaunchImage.imageset"
 TMP="${ROOT}/build/icon-export"
@@ -26,14 +27,11 @@ if [[ -f "$LIGHT_SVG" && -f "$DARK_SVG" ]]; then
   echo "==> Rendering 1024 masters from SVG"
   rsvg-convert -w 1024 -h 1024 "$LIGHT_SVG" -o "${TMP}/light-1024.png"
   rsvg-convert -w 1024 -h 1024 "$DARK_SVG" -o "${TMP}/dark-1024.png"
-  cp "${TMP}/light-1024.png" "$PNG_MASTER"
-  echo "==> Updated PNG derivative: ${PNG_MASTER}"
-elif [[ -f "$PNG_MASTER" ]]; then
-  echo "==> Using PNG master (no SVG): ${PNG_MASTER}"
-  cp "$PNG_MASTER" "${TMP}/light-1024.png"
-  cp "$PNG_MASTER" "${TMP}/dark-1024.png"
 else
-  echo "ERROR: No icon master found. Add docs/assets/app-icon/app-icon-master-{light,dark}.svg"
+  echo "ERROR: Missing SVG masters."
+  echo "  Add: ${LIGHT_SVG}"
+  echo "  Add: ${DARK_SVG}"
+  echo "  See: ${ICON_DIR}/README.md and docs/app-icon-brief.md"
   exit 1
 fi
 

@@ -172,13 +172,15 @@ When a direction is approved, hand off the following to the engineering repo (`M
 
 ### Required files
 
+Place in **`docs/assets/app-icon/`** (see that folder’s README):
+
 | Deliverable | Spec |
 |-------------|------|
 | **`app-icon-master-light.svg`** | 1024×1024, light background variant |
 | **`app-icon-master-dark.svg`** | 1024×1024, dark background variant |
 | **Optional:** single SVG with named layers / CSS variables for swatches | Document swap values for export |
 
-Deliver final SVG/PNG sources to the maintainer before iOS export into `AppIcon.appiconset`.
+Do not commit PNG masters under `docs/assets/app-icon/`. After SVGs land, the maintainer runs `./scripts/export_app_icons.sh` to populate `AppIcon.appiconset` (and launch splash).
 
 ### iOS App Icon PNG export
 
