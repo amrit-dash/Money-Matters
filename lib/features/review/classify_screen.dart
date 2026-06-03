@@ -440,6 +440,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         rawMerchantOverride != (_originalMerchant ?? '').toUpperCase();
 
     setState(() => _saving = true);
+    var popped = false;
     try {
       await widget.repository.classify(
         transaction: tx,
@@ -465,13 +466,17 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Saved')),
       );
+      popped = true;
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not save: $e')),
       );
+    } finally {
+      if (mounted && !popped) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -482,24 +487,20 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         title: const Text('Reclassify'),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.only(right: 4),
             child: _aiLoading
                 ? const Padding(
                     padding: EdgeInsets.all(12),
                     child: SizedBox(
-                      width: 22,
-                      height: 22,
+                      width: 24,
+                      height: 24,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   )
-                : TextButton.icon(
+                : IconButton(
                     onPressed: _loading ? null : _reclassifyWithAi,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    icon: const Icon(Icons.auto_awesome_outlined, size: 20),
-                    label: const Text('Use AI'),
+                    icon: const Icon(Icons.auto_awesome_outlined, size: 28),
+                    tooltip: 'Use AI',
                   ),
           ),
           if (_formDirty && !_loading && _error == null)
@@ -615,6 +616,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Text(
@@ -622,10 +624,11 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
+                    const SizedBox(width: 12),
                     Text(
                       _currency.format(tx.amount),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
                           ),
                     ),
                   ],
@@ -697,16 +700,6 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             }
           }),
         ),
-        if (_merchantNameForRule != null) ...[
-          const SizedBox(height: AppSpacing.tight),
-          CheckboxListTile(
-            value: _saveRule,
-            onChanged: (v) => setState(() => _saveRule = v ?? false),
-            title: Text('Remember "${_merchantNameForRule!}" → this category'),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ],
         if (_showSubcategoryPicker && _selectedCategoryId != null) ...[
           const SizedBox(height: AppSpacing.item),
           SubcategoryClassifyPicker(
@@ -798,6 +791,16 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
                   .toList(),
             ),
           ],
+        ],
+        if (_merchantNameForRule != null) ...[
+          const SizedBox(height: AppSpacing.item),
+          CheckboxListTile(
+            value: _saveRule,
+            onChanged: (v) => setState(() => _saveRule = v ?? false),
+            title: Text('Remember "${_merchantNameForRule!}" → this category'),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+          ),
         ],
         const SizedBox(height: AppSpacing.section),
         AppSectionHeader(

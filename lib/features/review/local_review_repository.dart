@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:money_matters/models/category.dart';
 import 'package:money_matters/models/transaction.dart';
@@ -28,6 +30,7 @@ class LocalReviewRepository implements ReviewRepository {
         _firestore = firestore ?? FirebaseFirestore.instance;
 
   static const _rulesParser = RulesParser();
+  static const _remoteSyncTimeout = Duration(seconds: 8);
 
   final LocalDatabase _db;
   final AuthService _authService;
@@ -115,6 +118,27 @@ class LocalReviewRepository implements ReviewRepository {
       await _db.updateTransactionPaymentSource(id, paymentSourceId);
     }
 
+    // Cloud sync, merchant rules, and backlog re-parse can hang on slow
+    // networks — never block the save UI after local SQLite is updated.
+    unawaited(
+      _syncClassificationInBackground(
+        transaction: transaction,
+        input: input,
+        classifiedBy: classifiedBy,
+        paymentSourceId: paymentSourceId,
+      ),
+    );
+  }
+
+  Future<void> _syncClassificationInBackground({
+    required Transaction transaction,
+    required ClassifyInput input,
+    required ClassifiedBy classifiedBy,
+    String? paymentSourceId,
+  }) async {
+    final id = transaction.id;
+    if (id == null) return;
+
     if (_authService.isSignedIn) {
       try {
         final uid = _authService.requireUid();
@@ -148,9 +172,10 @@ class LocalReviewRepository implements ReviewRepository {
             'paymentSourceId': paymentSourceId,
             'unmatched': false,
           },
-        }, SetOptions(merge: true));
+        }, SetOptions(merge: true))
+            .timeout(_remoteSyncTimeout);
       } catch (_) {
-        // Offline or Firestore unavailable — local classification still applies.
+        // Offline, timeout, or Firestore unavailable — local save already applied.
       }
     }
 
@@ -162,34 +187,62 @@ class LocalReviewRepository implements ReviewRepository {
           input.merchantNormalized ??
           transaction.merchant;
       if (merchant != null && merchant.isNotEmpty) {
-        await _categories.addMerchantRule(
-          categoryId: input.categoryId,
-          merchant: merchant,
-        );
+        try {
+          await _categories
+              .addMerchantRule(
+                categoryId: input.categoryId,
+                merchant: merchant,
+              )
+              .timeout(_remoteSyncTimeout);
+        } catch (_) {
+          // Rule sync is best-effort; local classification already saved.
+        }
         learnedRules = true;
       }
     }
 
     if (paymentSourceId != null) {
-      final ingestRow = await _db.getRawIngest(transaction.rawIngestId);
-      if (ingestRow != null) {
-        final body = ingestRow['body'] as String? ?? '';
-        final sender = ingestRow['sender'] as String? ?? '';
-        final last4 = _rulesParser.extractInstrumentLast4(body);
-        await _paymentSources?.learnFromTransaction(
-          paymentSourceId: paymentSourceId,
-          sender: sender,
-          body: body,
-          merchant: transaction.merchant,
-          instrumentLast4: last4,
-        );
-        learnedRules = true;
+      try {
+        final ingestRow = await _db.getRawIngest(transaction.rawIngestId);
+        if (ingestRow != null) {
+          final body = ingestRow['body'] as String? ?? '';
+          final sender = ingestRow['sender'] as String? ?? '';
+          final last4 = _rulesParser.extractInstrumentLast4(body);
+          await _paymentSources
+              ?.learnFromTransaction(
+                paymentSourceId: paymentSourceId,
+                sender: sender,
+                body: body,
+                merchant: transaction.merchant,
+                instrumentLast4: last4,
+              )
+              .timeout(_remoteSyncTimeout);
+          learnedRules = true;
+        }
+      } catch (_) {
+        // Payment-source learning is best-effort.
       }
     }
 
     if (learnedRules) {
-      await _parsePipeline?.processBacklog();
+      _scheduleBacklogProcessing();
     }
+  }
+
+  /// Re-run rematch / LLM backlog without blocking save or background sync.
+  void _scheduleBacklogProcessing() {
+    final pipeline = _parsePipeline;
+    if (pipeline == null) return;
+    unawaited(
+      pipeline.processBacklog().catchError((Object e, StackTrace st) {
+        return const ParsePipelineResult(
+          processed: 0,
+          transactionsCreated: 0,
+          skipped: 0,
+          failed: 0,
+        );
+      }),
+    );
   }
 
   @override
