@@ -8,8 +8,6 @@
   </defs>
   <rect width="1024" height="1024" fill="#2C3338"/>
 
-  <!-- Inner mark scaled to ~80% for home-screen breathing room -->
-  <g transform="translate(512 512) scale(0.80) translate(-512 -512)">
   <g stroke="#ffffff" fill="none" stroke-linecap="round" stroke-linejoin="round">
     <line x1="512" y1="512" x2="512" y2="248" stroke-width="5"/>
     <line x1="512" y1="512" x2="512" y2="776" stroke-width="5"/>
@@ -77,6 +75,5 @@
     <path d="M468 572 l5 0 l2.5 5 l-2.5 5 l-5 0 l-2.5-5 z"/>
     <path d="M556 568 l7 0 l3.5 7 l-3.5 7 l-7 0 l-3.5-7 z"/>
     <path d="M538 438 l4 0 l2 4 l-2 4 l-4 0 l-2-4 z"/>
-  </g>
   </g>
 </svg>

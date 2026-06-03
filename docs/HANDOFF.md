@@ -11,8 +11,9 @@
 | Item | Status |
 |------|--------|
 | Final app icon | **Done** — hub-and-spoke ₹ mark; teal light / slate dark |
-| SVG masters | `docs/assets/app-icon/app-icon-master-{light,dark}.svg` |
+| SVG masters | `docs/assets/app-icon/app-icon-master-{light,dark}.svg` (source of truth) |
 | iOS `AppIcon.appiconset` | **Exported** — light PNGs + `*-dark.png` variants in `Contents.json` |
+| Launch splash | `LaunchImage.imageset` — regenerated from light SVG (same branding) |
 | Regenerate PNGs | `./scripts/export_app_icons.sh` (requires `librsvg`, Python Pillow) |
 | On-device home screen | **Verify** — `./scripts/build_ipa.sh` or Xcode Run on a physical iPhone |
 

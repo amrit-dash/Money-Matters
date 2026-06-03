@@ -37,8 +37,9 @@ Designed for sideload install via Xcode or GitHub Actions — not the App Store.
 
 | Asset | Location | Status |
 |-------|----------|--------|
-| **App icon (SVG)** | [`docs/assets/app-icon/`](docs/assets/app-icon/) | Light + dark 1024×1024 masters |
+| **App icon (SVG)** | [`docs/assets/app-icon/`](docs/assets/app-icon/) | Light + dark 1024×1024 masters (source of truth) |
 | **iOS home-screen icon** | [`ios/Runner/Assets.xcassets/AppIcon.appiconset/`](ios/Runner/Assets.xcassets/AppIcon.appiconset/) | Light + dark PNGs (regenerate: `./scripts/export_app_icons.sh`) |
+| **Launch splash** | [`ios/Runner/Assets.xcassets/LaunchImage.imageset/`](ios/Runner/Assets.xcassets/LaunchImage.imageset/) | Same branding as light app icon |
 
 **Production path:** edit SVG masters if needed, run `./scripts/export_app_icons.sh`, then build and install:
 
