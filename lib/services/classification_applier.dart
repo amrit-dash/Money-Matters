@@ -18,6 +18,7 @@ class ClassificationApplier {
     bool forceCategory = false,
     bool forceSource = false,
     String? selectedCategoryId,
+    bool allowLlmNotes = false,
   }) {
     final needsCategory =
         forceCategory || tx.needsClassification || tx.ambiguous;
@@ -59,13 +60,19 @@ class ClassificationApplier {
         categoryId = selectedCategoryId;
       }
 
-      final resolved = categoryId != null && !result.needsUserInput;
+      final confidence = result.categoryConfidence ??
+          (result.needsUserInput ? 0.0 : 1.0);
+      final canAutoApplyCategory = categoryId != null &&
+          !result.needsUserInput &&
+          confidence >= ClassificationResult.categoryConfidenceThreshold;
 
       updated = updated.copyWith(
-        categoryId: categoryId,
-        needsClassification: resolved ? false : updated.needsClassification,
-        ambiguous: resolved ? false : updated.ambiguous,
-        classifiedBy: resolved ? ClassifiedBy.llm : updated.classifiedBy,
+        categoryId: canAutoApplyCategory ? categoryId : updated.categoryId,
+        needsClassification:
+            canAutoApplyCategory ? false : true,
+        ambiguous: canAutoApplyCategory ? false : updated.ambiguous,
+        classifiedBy:
+            canAutoApplyCategory ? ClassifiedBy.llm : updated.classifiedBy,
       );
     }
 
@@ -75,7 +82,9 @@ class ClassificationApplier {
       updated = updated.copyWith(subcategoryId: result.subcategoryId);
     }
 
-    if (result.userNotes != null &&
+    // Pipeline must not auto-set notes; only user-confirmed NL classify may.
+    if (allowLlmNotes &&
+        result.userNotes != null &&
         result.userNotes!.trim().isNotEmpty &&
         !_isGenericPaidToNote(result.userNotes!, displayName)) {
       updated = updated.copyWith(userNotes: result.userNotes!.trim());
@@ -140,6 +149,7 @@ class AiClassifyFormUpdate {
     this.suggestedCategoryId,
     this.suggestedCategoryName,
     this.needsConfig = false,
+    this.needsUserInput = false,
     this.errorMessage,
   });
 
@@ -156,5 +166,6 @@ class AiClassifyFormUpdate {
   final String? suggestedCategoryId;
   final String? suggestedCategoryName;
   final bool needsConfig;
+  final bool needsUserInput;
   final String? errorMessage;
 }

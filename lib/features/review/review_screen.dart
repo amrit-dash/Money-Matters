@@ -49,125 +49,145 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: !widget.embeddedInShell,
-        title: Text(widget.embeddedInShell ? 'Inbox' : 'Needs your input'),
-        actions: [
-          Builder(
-            builder: (context) {
-              final services = AppScope.of(context);
-              return StreamBuilder(
-                stream: services.paymentSourceService.watchAll(),
-                builder: (context, sourcesSnapshot) {
-                  return StreamBuilder(
-                    stream: services.categoryService.watchCategories(),
-                    builder: (context, categoriesSnapshot) {
-                      return TransactionListFilterBar(
-                        filter: _filter,
-                        onChanged: (f) => setState(() => _filter = f),
-                        paymentSources:
-                            sourcesSnapshot.data ?? const [],
-                        categories: categoriesSnapshot.data ?? const [],
-                      );
-                    },
-                  );
-                },
-              );
-            },
+    const inboxPadding = EdgeInsets.symmetric(horizontal: 28);
+
+    return StreamBuilder<List<Transaction>>(
+      stream: widget.repository.watchFlaggedTransactions(),
+      builder: (context, snapshot) {
+        final rawItems = snapshot.data;
+        final hasItems = rawItems != null && rawItems.isNotEmpty;
+
+        return Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: !widget.embeddedInShell,
+            title: Text(widget.embeddedInShell ? 'Inbox' : 'Needs your input'),
+            actions: [
+              if (hasItems)
+                Builder(
+                  builder: (context) {
+                    final services = AppScope.of(context);
+                    return StreamBuilder(
+                      stream: services.paymentSourceService.watchAll(),
+                      builder: (context, sourcesSnapshot) {
+                        return StreamBuilder(
+                          stream: services.categoryService.watchCategories(),
+                          builder: (context, categoriesSnapshot) {
+                            return TransactionListFilterBar(
+                              filter: _filter,
+                              onChanged: (f) => setState(() => _filter = f),
+                              paymentSources:
+                                  sourcesSnapshot.data ?? const [],
+                              categories:
+                                  categoriesSnapshot.data ?? const [],
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+            ],
           ),
-        ],
-      ),
-      body: StreamBuilder<List<Transaction>>(
-        stream: widget.repository.watchFlaggedTransactions(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final rawItems = snapshot.data!;
-
-          if (rawItems.isEmpty) {
-            return AppEmptyState(
-              icon: Icons.check_circle_outline,
-              title: 'All clear',
-              message:
-                  'Nothing needs you right now. When we are unsure about a '
-                  'category or account, it will show up here for a quick tap.',
-            );
-          }
-
-          final items = _filter.apply(rawItems);
-
-          if (items.isEmpty) {
-            return AppEmptyState(
-              icon: Icons.filter_list_off,
-              title: 'No matching items',
-              message: 'Try clearing or adjusting your filters.',
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              await widget.repository.flaggedTransactions();
-            },
-            child: ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.page),
-              itemCount: items.length + 1,
-              separatorBuilder: (context, index) =>
-                  const SizedBox(height: AppSpacing.tight),
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return AppSectionHeader(
-                    title: 'To classify (${items.length})',
-                    subtitle:
-                        'Tap a row to pick a category, notes, or items',
-                    icon: Icons.label_outline,
-                  );
-                }
-                final tx = items[index - 1];
-                final categoryService = AppScope.of(context).categoryService;
-                final categoryName =
-                    categoryService.findById(tx.categoryId)?.name ??
-                        'Uncategorized';
-                final isCredit = tx.type == TransactionType.credit;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TransactionListItem(
-                      dateLabel: _dateFormat.format(tx.timestamp),
-                      categoryName: categoryName,
-                      merchantName: tx.displayMerchant ?? 'Unknown merchant',
-                      amountLabel:
-                          '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
-                      paymentSourceLabel: tx.unmatched
-                          ? 'No linked account'
-                          : (tx.paymentSourceId ?? 'Account'),
-                      isCredit: isCredit,
-                      onTap: () => _openClassify(tx),
-                    ),
-                    if (_flagLabels(tx).isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.tight),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: _flagLabels(tx)
-                            .map(
-                              (f) => AppStatusChip(
-                                label: f,
-                                tone: AppStatTone.warning,
-                              ),
-                            )
-                            .toList(),
+          body: !snapshot.hasData
+              ? const Center(child: CircularProgressIndicator())
+              : rawItems!.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: inboxPadding,
+                        child: const AppEmptyState(
+                          icon: Icons.check_circle_outline,
+                          title: 'All clear',
+                          message:
+                              'Nothing needs you right now. When we are unsure '
+                              'about a category or account, it will show up here '
+                              'for a quick tap.',
+                        ),
                       ),
-                    ],
-                  ],
-                );
-              },
-            ),
-          );
-        },
-      ),
+                    )
+                  : Builder(
+                      builder: (context) {
+                        final items = _filter.apply(rawItems);
+
+                        if (items.isEmpty) {
+                          return Padding(
+                            padding: inboxPadding,
+                            child: const AppEmptyState(
+                              icon: Icons.filter_list_off,
+                              title: 'No matching items',
+                              message:
+                                  'Try clearing or adjusting your filters.',
+                            ),
+                          );
+                        }
+
+                        return RefreshIndicator(
+                          onRefresh: () async {
+                            await widget.repository.flaggedTransactions();
+                          },
+                          child: ListView.separated(
+                            padding: inboxPadding.copyWith(
+                              top: AppSpacing.page,
+                              bottom: AppSpacing.page,
+                            ),
+                            itemCount: items.length + 1,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: AppSpacing.tight),
+                            itemBuilder: (context, index) {
+                              if (index == 0) {
+                                return AppSectionHeader(
+                                  title: 'To classify (${items.length})',
+                                  subtitle:
+                                      'Tap a row to pick a category, notes, or items',
+                                  icon: Icons.label_outline,
+                                );
+                              }
+                              final tx = items[index - 1];
+                              final categoryService =
+                                  AppScope.of(context).categoryService;
+                              final categoryName =
+                                  categoryService.findById(tx.categoryId)?.name ??
+                                      'Uncategorized';
+                              final isCredit = tx.type == TransactionType.credit;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  TransactionListItem(
+                                    dateLabel: _dateFormat.format(tx.timestamp),
+                                    categoryName: categoryName,
+                                    merchantName:
+                                        tx.displayMerchant ?? 'Unknown merchant',
+                                    amountLabel:
+                                        '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
+                                    paymentSourceLabel: tx.unmatched
+                                        ? 'No linked account'
+                                        : (tx.paymentSourceId ?? 'Account'),
+                                    isCredit: isCredit,
+                                    onTap: () => _openClassify(tx),
+                                  ),
+                                  if (_flagLabels(tx).isNotEmpty) ...[
+                                    const SizedBox(height: AppSpacing.tight),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: _flagLabels(tx)
+                                          .map(
+                                            (f) => AppStatusChip(
+                                              label: f,
+                                              tone: AppStatTone.warning,
+                                            ),
+                                          )
+                                          .toList(),
+                                    ),
+                                  ],
+                                ],
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
+        );
+      },
     );
   }
 }

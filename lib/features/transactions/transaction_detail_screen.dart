@@ -40,6 +40,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
 
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
   final _dateFormat = DateFormat('EEE, d MMM yyyy · h:mm:ss a');
+  final _headerDateFormat = DateFormat('d MMM yyyy, h:mm a');
 
   @override
   void initState() {
@@ -246,6 +247,17 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _headerDateFormat.format(tx.timestamp),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

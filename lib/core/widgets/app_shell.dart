@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../features/dashboard/analytics_screen.dart';
@@ -41,11 +43,44 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
+  Timer? _periodicDrain;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _kickSync();
+    _periodicDrain = Timer.periodic(
+      const Duration(hours: 1),
+      (_) => widget.queueDrain.drainIfAuthenticated(),
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _periodicDrain?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _kickSync();
+    }
+  }
+
+  void _kickSync() {
+    unawaited(widget.queueDrain.drainIfAuthenticated());
+  }
 
   void _onTabSelected(int index) {
     setState(() => _index = index);
+    if (index == 0 || index == 2 || index == 3) {
+      _kickSync();
+    }
   }
 
   @override

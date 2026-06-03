@@ -77,6 +77,7 @@ function fallback(needsConfig: boolean): ClassifyResult {
     type: null,
     needsUserInput: true,
     needsConfig,
+    categoryConfidence: null,
     paymentSourceId: null,
     paymentSourceConfidence: null,
     userNotes: null,

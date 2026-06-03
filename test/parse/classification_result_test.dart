@@ -41,6 +41,7 @@ void main() {
       categoryId: 'transfer',
       merchantNormalized: 'Nizam M',
       transferTo: 'Nizam M',
+      categoryConfidence: 0.9,
       needsUserInput: false,
     );
 
@@ -72,6 +73,7 @@ void main() {
       categoryId: 'transfer',
       merchantNormalized: 'Srawan Kumar Sah',
       transferTo: 'Srawan Kumar Sah',
+      categoryConfidence: 0.9,
       needsUserInput: false,
     );
 
@@ -104,6 +106,7 @@ void main() {
     const result = ClassificationResult(
       categoryId: 'food',
       merchantNormalized: 'Nizam M',
+      categoryConfidence: 0.9,
       needsUserInput: false,
     );
 
@@ -119,6 +122,35 @@ void main() {
     expect(updated.categoryId, 'transfer');
   });
 
+  test('ClassificationApplier withholds category below confidence threshold', () {
+    final tx = Transaction(
+      id: '1',
+      rawIngestId: 'ingest',
+      amount: 450,
+      timestamp: DateTime.parse('2026-05-29T00:00:00+05:30'),
+      type: TransactionType.debit,
+      needsClassification: true,
+    );
+    const categories = [Category(id: 'food', name: 'Food')];
+    const result = ClassificationResult(
+      categoryId: 'food',
+      merchantNormalized: 'Some Cafe',
+      categoryConfidence: 0.55,
+      needsUserInput: false,
+    );
+
+    final updated = ClassificationApplier.apply(
+      tx: tx,
+      result: result,
+      categories: categories,
+      knownSourceIds: {},
+      forceCategory: true,
+    );
+
+    expect(updated.categoryId, isNull);
+    expect(updated.needsClassification, isTrue);
+  });
+
   test('ClassificationApplier skips generic paid-to userNotes', () {
     final tx = Transaction(
       id: '1',
@@ -132,6 +164,7 @@ void main() {
     const result = ClassificationResult(
       categoryId: 'food',
       merchantNormalized: 'Zepto',
+      categoryConfidence: 0.9,
       userNotes: 'Paid to Zepto',
       needsUserInput: false,
     );

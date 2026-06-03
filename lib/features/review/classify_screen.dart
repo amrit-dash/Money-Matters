@@ -14,6 +14,8 @@ import '../../core/widgets/original_ingest_sheet.dart';
 import '../../services/app_services.dart';
 import '../accounts/payment_source_widgets.dart';
 import '../../services/category_service.dart';
+import '../../services/classification_applier.dart';
+import '../../services/classification_completeness.dart';
 import '../../services/payment_source_service.dart';
 import 'review_repository.dart';
 
@@ -41,6 +43,7 @@ class ClassifyScreen extends StatefulWidget {
 
 class _ClassifyScreenState extends State<ClassifyScreen> {
   final _notesController = TextEditingController();
+  final _nlDescribeController = TextEditingController();
   final _itemController = TextEditingController();
   final _merchantController = TextEditingController();
   final _transferToController = TextEditingController();
@@ -60,6 +63,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _aiLoading = false;
+  bool _nlSending = false;
   bool _formDirty = false;
   bool _aiAssisted = false;
   String? _originalMerchant;
@@ -102,7 +106,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     final txId = widget.transaction?.id ?? widget.transactionId;
     if (txId != null) {
       _transactionSub = widget.repository.watchTransaction(txId).listen((tx) {
-        if (!mounted || tx == null) return;
+        if (!mounted || tx == null || _saving) return;
         _applyRemoteTransaction(tx);
       });
     }
@@ -114,6 +118,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     _sourcesSub?.cancel();
     _transactionSub?.cancel();
     _notesController.dispose();
+    _nlDescribeController.dispose();
     _itemController.dispose();
     _merchantController.dispose();
     _transferToController.dispose();
@@ -172,6 +177,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
 
   /// Applies background classification updates without clobbering in-progress edits.
   void _applyRemoteTransaction(Transaction tx) {
+    if (!mounted) return;
     if (_saving || _formDirty) {
       setState(() => _tx = tx);
       return;
@@ -292,6 +298,135 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     });
   }
 
+  bool get _isInboxClassify {
+    final tx = _tx;
+    if (tx == null) return false;
+    return tx.needsClassification || tx.ambiguous || tx.unmatched;
+  }
+
+  Future<void> _sendNaturalLanguageClassify() async {
+    final tx = _tx;
+    if (tx == null || _nlSending) return;
+    final text = _nlDescribeController.text.trim();
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Describe this spend first')),
+      );
+      return;
+    }
+    setState(() => _nlSending = true);
+    try {
+      final update = await AppScope.of(context)
+          .aiClassifyService
+          .classifyFromUserText(
+            tx,
+            text,
+            selectedCategoryId: _selectedCategoryId,
+          );
+      if (!mounted) return;
+      if (update.needsConfig) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('AI needs Agent settings or GEMINI_API_KEY'),
+          ),
+        );
+        return;
+      }
+      if (update.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(update.errorMessage!)),
+        );
+        return;
+      }
+      _applyAiFormUpdate(update);
+      if (update.suggestedCategoryName != null &&
+          update.suggestedCategoryId != null &&
+          update.categoryId == null) {
+        await _offerSuggestedCategory(
+          id: update.suggestedCategoryId!,
+          name: update.suggestedCategoryName!,
+        );
+      }
+      final draft = _draftTransaction();
+      if (isClassificationComplete(draft)) {
+        await _save();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Applied — finish remaining fields and save'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _nlSending = false);
+    }
+  }
+
+  void _applyAiFormUpdate(AiClassifyFormUpdate update) {
+    setState(() {
+      _aiAssisted = true;
+      _formDirty = true;
+      if (update.categoryId != null) {
+        _selectedCategoryId = update.categoryId;
+        if (update.subcategoryId != null) {
+          _selectedSubcategoryId = update.subcategoryId;
+        } else if (!CategoryService.subcategoriesFor(update.categoryId)
+            .any((s) => s.id == _selectedSubcategoryId)) {
+          _selectedSubcategoryId = null;
+        }
+      }
+      if (update.subcategoryId != null && update.categoryId == null) {
+        _selectedSubcategoryId = update.subcategoryId;
+      }
+      if (update.paymentSourceId != null) {
+        _selectedPaymentSourceId = update.paymentSourceId;
+      }
+      if (update.merchantNormalized != null) {
+        _merchantController.text = update.merchantNormalized!;
+      }
+      if (update.merchant != null && _tx != null) {
+        _tx = _tx!.copyWith(merchant: update.merchant);
+      }
+      if (update.userNotes != null) {
+        _notesController.text = update.userNotes!;
+      }
+      if (update.shoppingItems.isNotEmpty) {
+        _shoppingItems
+          ..clear()
+          ..addAll(update.shoppingItems);
+      }
+      if (update.travelProvider != null) {
+        _initTravelProvider(update.travelProvider);
+      }
+      if (update.transferTo != null) {
+        _transferToController.text = update.transferTo!;
+      }
+    });
+  }
+
+  Transaction _draftTransaction() {
+    final tx = _tx!;
+    final merchantName = _merchantController.text.trim();
+    return tx.copyWith(
+      categoryId: _selectedCategoryId,
+      subcategoryId: _selectedSubcategoryId,
+      paymentSourceId: _selectedPaymentSourceId ?? tx.paymentSourceId,
+      unmatched: _selectedPaymentSourceId != null ? false : tx.unmatched,
+      merchantNormalized:
+          merchantName.isEmpty ? tx.merchantNormalized : merchantName,
+      userNotes: _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim(),
+      transferTo: _transferToForSave?.isEmpty ?? true
+          ? null
+          : _transferToForSave,
+      shoppingItems: List<String>.from(_shoppingItems),
+      travelProvider: _travelProviderForSave?.isEmpty ?? true
+          ? null
+          : _travelProviderForSave,
+    );
+  }
+
   Future<void> _reclassifyWithAi() async {
     final tx = _tx;
     if (tx == null || _aiLoading) return;
@@ -318,48 +453,14 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         );
         return;
       }
-      setState(() {
-        _aiAssisted = true;
-        if (update.categoryId != null) {
-          _formDirty = true;
-          _selectedCategoryId = update.categoryId;
-          if (update.subcategoryId != null) {
-            _selectedSubcategoryId = update.subcategoryId;
-          } else if (!CategoryService.subcategoriesFor(update.categoryId)
-              .any((s) => s.id == _selectedSubcategoryId)) {
-            _selectedSubcategoryId = null;
-          }
-        }
-        if (update.subcategoryId != null && update.categoryId == null) {
-          _selectedSubcategoryId = update.subcategoryId;
-        }
-        if (update.paymentSourceId != null) {
-          _selectedPaymentSourceId = update.paymentSourceId;
-        }
-        if (update.merchantNormalized != null) {
-          _formDirty = true;
-          _merchantController.text = update.merchantNormalized!;
-        }
-        if (update.merchant != null && _tx != null) {
-          _tx = _tx!.copyWith(merchant: update.merchant);
-        } else if (update.merchantNormalized != null && _tx != null) {
-          _tx = _tx!.copyWith(merchant: update.merchantNormalized);
-        }
-        if (update.shoppingItems.isNotEmpty) {
-          _shoppingItems
-            ..clear()
-            ..addAll(update.shoppingItems);
-        }
-        if (update.travelProvider != null) {
-          _initTravelProvider(update.travelProvider);
-        }
-        if (update.transferTo != null) {
-          _transferToController.text = update.transferTo!;
-        } else if (update.categoryId == CategoryService.transferCategoryId &&
-            update.merchantNormalized != null) {
+      _applyAiFormUpdate(update);
+      if (update.categoryId == CategoryService.transferCategoryId &&
+          update.merchantNormalized != null &&
+          _transferToController.text.isEmpty) {
+        setState(() {
           _transferToController.text = update.merchantNormalized!;
-        }
-      });
+        });
+      }
       if (update.suggestedCategoryName != null &&
           update.suggestedCategoryId != null &&
           update.categoryId == null) {
@@ -463,6 +564,9 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         ),
       );
       if (!mounted) return;
+      await _transactionSub?.cancel();
+      _transactionSub = null;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Saved')),
       );
@@ -484,7 +588,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Reclassify'),
+        title: Text(_isInboxClassify ? 'Classify' : 'Reclassify'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 4),
@@ -605,9 +709,65 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       if (tx.needsClassification) 'Needs category',
     ];
 
+    final missing = missingClassificationFields(_draftTransaction());
+
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.page),
       children: [
+        if (_isInboxClassify && !missing.isEmpty) ...[
+          Material(
+            color: scheme.secondaryContainer.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(AppRadii.control),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 20, color: scheme.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Still needed: ${missing.labels.join(', ')}',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.section),
+        ],
+        if (_isInboxClassify) ...[
+          AppSectionHeader(
+            title: 'Describe this spend',
+            subtitle:
+                'Tell the agent what this was — category, items, bank, payee',
+          ),
+          TextField(
+            controller: _nlDescribeController,
+            minLines: 3,
+            maxLines: 6,
+            textInputAction: TextInputAction.newline,
+            decoration: const InputDecoration(
+              hintText:
+                  'e.g. milk and curd on Zepto, or ₹500 to Rahul for dinner split',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.item),
+          FilledButton.icon(
+            onPressed: _nlSending ? null : _sendNaturalLanguageClassify,
+            icon: _nlSending
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send_outlined),
+            label: const Text('Send'),
+          ),
+          const SizedBox(height: AppSpacing.section),
+        ],
         Card(
           color: scheme.primaryContainer.withValues(alpha: 0.3),
           child: Padding(
@@ -625,11 +785,14 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Text(
-                      _currency.format(tx.amount),
-                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                    Align(
+                      alignment: Alignment.center,
+                      child: Text(
+                        _currency.format(tx.amount),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
                     ),
                   ],
                 ),

@@ -26,6 +26,31 @@ class AiClassifyService {
   final CategoryService _categories;
   final PaymentSourceService _paymentSources;
 
+  /// User-typed description from Inbox classify (explicit confirmation).
+  Future<AiClassifyFormUpdate> classifyFromUserText(
+    Transaction tx,
+    String userText, {
+    String? selectedCategoryId,
+  }) async {
+    final trimmed = userText.trim();
+    if (trimmed.isEmpty) {
+      return const AiClassifyFormUpdate(errorMessage: 'Enter a description first');
+    }
+    final categories = await _categories.loadCategories();
+    final sources = await _paymentSources.loadAll();
+    final result = await _classify(
+      tx,
+      categories,
+      sources,
+      selectedCategoryId: selectedCategoryId,
+      userDescription: trimmed,
+    );
+    return _mapToFormUpdate(tx, result, categories, sources,
+        selectedCategoryId: selectedCategoryId,
+        allowLlmNotes: true,
+        applyCategorySuggestions: true);
+  }
+
   Future<AiClassifyFormUpdate> suggestForForm(
     Transaction tx, {
     String? selectedCategoryId,
@@ -39,6 +64,26 @@ class AiClassifyService {
       sources,
       selectedCategoryId: selectedCategoryId,
     );
+    return _mapToFormUpdate(
+      tx,
+      result,
+      categories,
+      sources,
+      selectedCategoryId: selectedCategoryId,
+      selectedSubcategoryId: selectedSubcategoryId,
+    );
+  }
+
+  AiClassifyFormUpdate _mapToFormUpdate(
+    Transaction tx,
+    ClassificationResult? result,
+    List<Category> categories,
+    List<PaymentSource> sources, {
+    String? selectedCategoryId,
+    String? selectedSubcategoryId,
+    bool allowLlmNotes = false,
+    bool applyCategorySuggestions = false,
+  }) {
     if (result == null) {
       return const AiClassifyFormUpdate();
     }
@@ -55,23 +100,29 @@ class AiClassifyService {
       result: result,
       categories: categories,
       knownSourceIds: knownIds,
-      forceCategory: true,
+      forceCategory: applyCategorySuggestions,
       forceSource: true,
       selectedCategoryId: selectedCategoryId,
+      allowLlmNotes: allowLlmNotes,
     );
 
     return AiClassifyFormUpdate(
-      categoryId: updated.categoryId,
+      categoryId: applyCategorySuggestions
+          ? updated.categoryId
+          : (result.categoryId != null && !result.needsUserInput
+              ? result.categoryId
+              : null),
       paymentSourceId: updated.paymentSourceId,
       merchantNormalized: updated.merchantNormalized,
       merchant: updated.merchant != tx.merchant ? updated.merchant : null,
       subcategoryId: updated.subcategoryId ?? selectedSubcategoryId,
-      userNotes: updated.userNotes,
+      userNotes: allowLlmNotes ? updated.userNotes : null,
       shoppingItems: updated.shoppingItems,
       travelProvider: updated.travelProvider,
       transferTo: updated.transferTo,
       suggestedCategoryId: result.suggestedCategoryId,
       suggestedCategoryName: result.suggestedCategoryName,
+      needsUserInput: result.needsUserInput,
     );
   }
 
@@ -108,6 +159,7 @@ class AiClassifyService {
     List<Category> categories,
     List<PaymentSource> sources, {
     String? selectedCategoryId,
+    String? userDescription,
   }) async {
     final ingest = await _db.getRawIngest(tx.rawIngestId);
     final body = ingest?['body'] as String? ?? '';
@@ -119,6 +171,7 @@ class AiClassifyService {
       smsSender: sender,
       categoryIds: categories.map((c) => c.id).toList(),
       selectedCategoryId: selectedCategoryId,
+      userDescription: userDescription,
       subcategoryTaxonomy: subcategoryTaxonomyForLlm(),
       paymentSources: sources,
     );

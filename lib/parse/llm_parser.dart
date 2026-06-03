@@ -61,6 +61,7 @@ class ClassificationResult {
     this.type,
     this.needsUserInput = false,
     this.needsConfig = false,
+    this.categoryConfidence,
     this.paymentSourceId,
     this.paymentSourceConfidence,
     this.userNotes,
@@ -89,6 +90,9 @@ class ClassificationResult {
 
   /// Backend is missing its API key — caller should fall back to in-app HITL.
   final bool needsConfig;
+
+  /// Model confidence for [categoryId] in 0.0–1.0 (auto-apply when ≥ 0.8).
+  final double? categoryConfidence;
 
   /// Matched saved bank/card id when the model is confident from SMS context.
   final String? paymentSourceId;
@@ -119,7 +123,11 @@ class ClassificationResult {
 
   static const paymentSourceConfidenceThreshold = 0.85;
 
+  /// Pipeline auto-applies category only at or above this threshold.
+  static const categoryConfidenceThreshold = 0.8;
+
   factory ClassificationResult.fromMap(Map<String, dynamic> map) {
+    final rawCatConfidence = map['categoryConfidence'];
     final rawConfidence = map['paymentSourceConfidence'];
     final rawItems = map['shoppingItems'];
     List<String> items = const [];
@@ -138,6 +146,9 @@ class ClassificationResult {
       type: map['type'] as String?,
       needsUserInput: map['needsUserInput'] as bool? ?? false,
       needsConfig: map['needsConfig'] as bool? ?? false,
+      categoryConfidence: rawCatConfidence is num
+          ? rawCatConfidence.toDouble()
+          : null,
       paymentSourceId: (map['paymentSourceId'] as String?)?.trim().isEmpty ?? true
           ? null
           : map['paymentSourceId'] as String?,
@@ -171,6 +182,7 @@ abstract class TransactionClassifier {
     String? smsSender,
     List<String> categoryIds = const [],
     String? selectedCategoryId,
+    String? userDescription,
     Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
     bool includePaymentSources = true,
@@ -189,6 +201,7 @@ class NoOpTransactionClassifier implements TransactionClassifier {
     String? smsSender,
     List<String> categoryIds = const [],
     String? selectedCategoryId,
+    String? userDescription,
     Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
     bool includePaymentSources = true,
@@ -218,6 +231,7 @@ class CloudFunctionsClassifier implements TransactionClassifier {
     String? smsSender,
     List<String> categoryIds = const [],
     String? selectedCategoryId,
+    String? userDescription,
     Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
     bool includePaymentSources = true,
@@ -242,6 +256,8 @@ class CloudFunctionsClassifier implements TransactionClassifier {
           'selectedCategoryId': selectedCategoryId,
           'hintCategoryId': selectedCategoryId,
         },
+        if (userDescription != null && userDescription.trim().isNotEmpty)
+          'userDescription': userDescription.trim(),
         if (taxonomy.isNotEmpty) 'subcategoryTaxonomy': taxonomy,
         if (sources.isNotEmpty)
           'paymentSources': sources

@@ -88,7 +88,7 @@ class TransactionListFilter {
   }
 }
 
-/// App bar action: opens filter sheet, or clears when a filter is active.
+/// Opens the filter popup; returns `null` when dismissed without applying.
 class TransactionListFilterBar extends StatelessWidget {
   const TransactionListFilterBar({
     super.key,
@@ -96,19 +96,16 @@ class TransactionListFilterBar extends StatelessWidget {
     required this.onChanged,
     required this.paymentSources,
     required this.categories,
+    this.iconSize = 24,
   });
 
   final TransactionListFilter filter;
   final ValueChanged<TransactionListFilter> onChanged;
   final List<PaymentSource> paymentSources;
   final List<Category> categories;
+  final double iconSize;
 
   Future<void> _onPressed(BuildContext context) async {
-    if (filter.isActive) {
-      onChanged(const TransactionListFilter());
-      return;
-    }
-
     final updated = await showTransactionListFilterSheet(
       context,
       filter: filter,
@@ -120,29 +117,32 @@ class TransactionListFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(
-        filter.isActive
-            ? Icons.filter_list_off
-            : Icons.filter_list_outlined,
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: IconButton(
+        icon: Icon(
+          Icons.filter_list_outlined,
+          size: iconSize,
+          color: filter.isActive ? theme.colorScheme.primary : null,
+        ),
+        tooltip: filter.isActive ? 'Edit filters' : 'Filter transactions',
+        onPressed: () => _onPressed(context),
       ),
-      tooltip: filter.isActive ? 'Clear filters' : 'Filter transactions',
-      onPressed: () => _onPressed(context),
     );
   }
 }
 
-/// Modal bottom sheet for configuring [TransactionListFilter].
+/// Scrollable filter dialog (not full-screen).
 Future<TransactionListFilter?> showTransactionListFilterSheet(
   BuildContext context, {
   required TransactionListFilter filter,
   required List<PaymentSource> paymentSources,
   required List<Category> categories,
 }) {
-  return showModalBottomSheet<TransactionListFilter>(
+  return showDialog<TransactionListFilter>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
+    barrierDismissible: true,
     builder: (ctx) => _TransactionListFilterSheet(
       initial: filter,
       paymentSources: visiblePaymentSources(paymentSources),
@@ -167,10 +167,14 @@ class _TransactionListFilterSheet extends StatefulWidget {
       _TransactionListFilterSheetState();
 }
 
+enum _SortAxis { date, amount }
+
 class _TransactionListFilterSheetState extends State<_TransactionListFilterSheet> {
   late TransactionListSort _sort;
   late Set<String> _paymentSourceIds;
   late Set<String> _categoryIds;
+  late _SortAxis _sortAxis;
+  late bool _sortDescending;
 
   @override
   void initState() {
@@ -178,9 +182,41 @@ class _TransactionListFilterSheetState extends State<_TransactionListFilterSheet
     _sort = widget.initial.sort;
     _paymentSourceIds = Set.of(widget.initial.paymentSourceIds);
     _categoryIds = Set.of(widget.initial.categoryIds);
+    _initSortControls();
+  }
+
+  void _initSortControls() {
+    switch (_sort) {
+      case TransactionListSort.latestFirst:
+        _sortAxis = _SortAxis.date;
+        _sortDescending = true;
+      case TransactionListSort.oldestFirst:
+        _sortAxis = _SortAxis.date;
+        _sortDescending = false;
+      case TransactionListSort.amountHighToLow:
+        _sortAxis = _SortAxis.amount;
+        _sortDescending = true;
+      case TransactionListSort.amountLowToHigh:
+        _sortAxis = _SortAxis.amount;
+        _sortDescending = false;
+    }
+  }
+
+  void _syncSortFromControls() {
+    _sort = switch (_sortAxis) {
+      _SortAxis.date =>
+        _sortDescending
+            ? TransactionListSort.latestFirst
+            : TransactionListSort.oldestFirst,
+      _SortAxis.amount =>
+        _sortDescending
+            ? TransactionListSort.amountHighToLow
+            : TransactionListSort.amountLowToHigh,
+    };
   }
 
   void _apply() {
+    _syncSortFromControls();
     Navigator.pop(
       context,
       TransactionListFilter(
@@ -196,136 +232,325 @@ class _TransactionListFilterSheetState extends State<_TransactionListFilterSheet
       _sort = TransactionListSort.latestFirst;
       _paymentSourceIds = {};
       _categoryIds = {};
+      _sortAxis = _SortAxis.date;
+      _sortDescending = true;
     });
+  }
+
+  void _closeWithoutApply() => Navigator.pop(context);
+
+  void _setSortAxis(_SortAxis axis) {
+    setState(() {
+      _sortAxis = axis;
+      _syncSortFromControls();
+    });
+  }
+
+  void _setSortDescending(bool value) {
+    setState(() {
+      _sortDescending = value;
+      _syncSortFromControls();
+    });
+  }
+
+  void _togglePaymentSource(String id, bool? checked) {
+    setState(() {
+      if (checked == true) {
+        _paymentSourceIds.add(id);
+      } else {
+        _paymentSourceIds.remove(id);
+      }
+    });
+  }
+
+  String _paymentSourceLabel(PaymentSource source) {
+    return source.last4 != null
+        ? '${source.name} ···· ${source.last4}'
+        : source.name;
+  }
+
+  Widget _buildPaymentMethodSection(ThemeData theme) {
+    final banks =
+        widget.paymentSources.where((s) => s.type == PaymentSourceType.bank);
+    final cards =
+        widget.paymentSources.where((s) => s.type == PaymentSourceType.card);
+
+    Widget section(String title, Iterable<PaymentSource> sources) {
+      final list = sources.toList();
+      if (list.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              AppSpacing.tight,
+              AppSpacing.page,
+              0,
+            ),
+            child: Text(title, style: theme.textTheme.labelMedium),
+          ),
+          ...list.map(
+            (source) => CheckboxListTile(
+              dense: true,
+              title: Text(_paymentSourceLabel(source)),
+              value: _paymentSourceIds.contains(source.id),
+              onChanged: (checked) => _togglePaymentSource(source.id, checked),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        section('Banks', banks),
+        section('Cards', cards),
+      ],
+    );
+  }
+
+  Widget _buildCategorySection(ThemeData theme) {
+    if (widget.categories.isEmpty) return const SizedBox.shrink();
+
+    final selectedCount = _categoryIds.length;
+    String summary;
+    if (selectedCount == 0) {
+      summary = 'All categories';
+    } else if (selectedCount == 1) {
+      final id = _categoryIds.first;
+      final match =
+          widget.categories.where((c) => c.id == id).map((c) => c.name);
+      summary = match.isEmpty ? '1 category' : match.first;
+    } else {
+      summary = '$selectedCount categories selected';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
+          child: Text('Category', style: theme.textTheme.labelLarge),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.page,
+            AppSpacing.tight,
+            AppSpacing.page,
+            0,
+          ),
+          child: OutlinedButton(
+            onPressed: () async {
+              final picked = await showDialog<Set<String>>(
+                context: context,
+                builder: (ctx) {
+                  var draft = Set<String>.from(_categoryIds);
+                  return AlertDialog(
+                    title: const Text('Categories'),
+                    content: SizedBox(
+                      width: double.maxFinite,
+                      child: StatefulBuilder(
+                        builder: (context, setDialogState) {
+                          return SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: widget.categories
+                                  .map(
+                                    (category) => CheckboxListTile(
+                                      title: Text(category.name),
+                                      value: draft.contains(category.id),
+                                      onChanged: (checked) {
+                                        setDialogState(() {
+                                          if (checked == true) {
+                                            draft.add(category.id);
+                                          } else {
+                                            draft.remove(category.id);
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(ctx, draft),
+                        child: const Text('Done'),
+                      ),
+                    ],
+                  );
+                },
+              );
+              if (picked != null) {
+                setState(() => _categoryIds = picked);
+              }
+            },
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(summary),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(bottom: bottomInset),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.page,
-                  0,
-                  AppSpacing.page,
-                  AppSpacing.tight,
-                ),
-                child: Text(
-                  'Filter transactions',
-                  style: theme.textTheme.titleMedium,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
-                child: Text(
-                  'Sort by',
-                  style: theme.textTheme.labelLarge,
-                ),
-              ),
-              ...TransactionListSort.values.map((option) {
-                final selected = _sort == option;
-                final label = switch (option) {
-                  TransactionListSort.latestFirst => 'Latest first',
-                  TransactionListSort.oldestFirst => 'Oldest first',
-                  TransactionListSort.amountHighToLow => 'Amount high to low',
-                  TransactionListSort.amountLowToHigh => 'Amount low to high',
-                };
-                return ListTile(
-                  title: Text(label),
-                  trailing: selected
-                      ? Icon(
-                          Icons.check_circle,
-                          color: theme.colorScheme.primary,
-                        )
-                      : Icon(
-                          Icons.circle_outlined,
-                          color: theme.colorScheme.outline,
-                        ),
-                  onTap: () => setState(() => _sort = option),
-                );
-              }),
-              if (widget.paymentSources.isNotEmpty) ...[
-                const Divider(height: 24),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: AppSpacing.page),
-                  child: Text(
-                    'Payment method',
-                    style: theme.textTheme.labelLarge,
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.page,
+        vertical: 24,
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 4, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(
+                        'Filter transactions',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ),
                   ),
-                ),
-                ...widget.paymentSources.map((source) {
-                  final label = source.last4 != null
-                      ? '${source.name} ···· ${source.last4}'
-                      : source.name;
-                  return CheckboxListTile(
-                    title: Text(label),
-                    value: _paymentSourceIds.contains(source.id),
-                    onChanged: (checked) {
-                      setState(() {
-                        if (checked == true) {
-                          _paymentSourceIds.add(source.id);
-                        } else {
-                          _paymentSourceIds.remove(source.id);
-                        }
-                      });
-                    },
-                  );
-                }),
-              ],
-              if (widget.categories.isNotEmpty) ...[
-                const Divider(height: 24),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: AppSpacing.page),
-                  child: Text(
-                    'Category',
-                    style: theme.textTheme.labelLarge,
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Close',
+                    onPressed: _closeWithoutApply,
                   ),
-                ),
-                ...widget.categories.map((category) {
-                  return CheckboxListTile(
-                    title: Text(category.name),
-                    value: _categoryIds.contains(category.id),
-                    onChanged: (checked) {
-                      setState(() {
-                        if (checked == true) {
-                          _categoryIds.add(category.id);
-                        } else {
-                          _categoryIds.remove(category.id);
-                        }
-                      });
-                    },
-                  );
-                }),
-              ],
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.page),
-                child: Row(
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextButton(
-                      onPressed: _reset,
-                      child: const Text('Reset'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.page,
+                      ),
+                      child: Text('Sort by', style: theme.textTheme.labelLarge),
                     ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: _apply,
-                      child: const Text('Apply'),
+                    ListTile(
+                      title: const Text('Sort by date'),
+                      subtitle: Text(
+                        _sortAxis == _SortAxis.date
+                            ? (_sortDescending
+                                ? 'Latest first'
+                                : 'Oldest first')
+                            : 'Newest ↔ oldest',
+                      ),
+                      selected: _sortAxis == _SortAxis.date,
+                      trailing: Switch(
+                        value: _sortAxis == _SortAxis.date && _sortDescending,
+                        onChanged: (value) {
+                          _setSortAxis(_SortAxis.date);
+                          _setSortDescending(value);
+                        },
+                      ),
+                      onTap: () => _setSortAxis(_SortAxis.date),
                     ),
+                    ListTile(
+                      title: const Text('Sort by amount'),
+                      subtitle: Text(
+                        _sortAxis == _SortAxis.amount
+                            ? (_sortDescending
+                                ? 'High to low'
+                                : 'Low to high')
+                            : 'High ↔ low',
+                      ),
+                      selected: _sortAxis == _SortAxis.amount,
+                      trailing: Switch(
+                        value:
+                            _sortAxis == _SortAxis.amount && _sortDescending,
+                        onChanged: (value) {
+                          _setSortAxis(_SortAxis.amount);
+                          _setSortDescending(value);
+                        },
+                      ),
+                      onTap: () => _setSortAxis(_SortAxis.amount),
+                    ),
+                    if (widget.paymentSources.isNotEmpty) ...[
+                      const Divider(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.page,
+                        ),
+                        child: Text(
+                          'Payment method',
+                          style: theme.textTheme.labelLarge,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.page,
+                        ),
+                        child: Text(
+                          'Match any selected account',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      _buildPaymentMethodSection(theme),
+                    ],
+                    if (widget.categories.isNotEmpty) ...[
+                      const Divider(height: 24),
+                      _buildCategorySection(theme),
+                    ],
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                AppSpacing.tight,
+                AppSpacing.page,
+                AppSpacing.page,
+              ),
+              child: Row(
+                children: [
+                  TextButton(
+                    onPressed: _reset,
+                    child: const Text('Reset'),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _closeWithoutApply,
+                    child: const Text('Close'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _apply,
+                    child: const Text('Apply'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

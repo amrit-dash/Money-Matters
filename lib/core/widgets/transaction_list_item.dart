@@ -67,7 +67,7 @@ class TransactionListItem extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -84,18 +84,19 @@ class TransactionListItem extends StatelessWidget {
               const SizedBox(width: 10),
               Text(
                 amountLabel,
-                style: theme.textTheme.headlineMedium?.copyWith(
+                style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: amountColor,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             paymentSourceLabel,
-            style: theme.textTheme.bodySmall?.copyWith(
+            style: theme.textTheme.bodyMedium?.copyWith(
               color: scheme.onSurfaceVariant,
+              fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) + 1,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

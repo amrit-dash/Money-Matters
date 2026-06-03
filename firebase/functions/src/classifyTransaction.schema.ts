@@ -17,7 +17,12 @@ export interface ClassifyRequest {
   hintCategoryId?: string | null;
   subcategoryTaxonomy?: Record<string, string[]>;
   paymentSources?: PaymentSourceHint[];
+  /** User-typed description from Inbox classify (explicit confirmation path). */
+  userDescription?: string | null;
 }
+
+/** Minimum model confidence before pipeline auto-applies category (else → Inbox). */
+export const AUTO_APPLY_CATEGORY_CONFIDENCE = 0.8;
 
 export function resolveSelectedCategory(data: ClassifyRequest): string | null {
   return trimOrNull(data.selectedCategoryId ?? undefined) ??
@@ -31,6 +36,7 @@ export interface ClassifyResult {
   type: string | null;
   needsUserInput: boolean;
   needsConfig: boolean;
+  categoryConfidence: number | null;
   paymentSourceId: string | null;
   paymentSourceConfidence: number | null;
   userNotes: string | null;
@@ -103,14 +109,28 @@ export function buildPrompt(data: ClassifyRequest): string {
     `- raw SMS: ${(data.smsBody ?? "").slice(0, 800)}`,
   ];
 
+  const userDescription = trimOrNull(data.userDescription);
+  if (userDescription) {
+    lines.push(
+      "",
+      "User description (authoritative — they are confirming this spend):",
+      userDescription,
+      "Map their words to categoryId, subcategoryId, merchantNormalized, transferTo,",
+      "shoppingItems, travelProvider, and paymentSourceId when mentioned.",
+      "You MAY set userNotes from their description. Set needsUserInput false only",
+      "when category and key fields are clear from their text.",
+      "Set categoryConfidence 0.9+ when the user was explicit.",
+    );
+  }
+
   if (selected) {
     lines.push(
       "",
       `User pre-selected categoryId: ${selected}`,
       "The user already chose this category — return categoryId as this value.",
-      "Still extract merchantNormalized, subcategoryId, transferTo, notes, etc.",
+      "Still extract merchantNormalized, subcategoryId, transferTo, etc.",
       "Only override categoryId if the SMS clearly cannot be that category; " +
-        "then set needsUserInput true and explain briefly in userNotes.",
+        "then set needsUserInput true.",
     );
   }
 
@@ -121,23 +141,64 @@ export function buildPrompt(data: ClassifyRequest): string {
     "  (e.g. UPI 'paid to NIZAM M' → 'Nizam M', 'zepto-stores@ybl' → 'Zepto').",
     "  Prefer the payee/merchant name in the SMS over the parsed merchant field.",
     "- categoryId MUST be one of the allowed ids, or null if genuinely unclear.",
+    "- categoryConfidence: 0.0–1.0 for how sure you are about categoryId.",
+    `  Auto-apply only when >= ${AUTO_APPLY_CATEGORY_CONFIDENCE} AND needsUserInput false.`,
     "- If categoryId is null and no allowed category fits, set suggestedCategoryId",
     "  (lowercase slug) and suggestedCategoryName (human label) for a new category.",
     "- subcategoryId: pick from the subcategory list for the chosen categoryId when",
-    "  applicable (e.g. bills → internet/rent/electricity); null otherwise.",
+    "  applicable (e.g. groceries → quick_delivery for Zepto/Blinkit); null otherwise.",
     "- type: short spend kind (food, shopping, transfer, bills, ...).",
-    "- needsUserInput: true only if category cannot be determined confidently.",
+    "- needsUserInput: true when category is unclear OR this is a person-to-person",
+    "  UPI payment (friend/family) — never guess food/lunch/shopping for P2P.",
+    "- P2P / paid-to-a-person: set categoryId null, needsUserInput true,",
+    "  categoryConfidence <= 0.5. Do NOT assign food, dining, or lunch.",
+    "- Known merchants (Zepto, Swiggy, Amazon, Uber, etc.): category + subcategory",
+    `  OK when categoryConfidence >= ${AUTO_APPLY_CATEGORY_CONFIDENCE}.`,
     "- paymentSourceId: pick an account id ONLY when the SMS clearly indicates that",
     "  account (sender id, bank name, card product, or last4). null if unclear.",
     "- paymentSourceConfidence: 0.0–1.0; use >= 0.85 only when very confident.",
-    "- userNotes: one short sentence on what this spend was for when inferable; null if unclear.",
-    "- shoppingItems: item names only for obvious grocery/shopping SMS; empty array otherwise.",
+    "- userNotes: null for automatic SMS-only classification (pipeline).",
+    "  Only populate when userDescription is provided above.",
+    "- shoppingItems: item names only for obvious grocery/shopping SMS or user text;",
+    "  empty array otherwise.",
     "- travelProvider: ride/travel app when clear (Uber, Ola, Rapido, etc.); null otherwise.",
     "- transferTo: when categoryId is transfer, the person/account receiving funds",
     "  (from SMS payee name or merchantNormalized); null for non-transfers.",
   );
 
   return lines.join("\n");
+}
+
+const KNOWN_MERCHANT_KEYWORDS = [
+  "zepto", "blinkit", "swiggy", "zomato", "amazon", "flipkart", "myntra",
+  "uber", "ola", "rapido", "dmart", "bigbasket", "irctc", "makemytrip",
+  "netflix", "spotify", "paytm", "phonepe", "gpay", "google pay",
+];
+
+/** Person-to-person UPI — never auto-categorize as food/shopping. */
+export function isLikelyP2PPayment(data: ClassifyRequest): boolean {
+  const merchant = (data.merchant ?? "").trim().toLowerCase();
+  const body = (data.smsBody ?? "").trim().toLowerCase();
+  const combined = `${merchant} ${body}`;
+
+  if (/^p2[am]$/i.test((data.merchant ?? "").trim())) return true;
+  if (/\bp2p\b|\bp2a\b|\bp2m\b/i.test(combined)) {
+    if (!KNOWN_MERCHANT_KEYWORDS.some((k) => combined.includes(k))) {
+      return true;
+    }
+  }
+  if (merchant.includes("@") && !KNOWN_MERCHANT_KEYWORDS.some((k) => merchant.includes(k))) {
+    return true;
+  }
+  if (/paid\s+to\s+[a-z][a-z\s]{1,40}(?:\s+via|\s+on|\s+upi|$)/i.test(body)) {
+    const afterPaidTo = body.match(/paid\s+to\s+([a-z][a-z\s]{1,40})/i)?.[1] ?? "";
+    const payee = afterPaidTo.trim();
+    if (payee.length > 0 &&
+        !KNOWN_MERCHANT_KEYWORDS.some((k) => payee.includes(k))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export const RESPONSE_SCHEMA = {
@@ -148,6 +209,7 @@ export const RESPONSE_SCHEMA = {
     subcategoryId: {type: "STRING", nullable: true},
     type: {type: "STRING", nullable: true},
     needsUserInput: {type: "BOOLEAN"},
+    categoryConfidence: {type: "NUMBER", nullable: true},
     paymentSourceId: {type: "STRING", nullable: true},
     paymentSourceConfidence: {type: "NUMBER", nullable: true},
     userNotes: {type: "STRING", nullable: true},
@@ -201,8 +263,6 @@ export function parseClassifyResponse(
     paymentSourceConfidence = parsed.paymentSourceConfidence;
   }
 
-  const userNotes = trimOrNull(parsed.userNotes);
-
   let shoppingItems: string[] = [];
   if (Array.isArray(parsed.shoppingItems)) {
     shoppingItems = parsed.shoppingItems
@@ -231,10 +291,42 @@ export function parseClassifyResponse(
     transferTo = merchantNormalized;
   }
 
-  const needsUserInput =
+  let categoryConfidence: number | null = null;
+  if (typeof parsed.categoryConfidence === "number") {
+    categoryConfidence = parsed.categoryConfidence;
+  }
+
+  const userDescription = trimOrNull(data.userDescription);
+  let userNotesOut = userDescription ? trimOrNull(parsed.userNotes) : null;
+
+  let needsUserInput =
     categoryId === null ?
       true :
       parsed.needsUserInput === true;
+
+  if (isLikelyP2PPayment(data) && !userDescription) {
+    categoryId = null;
+    subcategoryId = null;
+    needsUserInput = true;
+    categoryConfidence = categoryConfidence != null ?
+      Math.min(categoryConfidence, 0.5) :
+      0.3;
+    userNotesOut = null;
+  } else if (
+    categoryId != null &&
+    !userDescription &&
+    !selectedCategory &&
+    (categoryConfidence == null ||
+      categoryConfidence < AUTO_APPLY_CATEGORY_CONFIDENCE)
+  ) {
+    categoryId = null;
+    subcategoryId = null;
+    needsUserInput = true;
+  } else if (categoryId != null && !needsUserInput && !userDescription) {
+    if (categoryConfidence == null) {
+      categoryConfidence = 0.85;
+    }
+  }
 
   return {
     categoryId,
@@ -243,9 +335,10 @@ export function parseClassifyResponse(
     type: trimOrNull(parsed.type),
     needsUserInput,
     needsConfig: false,
+    categoryConfidence,
     paymentSourceId,
     paymentSourceConfidence,
-    userNotes,
+    userNotes: userNotesOut,
     shoppingItems,
     travelProvider,
     transferTo,

@@ -468,6 +468,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildOverviewFilterAction() {
+    return _OverviewListFilterAction(
+      filter: _listFilter,
+      onChanged: (f) => setState(() => _listFilter = f),
+      paymentSourceService: widget.paymentSourceService,
+      categoryService: widget.categoryService,
+    );
+  }
+
   Widget _buildListRangeFilters() {
     return Wrap(
       spacing: AppSpacing.tight,
@@ -541,6 +550,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           AppSectionHeader(
             title: _transactionSectionTitle,
             icon: Icons.receipt_long_outlined,
+            action: shell ? _buildOverviewFilterAction() : null,
           ),
           _buildTransactionList(
             start: _listRangeStart,
@@ -650,6 +660,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             AppSectionHeader(
                               title: _calendarSpentHeading(selected),
                               icon: Icons.calendar_today_outlined,
+                              action: shell ? _buildOverviewFilterAction() : null,
                             ),
                             HeroSpendCard(
                               label: 'Total spend',
@@ -666,6 +677,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               start: _dayStart(selected),
                               end: _dayEnd(selected),
                               emptyMessage: 'No transactions on this day.',
+                              filter: _listFilter,
                             ),
                           ],
                         );
@@ -719,13 +731,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Text(shell ? 'Overview' : 'Dashboard'),
         actions: shell
             ? [
-                if (isList)
-                  _OverviewListFilterAction(
-                    filter: _listFilter,
-                    onChanged: (f) => setState(() => _listFilter = f),
-                    paymentSourceService: widget.paymentSourceService,
-                    categoryService: widget.categoryService,
-                  ),
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: IconButton(

@@ -2,7 +2,9 @@ import {describe, it} from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  AUTO_APPLY_CATEGORY_CONFIDENCE,
   buildPrompt,
+  isLikelyP2PPayment,
   parseClassifyResponse,
   resolveSelectedCategory,
   type ClassifyRequest,
@@ -92,6 +94,7 @@ describe("parseClassifyResponse", () => {
       {
         categoryId: "bills",
         subcategoryId: "electricity",
+        categoryConfidence: 0.9,
         needsUserInput: false,
       },
       baseRequest,
@@ -143,6 +146,7 @@ describe("parseClassifyResponse", () => {
     const result = parseClassifyResponse(
       {
         categoryId: "food",
+        categoryConfidence: 0.9,
         suggestedCategoryId: "pet_care",
         suggestedCategoryName: "Pet Care",
         needsUserInput: false,
@@ -151,5 +155,84 @@ describe("parseClassifyResponse", () => {
     );
     assert.equal(result.categoryId, "food");
     assert.equal(result.suggestedCategoryId, null);
+  });
+
+  it("routes low-confidence category to inbox", () => {
+    const result = parseClassifyResponse(
+      {
+        categoryId: "food",
+        categoryConfidence: 0.55,
+        needsUserInput: false,
+      },
+      baseRequest,
+    );
+    assert.equal(result.categoryId, null);
+    assert.equal(result.needsUserInput, true);
+  });
+
+  it("auto-applies high-confidence merchant category", () => {
+    const result = parseClassifyResponse(
+      {
+        categoryId: "groceries",
+        subcategoryId: "quick_delivery",
+        merchantNormalized: "Zepto",
+        categoryConfidence: 0.92,
+        needsUserInput: false,
+      },
+      {
+        ...baseRequest,
+        categoryIds: ["groceries", "food", "bills", "transfer"],
+        subcategoryTaxonomy: {groceries: ["quick_delivery", "supermarket"]},
+        merchant: "zepto-stores@ybl",
+        smsBody: "Rs 450 debited. Paid to ZEPTO via UPI",
+      },
+    );
+    assert.equal(result.categoryId, "groceries");
+    assert.equal(result.subcategoryId, "quick_delivery");
+    assert.ok(
+      (result.categoryConfidence ?? 0) >= AUTO_APPLY_CATEGORY_CONFIDENCE,
+    );
+    assert.equal(result.needsUserInput, false);
+  });
+
+  it("routes P2P person payment to inbox without food category", () => {
+    const request: ClassifyRequest = {
+      ...baseRequest,
+      merchant: "P2A",
+      smsBody: "Rs 500 paid to NIZAM M via UPI ref 123",
+    };
+    assert.equal(isLikelyP2PPayment(request), true);
+    const result = parseClassifyResponse(
+      {
+        categoryId: "food",
+        categoryConfidence: 0.95,
+        userNotes: "lunch with friend",
+        needsUserInput: false,
+      },
+      request,
+    );
+    assert.equal(result.categoryId, null);
+    assert.equal(result.needsUserInput, true);
+    assert.equal(result.userNotes, null);
+  });
+
+  it("allows userDescription path to set category and notes", () => {
+    const result = parseClassifyResponse(
+      {
+        categoryId: "groceries",
+        categoryConfidence: 0.95,
+        userNotes: "milk and curd on Zepto",
+        shoppingItems: ["milk", "curd"],
+        needsUserInput: false,
+      },
+      {
+        ...baseRequest,
+        categoryIds: ["groceries", "food", "bills", "transfer"],
+        userDescription: "milk, curd, dahi on Zepto — groceries",
+      },
+    );
+    assert.equal(result.categoryId, "groceries");
+    assert.equal(result.userNotes, "milk and curd on Zepto");
+    assert.deepEqual(result.shoppingItems, ["milk", "curd"]);
   });
 });
