@@ -9,6 +9,7 @@ import {
 } from "../classifyTransaction.schema";
 import {
   resolveApiKeyForProvider,
+  resolveModelForProvider,
   type StoredUserLlmConfig,
 } from "./userLlmConfig";
 import {
@@ -93,7 +94,9 @@ export function credentialsFromRequest(
   if (!apiKey) {
     throw new Error("API key is required");
   }
-  const model = trimOrNull(data.model) ?? stored?.model ?? DEFAULT_MODELS[provider];
+  const model = trimOrNull(data.model) ??
+    (stored ? resolveModelForProvider(provider, stored.models, stored.model) : null) ??
+    DEFAULT_MODELS[provider];
   const baseUrl = trimOrNull(data.baseUrl) ?? stored?.baseUrl ?? null;
   return {provider, apiKey, model, baseUrl};
 }
@@ -133,21 +136,13 @@ async function pingGemini(apiKey: string, model: string): Promise<void> {
 }
 
 async function pingOpenAiCompatible(creds: ProviderCredentials): Promise<void> {
-  const res = await fetch(chatCompletionsUrl(creds), {
-    method: "POST",
+  const res = await fetch(modelsListUrl(creds), {
     headers: {
-      "Content-Type": "application/json",
       Authorization: `Bearer ${creds.apiKey}`,
       ...(creds.provider === "openrouter" ?
         {"HTTP-Referer": "https://money-matters.app", "X-Title": "Money Matters"} :
         {}),
     },
-    body: JSON.stringify({
-      model: creds.model,
-      max_tokens: 8,
-      temperature: 0,
-      messages: [{role: "user", content: "Reply with OK"}],
-    }),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -299,5 +294,20 @@ function chatCompletionsUrl(creds: ProviderCredentials): string {
     return `${normalizeBaseUrl(creds.baseUrl)}/v1/chat/completions`;
   default:
     throw new Error(`No chat URL for ${creds.provider}`);
+  }
+}
+
+function modelsListUrl(creds: ProviderCredentials): string {
+  switch (creds.provider) {
+  case "openrouter":
+    return "https://openrouter.ai/api/v1/models";
+  case "grok":
+    return "https://api.x.ai/v1/models";
+  case "mistral":
+    return "https://api.mistral.ai/v1/models";
+  case "other":
+    return `${normalizeBaseUrl(creds.baseUrl)}/v1/models`;
+  default:
+    throw new Error(`No models URL for ${creds.provider}`);
   }
 }

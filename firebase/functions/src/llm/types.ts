@@ -23,7 +23,7 @@ export interface LlmToolsRequest {
 export const DEFAULT_MODELS: Record<LlmProviderId, string> = {
   gemini: "gemini-2.0-flash",
   openrouter: "google/gemini-2.0-flash-001",
-  grok: "grok-2-latest",
+  grok: "grok-4.3",
   mistral: "mistral-small-latest",
   other: "gpt-4o-mini",
 };
