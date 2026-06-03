@@ -4,6 +4,7 @@ import {classifyTransaction} from "./classifyTransaction";
 import {notifyClassification} from "./notifyClassification";
 import {testLlmApiKey} from "./testLlmApiKey";
 import {fetchLlmModels} from "./fetchLlmModels";
+import {retryStuckParseJobs} from "./retryStuckParseJobs";
 
 initializeApp();
 
@@ -13,4 +14,5 @@ export {
   notifyClassification,
   testLlmApiKey,
   fetchLlmModels,
+  retryStuckParseJobs,
 };

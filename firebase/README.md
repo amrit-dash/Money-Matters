@@ -142,6 +142,7 @@ firebase deploy --only functions:classifyTransaction,functions:testLlmApiKey,fun
 | `testLlmApiKey` | Verifies provider + API key (uses inline key from the request or saved settings) |
 | `fetchLlmModels` | Lists models for the chosen provider |
 | `classifyTransaction` | Auto-classify using saved user config (or legacy `GEMINI_API_KEY`) |
+| `retryStuckParseJobs` | Scheduled every 6 h — marks pending jobs stuck >2 h; optional FCM sync nudge |
 
 LLM errors and warnings are written to `users/{uid}/llm_logs` and shown in **Agent settings → LLM logs**.
 

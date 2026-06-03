@@ -78,11 +78,23 @@ After saving hints, run **Recovery / re-sync** (or wait for the next ingest drai
 
 ## Next implementation passes
 
+- **Cloud background parse:** design at [`docs/plans/cloud-background-parse.md`](plans/cloud-background-parse.md) — Phase 1 ports `RulesParser` to Cloud Functions; Phase 3 `retryStuckParseJobs` scheduled CF implemented (deploy below)
 - **App icon:** add new SVG masters under `docs/assets/app-icon/`, run `./scripts/export_app_icons.sh`, then `./scripts/build_ipa.sh` to verify on device
 - Set `GEMINI_API_KEY` + deploy the two new functions (see USER ACTIONS above) — **optional**; rules + in-app classify work without it
 - Redacted real SMS samples to expand rules beyond HDFC/ICICI/Federal templates
 - Category management UI (add/rename/delete) — currently seeded defaults + implicit merchant-rule learning
 - Paid Apple account → optional real APNs push for classify prompts (in-app inbox is primary)
+
+### Cloud sync maintenance (Phase 3)
+
+Deploy stuck-job scheduler + collection-group index:
+
+```bash
+cd firebase && npm ci && npm run build
+firebase deploy --only functions:retryStuckParseJobs,firestore:indexes
+```
+
+Marks `parse_jobs` pending >2 h with `stuckAt` and sends optional FCM “SMS waiting to sync” nudge. Does **not** parse server-side until Phase 1 lands.
 
 ---
 
