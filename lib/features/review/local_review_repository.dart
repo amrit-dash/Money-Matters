@@ -115,37 +115,44 @@ class LocalReviewRepository implements ReviewRepository {
       await _db.updateTransactionPaymentSource(id, paymentSourceId);
     }
 
-    final uid = _authService.requireUid();
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('transactions')
-        .doc(id)
-        .set({
-      'categoryId': input.categoryId,
-      'ambiguous': false,
-      'needsClassification': false,
-      'classifiedBy': classifiedBy.name,
-      if (input.merchant != null) 'merchant': input.merchant,
-      if (input.subcategoryId != null && input.subcategoryId!.isNotEmpty)
-        'subcategoryId': input.subcategoryId,
-      if (input.subcategoryId != null && input.subcategoryId!.isEmpty)
-        'subcategoryId': FieldValue.delete(),
-      if (input.merchantNormalized != null)
-        'merchantNormalized': input.merchantNormalized,
-      if (input.userNotes != null) 'userNotes': input.userNotes,
-      if (input.shoppingItems.isNotEmpty) 'shoppingItems': input.shoppingItems,
-      if (input.travelProvider != null && input.travelProvider!.isNotEmpty)
-        'travelProvider': input.travelProvider,
-      if (input.transferTo != null && input.transferTo!.isEmpty)
-        'transferTo': FieldValue.delete(),
-      if (input.transferTo != null && input.transferTo!.isNotEmpty)
-        'transferTo': input.transferTo,
-      if (paymentSourceId != null) ...{
-        'paymentSourceId': paymentSourceId,
-        'unmatched': false,
-      },
-    }, SetOptions(merge: true));
+    if (_authService.isSignedIn) {
+      try {
+        final uid = _authService.requireUid();
+        await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('transactions')
+            .doc(id)
+            .set({
+          'categoryId': input.categoryId,
+          'ambiguous': false,
+          'needsClassification': false,
+          'classifiedBy': classifiedBy.name,
+          if (input.merchant != null) 'merchant': input.merchant,
+          if (input.subcategoryId != null && input.subcategoryId!.isNotEmpty)
+            'subcategoryId': input.subcategoryId,
+          if (input.subcategoryId != null && input.subcategoryId!.isEmpty)
+            'subcategoryId': FieldValue.delete(),
+          if (input.merchantNormalized != null)
+            'merchantNormalized': input.merchantNormalized,
+          if (input.userNotes != null) 'userNotes': input.userNotes,
+          if (input.shoppingItems.isNotEmpty)
+            'shoppingItems': input.shoppingItems,
+          if (input.travelProvider != null && input.travelProvider!.isNotEmpty)
+            'travelProvider': input.travelProvider,
+          if (input.transferTo != null && input.transferTo!.isEmpty)
+            'transferTo': FieldValue.delete(),
+          if (input.transferTo != null && input.transferTo!.isNotEmpty)
+            'transferTo': input.transferTo,
+          if (paymentSourceId != null) ...{
+            'paymentSourceId': paymentSourceId,
+            'unmatched': false,
+          },
+        }, SetOptions(merge: true));
+      } catch (_) {
+        // Offline or Firestore unavailable — local classification still applies.
+      }
+    }
 
     var learnedRules = false;
 

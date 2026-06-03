@@ -160,30 +160,33 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   List<Widget> _headerStatusChips(Transaction tx) {
-    final chips = <Widget>[];
-    final isClassified = !tx.needsClassification &&
-        !tx.ambiguous &&
-        !tx.unmatched &&
-        !tx.excluded;
-    if (isClassified) {
-      chips.add(AppStatusChip(label: 'Classified', tone: AppStatTone.success));
+    if (tx.needsClassification || tx.ambiguous || tx.categoryId == null) {
+      return [
+        AppStatusChip(
+          label: 'Unclassified',
+          tone: AppStatTone.warning,
+        ),
+      ];
     }
-    if (tx.needsClassification) {
-      chips.add(
-        AppStatusChip(label: 'Needs category', tone: AppStatTone.warning),
-      );
-    }
-    if (tx.ambiguous) {
-      chips.add(AppStatusChip(label: 'Ambiguous', tone: AppStatTone.warning));
-    }
-    if (tx.unmatched) {
-      chips.add(AppStatusChip(label: 'Unmatched', tone: AppStatTone.warning));
-    }
-    if (tx.excluded) {
-      chips.add(AppStatusChip(label: 'Excluded', tone: AppStatTone.neutral));
-    }
-    return chips;
+
+    return switch (tx.classifiedBy) {
+      ClassifiedBy.llm => [
+          _ClassificationTag(
+            label: 'AI classified',
+            icon: Icons.auto_awesome_outlined,
+          ),
+        ],
+      ClassifiedBy.user => [
+          _ClassificationTag(
+            label: 'User classified',
+            icon: Icons.person_outline,
+          ),
+        ],
+      _ => const <Widget>[],
+    };
   }
+
+  String? _paidToLabel(Transaction tx) => tx.displayMerchant;
 
   @override
   Widget build(BuildContext context) {
@@ -215,8 +218,10 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     final categoryIcon = categoryIconFor(
       categoryId: tx.categoryId,
       subcategoryId: tx.subcategoryId,
+      travelProvider: tx.travelProvider,
     );
     final statusChips = _headerStatusChips(tx);
+    final paidTo = _paidToLabel(tx);
 
     return Scaffold(
       appBar: AppBar(
@@ -239,35 +244,22 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             color: scheme.secondaryContainer.withValues(alpha: 0.35),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: scheme.primaryContainer.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(AppRadii.badge),
-                      ),
-                      child: Icon(
-                        categoryIcon,
-                        size: 22,
-                        color: scheme.onPrimaryContainer,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             tx.displayMerchant ?? 'Unknown merchant',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
                             style: theme.textTheme.titleLarge?.copyWith(
@@ -280,37 +272,26 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                         ],
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (statusChips.isNotEmpty) statusChips.first,
-                        const SizedBox(height: 6),
-                        AppStatusChip(
-                          label: categoryName,
-                          tone: AppStatTone.success,
-                          showDot: false,
-                        ),
-                        if (tx.classifiedBy != null) ...[
-                          const SizedBox(height: 6),
-                          _ClassifiedByChip(classifiedBy: tx.classifiedBy!),
-                        ],
-                      ],
+                    Icon(
+                      categoryIcon,
+                      size: 28,
+                      color: scheme.onSecondaryContainer,
                     ),
                   ],
                 ),
-                if (statusChips.length > 1) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    alignment: WrapAlignment.end,
-                    children: statusChips.skip(1).toList(),
+                if (statusChips.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: statusChips.first,
                   ),
                 ],
               ],
             ),
           ),
           const SizedBox(height: AppSpacing.section),
+          if (paidTo != null && paidTo.isNotEmpty)
+            _DetailRow(label: 'Paid to', value: paidTo),
           _DetailRow(label: 'Category', value: categoryName),
           if (tx.subcategoryId != null && tx.subcategoryId!.isNotEmpty)
             _DetailRow(
@@ -323,7 +304,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           if (tx.categoryId == CategoryService.transferCategoryId &&
               tx.transferTo != null &&
               tx.transferTo!.isNotEmpty)
-            _DetailRow(label: 'Paid to', value: tx.transferTo!),
+            _DetailRow(label: 'Transfer to', value: tx.transferTo!),
           if (tx.merchant != null)
             _DetailRow(label: 'Raw merchant', value: tx.merchant!),
           if (tx.shoppingItems.isNotEmpty)
@@ -383,22 +364,21 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 }
 
-class _ClassifiedByChip extends StatelessWidget {
-  const _ClassifiedByChip({required this.classifiedBy});
+class _ClassificationTag extends StatelessWidget {
+  const _ClassificationTag({
+    required this.label,
+    required this.icon,
+  });
 
-  final ClassifiedBy classifiedBy;
+  final String label;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final label = switch (classifiedBy) {
-      ClassifiedBy.llm => 'AI',
-      ClassifiedBy.user => 'You',
-      ClassifiedBy.rules => 'Rules',
-    };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: scheme.tertiaryContainer.withValues(alpha: 0.75),
         borderRadius: BorderRadius.circular(AppRadii.chip),
@@ -407,7 +387,7 @@ class _ClassifiedByChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            classifiedByIcon(classifiedBy.name),
+            icon,
             size: 14,
             color: scheme.onTertiaryContainer,
           ),

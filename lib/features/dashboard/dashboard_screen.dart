@@ -7,6 +7,7 @@ import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../app_router.dart';
+import '../../core/dashboard/dashboard_preferences_store.dart';
 import '../../core/widgets/app_ui.dart';
 import '../../core/widgets/transaction_list_item.dart';
 import '../../core/widgets/dashboard_charts.dart';
@@ -52,10 +53,11 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  final _layoutPrefs = DashboardPreferencesStore();
   _OverviewLayout _layout = _OverviewLayout.calendar;
   _ListRangeFilter _listRange = _ListRangeFilter.today;
   DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);
-  DateTime? _selectedCalendarDate;
+  late DateTime _selectedCalendarDate;
 
   String? _syncMessage;
   int _rawIngestCount = 0;
@@ -113,10 +115,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _selectedCalendarDate = DateTime(now.year, now.month, now.day);
+    _loadLayoutPreference();
     _drainSubscription = widget.queueDrain?.onDrained.listen((_) {
       if (mounted) _loadAuxiliaryData();
     });
     _loadAuxiliaryData();
+  }
+
+  Future<void> _loadLayoutPreference() async {
+    final saved = await _layoutPrefs.loadLayout();
+    if (!mounted) return;
+    setState(() {
+      _layout = saved == 'list'
+          ? _OverviewLayout.list
+          : _OverviewLayout.calendar;
+    });
   }
 
   @override
@@ -128,11 +143,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _toggleLayout() {
-    setState(() {
-      _layout = _layout == _OverviewLayout.calendar
-          ? _OverviewLayout.list
-          : _OverviewLayout.calendar;
-    });
+    final next = _layout == _OverviewLayout.calendar
+        ? _OverviewLayout.list
+        : _OverviewLayout.calendar;
+    setState(() => _layout = next);
+    _layoutPrefs.saveLayout(
+      next == _OverviewLayout.list ? 'list' : 'calendar',
+    );
   }
 
   void _selectListRange(_ListRangeFilter range) {
@@ -146,7 +163,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _calendarMonth.year,
         _calendarMonth.month + direction,
       );
-      _selectedCalendarDate = null;
     });
   }
 
@@ -400,8 +416,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           FilterChip(
             label: Text(switch (range) {
               _ListRangeFilter.today => 'Today',
-              _ListRangeFilter.pastThreeDays => 'Past three days',
-              _ListRangeFilter.pastSevenDays => 'Past seven days',
+              _ListRangeFilter.pastThreeDays => 'Past 3 days',
+              _ListRangeFilter.pastSevenDays => 'Past 7 days',
             }),
             selected: _listRange == range,
             onSelected: (_) => _selectListRange(range),
@@ -543,70 +559,67 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-              if (selected != null)
-                SliverPadding(
-                  padding: const EdgeInsets.all(AppSpacing.page),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      StreamBuilder<PeriodSummary>(
-                        stream: widget.repository.watchDailySummary(
-                          anchor: selected,
-                        ),
-                        builder: (context, summarySnapshot) {
-                          final summary = summarySnapshot.data;
-                          if (summary == null) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 24),
-                              child:
-                                  Center(child: CircularProgressIndicator()),
-                            );
-                          }
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              AppSectionHeader(
-                                title:
-                                    'Spent on ${_selectedDateFormat.format(selected)}',
-                                icon: Icons.calendar_today_outlined,
-                              ),
-                              if (_isEmpty(summary))
-                                Text(
-                                  'No spend recorded on this day.',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                      ),
-                                )
-                              else
-                                HeroSpendCard(
-                                  label: 'Total spend',
-                                  amount: _currency.format(summary.totalSpend),
-                                  secondaryLabel: summary.totalIncome > 0
-                                      ? 'Credits'
-                                      : null,
-                                  secondaryAmount: summary.totalIncome > 0
-                                      ? _currency.format(summary.totalIncome)
-                                      : null,
-                                ),
-                              const SizedBox(height: AppSpacing.section),
-                              _buildTransactionList(
-                                start: _dayStart(selected),
-                                end: _dayEnd(selected),
-                                emptyMessage:
-                                    'No transactions on this day.',
-                              ),
-                            ],
-                          );
-                        },
+              SliverPadding(
+                padding: const EdgeInsets.all(AppSpacing.page),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    StreamBuilder<PeriodSummary>(
+                      stream: widget.repository.watchDailySummary(
+                        anchor: selected,
                       ),
-                    ]),
-                  ),
+                      builder: (context, summarySnapshot) {
+                        final summary = summarySnapshot.data;
+                        if (summary == null) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            AppSectionHeader(
+                              title:
+                                  'Spent on ${_selectedDateFormat.format(selected)}',
+                              icon: Icons.calendar_today_outlined,
+                            ),
+                            if (_isEmpty(summary))
+                              Text(
+                                'No spend recorded on this day.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              )
+                            else
+                              HeroSpendCard(
+                                label: 'Total spend',
+                                amount: _currency.format(summary.totalSpend),
+                                secondaryLabel: summary.totalIncome > 0
+                                    ? 'Credits'
+                                    : null,
+                                secondaryAmount: summary.totalIncome > 0
+                                    ? _currency.format(summary.totalIncome)
+                                    : null,
+                              ),
+                            const SizedBox(height: AppSpacing.section),
+                            _buildTransactionList(
+                              start: _dayStart(selected),
+                              end: _dayEnd(selected),
+                              emptyMessage: 'No transactions on this day.',
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ]),
                 ),
+              ),
             ],
           );
         },

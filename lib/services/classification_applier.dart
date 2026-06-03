@@ -75,7 +75,9 @@ class ClassificationApplier {
       updated = updated.copyWith(subcategoryId: result.subcategoryId);
     }
 
-    if (result.userNotes != null && result.userNotes!.trim().isNotEmpty) {
+    if (result.userNotes != null &&
+        result.userNotes!.trim().isNotEmpty &&
+        !_isGenericPaidToNote(result.userNotes!, displayName)) {
       updated = updated.copyWith(userNotes: result.userNotes!.trim());
     }
     if (result.shoppingItems.isNotEmpty) {
@@ -104,6 +106,21 @@ class ClassificationApplier {
     // UPI payment-type codes (P2A, P2M) and numeric reference fragments.
     if (RegExp(r'^[A-Z0-9]{2,4}$').hasMatch(merchant)) return true;
     if (RegExp(r'^\d+$').hasMatch(merchant)) return true;
+    return false;
+  }
+
+  /// LLM sometimes echoes the payee as a note — skip unless user wrote it.
+  static bool _isGenericPaidToNote(String note, String? merchantNormalized) {
+    final trimmed = note.trim();
+    if (RegExp(r'^paid to .+$', caseSensitive: false).hasMatch(trimmed)) {
+      return true;
+    }
+    if (merchantNormalized != null &&
+        merchantNormalized.isNotEmpty &&
+        trimmed.toLowerCase() ==
+            'paid to ${merchantNormalized.toLowerCase()}') {
+      return true;
+    }
     return false;
   }
 }

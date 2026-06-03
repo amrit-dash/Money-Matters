@@ -118,4 +118,33 @@ void main() {
 
     expect(updated.categoryId, 'transfer');
   });
+
+  test('ClassificationApplier skips generic paid-to userNotes', () {
+    final tx = Transaction(
+      id: '1',
+      rawIngestId: 'ingest',
+      amount: 500,
+      timestamp: DateTime.parse('2026-05-29T00:00:00+05:30'),
+      type: TransactionType.debit,
+      needsClassification: true,
+    );
+    const categories = [Category(id: 'food', name: 'Food')];
+    const result = ClassificationResult(
+      categoryId: 'food',
+      merchantNormalized: 'Zepto',
+      userNotes: 'Paid to Zepto',
+      needsUserInput: false,
+    );
+
+    final updated = ClassificationApplier.apply(
+      tx: tx,
+      result: result,
+      categories: categories,
+      knownSourceIds: {},
+      forceCategory: true,
+    );
+
+    expect(updated.userNotes, isNull);
+    expect(updated.merchantNormalized, 'Zepto');
+  });
 }

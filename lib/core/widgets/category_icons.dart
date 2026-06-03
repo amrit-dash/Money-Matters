@@ -4,7 +4,13 @@ import 'package:flutter/material.dart';
 IconData categoryIconFor({
   String? categoryId,
   String? subcategoryId,
+  String? travelProvider,
 }) {
+  if (travelProvider != null &&
+      travelProvider.trim().toLowerCase() == 'rapido') {
+    return Icons.two_wheeler_outlined;
+  }
+
   if (subcategoryId != null && subcategoryId.isNotEmpty) {
     final sub = _subcategoryIcons[subcategoryId];
     if (sub != null) return sub;
@@ -24,7 +30,7 @@ const Map<String, IconData> _categoryIcons = {
   'subscriptions': Icons.subscriptions_outlined,
   'entertainment': Icons.movie_outlined,
   'health': Icons.medical_services_outlined,
-  'travel': Icons.flight_outlined,
+  'travel': Icons.directions_car_outlined,
   'education': Icons.school_outlined,
   'savings': Icons.savings_outlined,
   'income': Icons.payments_outlined,
@@ -50,7 +56,7 @@ const Map<String, IconData> _subcategoryIcons = {
   'dine_in': Icons.restaurant_outlined,
   'takeaway': Icons.takeout_dining_outlined,
   'cafe': Icons.local_cafe_outlined,
-  'ride_hail': Icons.local_taxi_outlined,
+  'ride_hail': Icons.directions_car_outlined,
   'transit': Icons.directions_bus_outlined,
   'fuel': Icons.local_gas_station_outlined,
   'parking': Icons.local_parking_outlined,

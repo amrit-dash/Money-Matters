@@ -345,9 +345,6 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         } else if (update.merchantNormalized != null && _tx != null) {
           _tx = _tx!.copyWith(merchant: update.merchantNormalized);
         }
-        if (update.userNotes != null) {
-          _notesController.text = update.userNotes!;
-        }
         if (update.shoppingItems.isNotEmpty) {
           _shoppingItems
             ..clear()
@@ -485,7 +482,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         title: const Text('Reclassify'),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 4),
+            padding: const EdgeInsets.only(right: 12),
             child: _aiLoading
                 ? const Padding(
                     padding: EdgeInsets.all(12),
@@ -658,6 +655,27 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           ),
         ),
         const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(title: 'Paid to'),
+        TextField(
+          controller: _merchantController,
+          onChanged: (_) => _markFormDirty(),
+          decoration: const InputDecoration(
+            labelText: 'Display name',
+            hintText: 'e.g. Zepto, Swiggy',
+          ),
+        ),
+        if (_showTransferTo) ...[
+          const SizedBox(height: AppSpacing.item),
+          TextField(
+            controller: _transferToController,
+            onChanged: (_) => _markFormDirty(),
+            decoration: const InputDecoration(
+              labelText: 'Transfer to',
+              hintText: 'e.g. John, HDFC Savings',
+            ),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.section),
         AppSectionHeader(title: 'Category'),
         CategoryClassifyPicker(
           categories: _categories,
@@ -679,6 +697,16 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             }
           }),
         ),
+        if (_merchantNameForRule != null) ...[
+          const SizedBox(height: AppSpacing.tight),
+          CheckboxListTile(
+            value: _saveRule,
+            onChanged: (v) => setState(() => _saveRule = v ?? false),
+            title: Text('Remember "${_merchantNameForRule!}" → this category'),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ],
         if (_showSubcategoryPicker && _selectedCategoryId != null) ...[
           const SizedBox(height: AppSpacing.item),
           SubcategoryClassifyPicker(
@@ -730,42 +758,6 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             }),
           ),
         ],
-        const SizedBox(height: AppSpacing.section),
-        AppSectionHeader(
-          title: 'Account',
-          subtitle: tx.unmatched
-              ? 'Which bank or card was this charge on?'
-              : 'Change if the wrong bank or card was matched',
-        ),
-        PaymentSourceClassifyPicker(
-          sources: _paymentSources,
-          selectedId: _selectedPaymentSourceId,
-          onSelected: (id) => setState(() {
-            _markFormDirty();
-            _selectedPaymentSourceId = id;
-          }),
-        ),
-        const SizedBox(height: AppSpacing.section),
-        AppSectionHeader(title: 'Paid to'),
-        TextField(
-          controller: _merchantController,
-          onChanged: (_) => _markFormDirty(),
-          decoration: const InputDecoration(
-            labelText: 'Display name',
-            hintText: 'e.g. Zepto, Swiggy',
-          ),
-        ),
-        if (_showTransferTo) ...[
-          const SizedBox(height: AppSpacing.item),
-          TextField(
-            controller: _transferToController,
-            onChanged: (_) => _markFormDirty(),
-            decoration: const InputDecoration(
-              labelText: 'Transfer to',
-              hintText: 'e.g. John, HDFC Savings',
-            ),
-          ),
-        ],
         if (_showShoppingList) ...[
           const SizedBox(height: AppSpacing.section),
           AppSectionHeader(
@@ -807,16 +799,21 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
             ),
           ],
         ],
-        if (_merchantNameForRule != null) ...[
-          const SizedBox(height: AppSpacing.tight),
-          CheckboxListTile(
-            value: _saveRule,
-            onChanged: (v) => setState(() => _saveRule = v ?? false),
-            title: Text('Remember "${_merchantNameForRule!}" → this category'),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ],
+        const SizedBox(height: AppSpacing.section),
+        AppSectionHeader(
+          title: 'Account',
+          subtitle: tx.unmatched
+              ? 'Which bank or card was this charge on?'
+              : 'Change if the wrong bank or card was matched',
+        ),
+        PaymentSourceClassifyPicker(
+          sources: _paymentSources,
+          selectedId: _selectedPaymentSourceId,
+          onSelected: (id) => setState(() {
+            _markFormDirty();
+            _selectedPaymentSourceId = id;
+          }),
+        ),
         const SizedBox(height: AppSpacing.section),
         AppSectionHeader(
           title: 'Notes',
