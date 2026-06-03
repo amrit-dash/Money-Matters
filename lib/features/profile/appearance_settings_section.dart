@@ -74,7 +74,7 @@ class AppearanceSettingsSection extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.tight),
                 Text(
-                  'Applies across dashboards, cards, and buttons.',
+                  'Applies across dashboards, cards, buttons, and charts.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
