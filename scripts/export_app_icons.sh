@@ -94,4 +94,6 @@ for filename, px in launch_slots:
     print(f"  {filename} ({px}px)")
 PY
 
+cp "${TMP}/light-1024.png" "${ICON_DIR}/app-icon-master-1024.png"
+echo "==> Preview: ${ICON_DIR}/app-icon-master-1024.png"
 echo "==> Exported to ${OUT_DIR} and ${LAUNCH_DIR}"

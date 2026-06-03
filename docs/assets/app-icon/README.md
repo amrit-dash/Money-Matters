@@ -1,23 +1,24 @@
 # App icon masters (SVG)
 
-**Status:** Awaiting new SVG artwork. Previous hub-and-spoke masters were removed; they did not match the product direction.
+**Status:** Approved hub-and-spoke mark (teal `#1a8990`, white line art). Light master embeds the approved 1024×1024 artwork; dark master uses slate `#2C3338` with the same white artwork layer.
 
-## Where to place files
-
-Add approved 1024×1024 SVG masters here (see [`docs/app-icon-brief.md`](../../app-icon-brief.md)):
+## Files
 
 | File | Purpose |
 |------|---------|
-| `app-icon-master-light.svg` | Light background variant |
-| `app-icon-master-dark.svg` | Dark background variant |
+| `app-icon-master-light.svg` | Teal background variant (approved artwork) |
+| `app-icon-master-dark.svg` | Dark slate background (`#2C3338`), same white art |
+| `app-icon-master-1024.png` | Regenerated preview (from export script; optional in git) |
 
-Do not commit PNG masters in this folder. PNGs are generated only into `ios/Runner/Assets.xcassets/` via the export script.
+PNG slot exports live only under `ios/Runner/Assets.xcassets/` (see below).
 
-## After adding SVGs
+## Regenerate iOS assets
 
 ```bash
 ./scripts/export_app_icons.sh   # requires librsvg + Python Pillow
 ./scripts/build_ipa.sh          # or Xcode → Run on device
 ```
 
-**Note:** `AppIcon.appiconset` may still contain PNGs from an older export until you run the script with the new masters.
+Updates `AppIcon.appiconset` (light + `-dark` variants), `LaunchImage.imageset`, and `app-icon-master-1024.png`.
+
+Design brief (historical exploration notes): [`docs/app-icon-brief.md`](../../app-icon-brief.md).
