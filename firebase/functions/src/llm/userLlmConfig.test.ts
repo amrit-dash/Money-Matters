@@ -1,7 +1,7 @@
 import {describe, it} from "node:test";
 import assert from "node:assert/strict";
 
-import {resolveApiKeyForProvider} from "./userLlmConfig";
+import {resolveApiKeyForProvider, resolveModelForProvider} from "./userLlmConfig";
 import type {StoredUserLlmConfig} from "./userLlmConfig";
 
 function stored(
@@ -10,6 +10,7 @@ function stored(
   return {
     enabled: false,
     apiKeys: {},
+    models: {},
     apiKey: null,
     model: null,
     baseUrl: null,
@@ -54,5 +55,22 @@ describe("resolveApiKeyForProvider", () => {
       apiKeys: {},
     });
     assert.equal(resolveApiKeyForProvider("gemini", null, config), "gem-only");
+  });
+});
+
+describe("resolveModelForProvider", () => {
+  it("prefers per-provider models map", () => {
+    assert.equal(
+      resolveModelForProvider("grok", {grok: "grok-4.3"}, "grok-2-latest"),
+      "grok-4.3",
+    );
+  });
+
+  it("falls back to legacy model then default", () => {
+    assert.equal(
+      resolveModelForProvider("grok", {}, "grok-2-latest"),
+      "grok-2-latest",
+    );
+    assert.equal(resolveModelForProvider("grok", {}, null), "grok-4.3");
   });
 });

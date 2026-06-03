@@ -11,9 +11,11 @@ const SETTINGS_COLLECTION = "settings";
 const LLM_DOC_ID = "llm";
 
 export type ApiKeysByProvider = Partial<Record<LlmProviderId, string>>;
+export type ModelsByProvider = Partial<Record<LlmProviderId, string>>;
 
 export interface StoredUserLlmConfig extends UserLlmConfig {
   apiKeys: ApiKeysByProvider;
+  models: ModelsByProvider;
   updatedAt: Timestamp | null;
 }
 
@@ -48,13 +50,19 @@ export async function loadUserLlmConfigWithMeta(
   if (legacyKey && !apiKeys[provider]) {
     apiKeys = {...apiKeys, [provider]: legacyKey};
   }
-  const model = trimOrNull(data.model) ?? DEFAULT_MODELS[provider];
+  let models = parseModelsMap(data.models);
+  const legacyModel = trimOrNull(data.model);
+  if (legacyModel && !models[provider]) {
+    models = {...models, [provider]: legacyModel};
+  }
+  const model = resolveModelForProvider(provider, models, legacyModel);
 
   return {
     stored: {
       enabled: data.enabled === true,
       provider,
       apiKeys,
+      models,
       apiKey: apiKeys[provider] ?? null,
       model,
       baseUrl: trimOrNull(data.baseUrl),
@@ -69,6 +77,7 @@ export function emptyConfig(): StoredUserLlmConfig {
     enabled: false,
     provider: "gemini",
     apiKeys: {},
+    models: {},
     apiKey: null,
     model: DEFAULT_MODELS.gemini,
     baseUrl: null,
@@ -118,6 +127,29 @@ export function resolveRuntimeConfig(
     };
   }
   return {...stored, apiKey: activeKey, resolvedKey: null};
+}
+
+export function resolveModelForProvider(
+  provider: LlmProviderId,
+  models: ModelsByProvider,
+  legacyModel?: string | null,
+): string {
+  const fromMap = models[provider];
+  if (fromMap) return fromMap;
+  const legacy = trimOrNull(legacyModel);
+  if (legacy) return legacy;
+  return DEFAULT_MODELS[provider];
+}
+
+function parseModelsMap(raw: unknown): ModelsByProvider {
+  if (!raw || typeof raw !== "object") return {};
+  const out: ModelsByProvider = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const provider = parseProvider(key);
+    const model = trimOrNull(value);
+    if (provider && model) out[provider] = model;
+  }
+  return out;
 }
 
 function parseApiKeys(raw: unknown): ApiKeysByProvider {

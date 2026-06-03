@@ -7,6 +7,7 @@ import {writeLlmLog} from "./llm/llmLogs";
 import {
   loadUserLlmConfigWithMeta,
   resolveApiKeyForProvider,
+  resolveModelForProvider,
   type LoadedUserLlmConfig,
 } from "./llm/userLlmConfig";
 import {DEFAULT_MODELS} from "./llm/types";
@@ -44,7 +45,11 @@ function resolveRuntimeLlm(
       creds: {
         provider: stored.provider,
         apiKey,
-        model: stored.model ?? DEFAULT_MODELS[stored.provider],
+        model: resolveModelForProvider(
+          stored.provider,
+          stored.models,
+          stored.model,
+        ),
         baseUrl: stored.baseUrl,
       },
     };
