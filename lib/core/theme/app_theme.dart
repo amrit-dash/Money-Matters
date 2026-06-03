@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'chart_palette.dart';
+
 /// Consistent spacing scale used across screens.
 abstract final class AppSpacing {
   static const page = 20.0;
@@ -34,39 +36,18 @@ enum AppStatTone { neutral, success, warning, error }
   };
 }
 
-/// Categorical chart colors — spaced across the hue wheel so pie slices and
-/// bars stay distinguishable on warm dark surfaces (not derived from
-/// [ColorScheme] primary/secondary, which collapse to similar browns).
-const _chartPaletteLight = <Color>[
-  Color(0xFFD35400),
-  Color(0xFF0E7C86),
-  Color(0xFF2D6A4F),
-  Color(0xFF6C4AB6),
-  Color(0xFFB8860B),
-  Color(0xFFC0392B),
-  Color(0xFF1F6FAD),
-  Color(0xFFAD1457),
-];
+/// Category chart colors for the active theme (accent seed + light/dark).
+List<Color> chartAccentColors(ThemeData theme) {
+  final palette = theme.extension<ChartPaletteTheme>();
+  if (palette != null) return palette.colors;
+  return ChartPaletteBuilder.fromSeed(
+    theme.colorScheme.primary,
+    theme.brightness,
+  );
+}
 
-const _chartPaletteDark = <Color>[
-  Color(0xFFF4A261),
-  Color(0xFF4ECDC4),
-  Color(0xFF95D5B2),
-  Color(0xFFB8A9E8),
-  Color(0xFFFFD166),
-  Color(0xFFF28482),
-  Color(0xFF7EB8DA),
-  Color(0xFFE07A9F),
-];
-
-/// Distinct hues for category charts (pie, bars, analytics rows).
-List<Color> chartAccentColors(ColorScheme scheme) =>
-    scheme.brightness == Brightness.dark
-        ? _chartPaletteDark
-        : _chartPaletteLight;
-
-Color categoryAccentColor(ColorScheme scheme, int index) {
-  final accents = chartAccentColors(scheme);
+Color categoryAccentColor(ThemeData theme, int index) {
+  final accents = chartAccentColors(theme);
   return accents[index % accents.length];
 }
 
@@ -116,6 +97,11 @@ ThemeData buildAppTheme({
     colorScheme: scheme,
     useMaterial3: true,
     brightness: brightness,
+    extensions: [
+      ChartPaletteTheme(
+        colors: ChartPaletteBuilder.fromSeed(seedColor, brightness),
+      ),
+    ],
     textTheme: textTheme,
     scaffoldBackgroundColor: scheme.surface,
     appBarTheme: AppBarTheme(
