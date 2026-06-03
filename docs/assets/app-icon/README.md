@@ -4,9 +4,9 @@ Masters for the Money Matters home-screen icon (hub-and-spoke network with ₹ c
 
 | File | Role |
 |------|------|
-| **`app-icon-master-1024.png`** | **Canonical 1024×1024 export** (used by `./scripts/export_app_icons.sh`) |
-| `app-icon-master-light.svg` | Teal `#1a8990` vector fallback |
-| `app-icon-master-dark.svg` | Slate `#2C3338` vector fallback (SVG export only) |
+| **`app-icon-master-1024.png`** | **1024×1024 PNG derivative** (regenerated from light SVG by `./scripts/export_app_icons.sh`) |
+| `app-icon-master-light.svg` | Teal `#1a8990` vector master (source of truth) |
+| `app-icon-master-dark.svg` | Slate `#2C3338` vector master (source of truth) |
 
 ## Export to iOS
 
@@ -16,4 +16,4 @@ Masters for the Money Matters home-screen icon (hub-and-spoke network with ₹ c
 
 Requires [librsvg](https://formulae.brew.sh/formula/librsvg) (`brew install librsvg`) and Python Pillow (`pip3 install pillow`).
 
-Writes all slots under `ios/Runner/Assets.xcassets/AppIcon.appiconset/`, including `*-dark.png` variants referenced from `Contents.json`.
+Writes all slots under `ios/Runner/Assets.xcassets/AppIcon.appiconset/` (including `*-dark.png` variants) and `LaunchImage.imageset/` from the light master.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Export docs/assets/app-icon masters into ios/Runner/Assets.xcassets/AppIcon.appiconset PNGs.
-# Prefers app-icon-master-1024.png when present; otherwise renders light/dark SVGs.
+# Export docs/assets/app-icon masters into ios/Runner/Assets.xcassets PNGs.
+# Renders light/dark SVGs (source of truth) and derives AppIcon + LaunchImage sizes.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -8,6 +8,7 @@ PNG_MASTER="${ROOT}/docs/assets/app-icon/app-icon-master-1024.png"
 LIGHT_SVG="${ROOT}/docs/assets/app-icon/app-icon-master-light.svg"
 DARK_SVG="${ROOT}/docs/assets/app-icon/app-icon-master-dark.svg"
 OUT_DIR="${ROOT}/ios/Runner/Assets.xcassets/AppIcon.appiconset"
+LAUNCH_DIR="${ROOT}/ios/Runner/Assets.xcassets/LaunchImage.imageset"
 TMP="${ROOT}/build/icon-export"
 
 python3 -c "from PIL import Image" 2>/dev/null || {
@@ -15,13 +16,9 @@ python3 -c "from PIL import Image" 2>/dev/null || {
   exit 1
 }
 
-mkdir -p "$TMP" "$OUT_DIR"
+mkdir -p "$TMP" "$OUT_DIR" "$LAUNCH_DIR"
 
-if [[ -f "$PNG_MASTER" ]]; then
-  echo "==> Using PNG master: ${PNG_MASTER}"
-  cp "$PNG_MASTER" "${TMP}/light-1024.png"
-  cp "$PNG_MASTER" "${TMP}/dark-1024.png"
-elif [[ -f "$LIGHT_SVG" && -f "$DARK_SVG" ]]; then
+if [[ -f "$LIGHT_SVG" && -f "$DARK_SVG" ]]; then
   if ! command -v rsvg-convert >/dev/null 2>&1; then
     echo "ERROR: rsvg-convert not found. Install: brew install librsvg"
     exit 1
@@ -29,8 +26,14 @@ elif [[ -f "$LIGHT_SVG" && -f "$DARK_SVG" ]]; then
   echo "==> Rendering 1024 masters from SVG"
   rsvg-convert -w 1024 -h 1024 "$LIGHT_SVG" -o "${TMP}/light-1024.png"
   rsvg-convert -w 1024 -h 1024 "$DARK_SVG" -o "${TMP}/dark-1024.png"
+  cp "${TMP}/light-1024.png" "$PNG_MASTER"
+  echo "==> Updated PNG derivative: ${PNG_MASTER}"
+elif [[ -f "$PNG_MASTER" ]]; then
+  echo "==> Using PNG master (no SVG): ${PNG_MASTER}"
+  cp "$PNG_MASTER" "${TMP}/light-1024.png"
+  cp "$PNG_MASTER" "${TMP}/dark-1024.png"
 else
-  echo "ERROR: No icon master found. Add docs/assets/app-icon/app-icon-master-1024.png or SVG masters."
+  echo "ERROR: No icon master found. Add docs/assets/app-icon/app-icon-master-{light,dark}.svg"
   exit 1
 fi
 
@@ -43,6 +46,7 @@ from PIL import Image
 root = Path(os.environ["ROOT"])
 tmp = root / "build/icon-export"
 out = root / "ios/Runner/Assets.xcassets/AppIcon.appiconset"
+launch = root / "ios/Runner/Assets.xcassets/LaunchImage.imageset"
 
 slots = [
     ("Icon-App-20x20@2x.png", 40),
@@ -63,6 +67,12 @@ slots = [
     ("Icon-App-1024x1024@1x.png", 1024),
 ]
 
+launch_slots = [
+    ("LaunchImage.png", 120),
+    ("LaunchImage@2x.png", 240),
+    ("LaunchImage@3x.png", 360),
+]
+
 def export_set(master: Path, suffix: str) -> None:
     base = Image.open(master).convert("RGB")
     for filename, px in slots:
@@ -76,6 +86,14 @@ print("==> Light variants")
 export_set(tmp / "light-1024.png", "")
 print("==> Dark variants")
 export_set(tmp / "dark-1024.png", "-dark")
+
+print("==> LaunchImage (light)")
+base = Image.open(tmp / "light-1024.png").convert("RGBA")
+for filename, px in launch_slots:
+    base.resize((px, px), Image.Resampling.LANCZOS).save(
+        launch / filename, format="PNG", optimize=True
+    )
+    print(f"  {filename} ({px}px)")
 PY
 
-echo "==> Exported to ${OUT_DIR}"
+echo "==> Exported to ${OUT_DIR} and ${LAUNCH_DIR}"
