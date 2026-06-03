@@ -8,14 +8,20 @@ class LlmSettings {
     this.enabled = false,
     this.provider = LlmProvider.gemini,
     Map<LlmProvider, String>? apiKeys,
+    Map<LlmProvider, String>? models,
+    Map<LlmProvider, List<String>>? fetchedModels,
     this.model,
     this.baseUrl,
     this.updatedAt,
-  }) : apiKeys = apiKeys ?? const {};
+  })  : apiKeys = apiKeys ?? const {},
+        models = models ?? const {},
+        fetchedModels = fetchedModels ?? const {};
 
   final bool enabled;
   final LlmProvider provider;
   final Map<LlmProvider, String> apiKeys;
+  final Map<LlmProvider, String> models;
+  final Map<LlmProvider, List<String>> fetchedModels;
   final String? model;
   final String? baseUrl;
   final DateTime? updatedAt;
@@ -23,7 +29,7 @@ class LlmSettings {
   static const defaultModels = {
     LlmProvider.gemini: 'gemini-2.0-flash',
     LlmProvider.openrouter: 'google/gemini-2.0-flash-001',
-    LlmProvider.grok: 'grok-2-latest',
+    LlmProvider.grok: 'grok-4.3',
     LlmProvider.mistral: 'mistral-small-latest',
     LlmProvider.other: 'gpt-4o-mini',
   };
@@ -38,8 +44,22 @@ class LlmSettings {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  String? modelFor(LlmProvider p) {
+    final fromMap = models[p];
+    if (fromMap != null && fromMap.trim().isNotEmpty) {
+      return fromMap.trim();
+    }
+    if (p == provider) {
+      return _trimOrNull(model);
+    }
+    return null;
+  }
+
+  List<String> fetchedModelsFor(LlmProvider p) =>
+      List.unmodifiable(fetchedModels[p] ?? const []);
+
   String get effectiveModel =>
-      (model != null && model!.isNotEmpty) ? model! : defaultModels[provider]!;
+      modelFor(provider) ?? defaultModels[provider]!;
 
   bool get isConfigured =>
       apiKey != null && effectiveModel.isNotEmpty;
@@ -57,10 +77,39 @@ class LlmSettings {
     return copyWith(apiKeys: next);
   }
 
+  LlmSettings withProviderModel(LlmProvider p, String? modelId) {
+    final next = Map<LlmProvider, String>.from(models);
+    final trimmed = modelId?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      next.remove(p);
+    } else {
+      next[p] = trimmed;
+    }
+    return copyWith(
+      models: next,
+      model: p == provider ? trimmed : model,
+    );
+  }
+
+  LlmSettings withProviderFetchedModels(
+    LlmProvider p,
+    List<String> list,
+  ) {
+    final next = Map<LlmProvider, List<String>>.from(fetchedModels);
+    if (list.isEmpty) {
+      next.remove(p);
+    } else {
+      next[p] = List<String>.from(list);
+    }
+    return copyWith(fetchedModels: next);
+  }
+
   LlmSettings copyWith({
     bool? enabled,
     LlmProvider? provider,
     Map<LlmProvider, String>? apiKeys,
+    Map<LlmProvider, String>? models,
+    Map<LlmProvider, List<String>>? fetchedModels,
     String? apiKey,
     String? model,
     String? baseUrl,
@@ -86,6 +135,9 @@ class LlmSettings {
       enabled: enabled ?? this.enabled,
       provider: activeProvider,
       apiKeys: nextKeys,
+      models: models ?? Map<LlmProvider, String>.from(this.models),
+      fetchedModels: fetchedModels ??
+          Map<LlmProvider, List<String>>.from(this.fetchedModels),
       model: model ?? this.model,
       baseUrl: clearBaseUrl ? null : (baseUrl ?? this.baseUrl),
       updatedAt: updatedAt ?? this.updatedAt,
@@ -101,11 +153,20 @@ class LlmSettings {
     if (legacy != null && keys[provider] == null) {
       keys = Map<LlmProvider, String>.from(keys)..[provider] = legacy;
     }
+    var modelsMap = _parseModelsMap(data['models']);
+    final legacyModel = _trimOrNull(data['model']);
+    if (legacyModel != null && modelsMap[provider] == null) {
+      modelsMap = Map<LlmProvider, String>.from(modelsMap)
+        ..[provider] = legacyModel;
+    }
+    final fetchedMap = _parseFetchedModelsMap(data['fetchedModels']);
     return LlmSettings(
       enabled: data['enabled'] == true,
       provider: provider,
       apiKeys: keys,
-      model: _trimOrNull(data['model']),
+      models: modelsMap,
+      fetchedModels: fetchedMap,
+      model: legacyModel,
       baseUrl: _trimOrNull(data['baseUrl']),
       updatedAt: updated is Timestamp ? updated.toDate() : null,
     );
@@ -116,10 +177,20 @@ class LlmSettings {
       for (final entry in apiKeys.entries)
         if (entry.value.trim().isNotEmpty) entry.key.id: entry.value.trim(),
     };
+    final modelsPayload = <String, String>{
+      for (final entry in models.entries)
+        if (entry.value.trim().isNotEmpty) entry.key.id: entry.value.trim(),
+    };
+    final fetchedPayload = <String, List<String>>{
+      for (final entry in fetchedModels.entries)
+        if (entry.value.isNotEmpty) entry.key.id: List<String>.from(entry.value),
+    };
     return {
       'enabled': enabled,
       'provider': provider.id,
       if (keysPayload.isNotEmpty) 'apiKeys': keysPayload,
+      if (modelsPayload.isNotEmpty) 'models': modelsPayload,
+      if (fetchedPayload.isNotEmpty) 'fetchedModels': fetchedPayload,
       if (apiKey != null) 'apiKey': apiKey,
       'model': effectiveModel,
       if (baseUrl != null && baseUrl!.isNotEmpty) 'baseUrl': baseUrl!.trim(),
@@ -144,6 +215,33 @@ class LlmSettings {
       final provider = LlmProvider.fromId(entry.key?.toString());
       final key = _trimOrNull(entry.value);
       if (key != null) out[provider] = key;
+    }
+    return out;
+  }
+
+  static Map<LlmProvider, String> _parseModelsMap(dynamic raw) {
+    if (raw is! Map) return {};
+    final out = <LlmProvider, String>{};
+    for (final entry in raw.entries) {
+      final provider = LlmProvider.fromId(entry.key?.toString());
+      final modelId = _trimOrNull(entry.value);
+      if (modelId != null) out[provider] = modelId;
+    }
+    return out;
+  }
+
+  static Map<LlmProvider, List<String>> _parseFetchedModelsMap(dynamic raw) {
+    if (raw is! Map) return {};
+    final out = <LlmProvider, List<String>>{};
+    for (final entry in raw.entries) {
+      final provider = LlmProvider.fromId(entry.key?.toString());
+      final list = entry.value;
+      if (list is! List) continue;
+      final models = list
+          .map((e) => e.toString().trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (models.isNotEmpty) out[provider] = models;
     }
     return out;
   }

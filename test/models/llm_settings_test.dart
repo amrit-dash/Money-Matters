@@ -44,6 +44,31 @@ void main() {
     expect(settings.apiKeyFor(LlmProvider.grok), 'grok-key');
   });
 
+  test('fromFirestore reads per-provider models and fetchedModels', () {
+    final settings = LlmSettings.fromFirestore({
+      'provider': 'gemini',
+      'models': {
+        'gemini': 'gemini-2.5-flash',
+        'grok': 'grok-4.3',
+      },
+      'fetchedModels': {
+        'gemini': ['gemini-2.0-flash', 'gemini-2.5-flash'],
+        'grok': ['grok-4.3', 'grok-build-0.1'],
+      },
+    });
+
+    expect(settings.modelFor(LlmProvider.gemini), 'gemini-2.5-flash');
+    expect(settings.modelFor(LlmProvider.grok), 'grok-4.3');
+    expect(settings.fetchedModelsFor(LlmProvider.gemini), [
+      'gemini-2.0-flash',
+      'gemini-2.5-flash',
+    ]);
+    expect(settings.fetchedModelsFor(LlmProvider.grok), [
+      'grok-4.3',
+      'grok-build-0.1',
+    ]);
+  });
+
   test('withProviderApiKey keeps other providers keys', () {
     const settings = LlmSettings(
       provider: LlmProvider.gemini,
@@ -62,7 +87,24 @@ void main() {
     expect(updated.apiKey, 'mistral-key');
   });
 
-  test('toFirestore writes apiKeys and active apiKey', () {
+  test('withProviderModel keeps other provider models', () {
+    const settings = LlmSettings(
+      provider: LlmProvider.gemini,
+      models: {
+        LlmProvider.gemini: 'gemini-2.0-flash',
+        LlmProvider.grok: 'grok-4.3',
+      },
+    );
+
+    final updated = settings
+        .withProviderModel(LlmProvider.gemini, 'gemini-2.5-flash')
+        .copyWith(provider: LlmProvider.grok);
+
+    expect(updated.modelFor(LlmProvider.gemini), 'gemini-2.5-flash');
+    expect(updated.effectiveModel, 'grok-4.3');
+  });
+
+  test('toFirestore writes apiKeys, models, fetchedModels, and active apiKey', () {
     const settings = LlmSettings(
       enabled: true,
       provider: LlmProvider.grok,
@@ -70,7 +112,13 @@ void main() {
         LlmProvider.gemini: 'gem',
         LlmProvider.grok: 'xai',
       },
-      model: 'grok-2-latest',
+      models: {
+        LlmProvider.gemini: 'gemini-2.0-flash',
+        LlmProvider.grok: 'grok-4.3',
+      },
+      fetchedModels: {
+        LlmProvider.grok: ['grok-4.3', 'grok-build-0.1'],
+      },
     );
 
     final payload = settings.toFirestore();
@@ -78,8 +126,16 @@ void main() {
       'gemini': 'gem',
       'grok': 'xai',
     });
+    expect(payload['models'], {
+      'gemini': 'gemini-2.0-flash',
+      'grok': 'grok-4.3',
+    });
+    expect(payload['fetchedModels'], {
+      'grok': ['grok-4.3', 'grok-build-0.1'],
+    });
     expect(payload['apiKey'], 'xai');
     expect(payload['provider'], 'grok');
+    expect(payload['model'], 'grok-4.3');
   });
 
   test('toCallablePayload omits empty api key when includeSecrets false', () {
