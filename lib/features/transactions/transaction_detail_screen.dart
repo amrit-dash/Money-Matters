@@ -262,7 +262,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                           const SizedBox(height: 6),
                           Text(
                             '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
-                            style: theme.textTheme.titleLarge?.copyWith(
+                            style: theme.textTheme.displaySmall?.copyWith(
                               fontWeight: FontWeight.w700,
                               color: isCredit
                                   ? scheme.primary
@@ -274,7 +274,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                     ),
                     Icon(
                       categoryIcon,
-                      size: 28,
+                      size: 44,
                       color: scheme.onSecondaryContainer,
                     ),
                   ],

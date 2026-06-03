@@ -84,7 +84,7 @@ class TransactionListItem extends StatelessWidget {
               const SizedBox(width: 10),
               Text(
                 amountLabel,
-                style: theme.textTheme.titleMedium?.copyWith(
+                style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: amountColor,
                 ),

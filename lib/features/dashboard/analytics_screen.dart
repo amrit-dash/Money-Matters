@@ -217,14 +217,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             _loadAuxiliarySummaries();
           },
         ),
-        if (_hasPriorComparisonData) ...[
-          const SizedBox(height: AppSpacing.item),
-          PeriodComparisonCard(
-            currentSpend: summary.totalSpend,
-            priorSpend: _priorSummary!.totalSpend,
-            priorLabel: _priorPeriodLabel,
-          ),
-        ],
         const SizedBox(height: AppSpacing.item),
         _PeriodNavigator(
           label: summary.label,
@@ -260,6 +252,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 : const [],
             icon: Icons.insights_outlined,
           ),
+          if (_hasPriorComparisonData) ...[
+            const SizedBox(height: AppSpacing.item),
+            PeriodComparisonCard(
+              currentSpend: summary.totalSpend,
+              priorSpend: _priorSummary!.totalSpend,
+              priorLabel: _priorPeriodLabel,
+            ),
+          ],
           if (summary.breakdown.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.item),
             CategorySpendPieChart(
