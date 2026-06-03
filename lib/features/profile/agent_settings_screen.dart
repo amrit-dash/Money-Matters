@@ -26,8 +26,11 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
   bool _busy = false;
   bool _obscureKey = true;
   LlmSettings _draft = const LlmSettings();
-  List<String> _fetchedModels = [];
-  String? _selectedModel;
+
+  List<String> get _fetchedModels =>
+      _draft.fetchedModelsFor(_draft.provider);
+
+  String get _selectedModel => _draft.effectiveModel;
 
   @override
   void initState() {
@@ -43,15 +46,18 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
     super.dispose();
   }
 
+  void _syncFieldsFromDraft(LlmSettings settings) {
+    _apiKeyController.text = settings.apiKeyFor(settings.provider) ?? '';
+    _baseUrlController.text = settings.baseUrl ?? '';
+    _modelController.text = settings.effectiveModel;
+  }
+
   Future<void> _load() async {
     final settings = await widget.llmSettingsService.load(forceRefresh: true);
     if (!mounted) return;
     setState(() {
       _draft = settings;
-      _selectedModel = settings.effectiveModel;
-      _apiKeyController.text = settings.apiKeyFor(settings.provider) ?? '';
-      _baseUrlController.text = settings.baseUrl ?? '';
-      _modelController.text = settings.effectiveModel;
+      _syncFieldsFromDraft(settings);
       _loading = false;
     });
   }
@@ -61,14 +67,32 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  LlmSettings get _workingDraft => _draft
-      .withProviderApiKey(_draft.provider, _apiKeyFromField)
-      .copyWith(
-        baseUrl: _baseUrlController.text.trim().isEmpty
-            ? null
-            : _baseUrlController.text.trim(),
-        model: _selectedModel,
-      );
+  LlmSettings _persistFieldEdits(LlmSettings base) {
+    final modelFromField = _modelController.text.trim();
+    return base
+        .withProviderApiKey(base.provider, _apiKeyFromField)
+        .withProviderModel(
+          base.provider,
+          _fetchedModels.isEmpty && modelFromField.isNotEmpty
+              ? modelFromField
+              : base.modelFor(base.provider),
+        )
+        .copyWith(
+          baseUrl: _baseUrlController.text.trim().isEmpty
+              ? null
+              : _baseUrlController.text.trim(),
+        );
+  }
+
+  LlmSettings get _workingDraft => _persistFieldEdits(_draft);
+
+  void _setSelectedModel(String? modelId) {
+    if (modelId == null || modelId.trim().isEmpty) return;
+    setState(() {
+      _draft = _draft.withProviderModel(_draft.provider, modelId.trim());
+      _modelController.text = modelId.trim();
+    });
+  }
 
   Future<void> _runBusy(Future<void> Function() action) async {
     setState(() => _busy = true);
@@ -94,6 +118,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
       try {
         await widget.llmSettingsService.testApiKey(draft);
         if (!mounted) return;
+        setState(() => _draft = draft);
         _snack('API key verified');
       } catch (e) {
         if (!mounted) return;
@@ -113,14 +138,17 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
       try {
         final models = await widget.llmSettingsService.fetchModels(draft);
         if (!mounted) return;
+        var next = draft.withProviderFetchedModels(draft.provider, models);
+        if (models.isNotEmpty) {
+          final current = next.modelFor(next.provider);
+          final selected = current != null && models.contains(current)
+              ? current
+              : models.first;
+          next = next.withProviderModel(next.provider, selected);
+        }
         setState(() {
-          _fetchedModels = models;
-          if (models.isNotEmpty &&
-              (_selectedModel == null || !models.contains(_selectedModel))) {
-            _selectedModel = models.contains(draft.effectiveModel)
-                ? draft.effectiveModel
-                : models.first;
-          }
+          _draft = next;
+          _modelController.text = next.effectiveModel;
         });
         _snack('Loaded ${models.length} model(s)');
       } catch (e) {
@@ -131,11 +159,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
   }
 
   Future<void> _save() async {
-    final draft = _workingDraft.copyWith(
-      enabled: _draft.enabled,
-      provider: _draft.provider,
-      model: _selectedModel ?? _draft.effectiveModel,
-    );
+    final draft = _workingDraft.copyWith(enabled: _draft.enabled);
 
     if (draft.enabled && !draft.isConfigured) {
       _snack('Enable requires a provider, API key, and model');
@@ -159,6 +183,14 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  void _switchProvider(LlmProvider nextProvider) {
+    final updated = _workingDraft.copyWith(provider: nextProvider);
+    setState(() {
+      _draft = updated;
+      _syncFieldsFromDraft(updated);
+    });
   }
 
   @override
@@ -218,21 +250,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
                               ? null
                               : (p) {
                                   if (p == null) return;
-                                  final updated = _draft
-                                      .withProviderApiKey(
-                                        _draft.provider,
-                                        _apiKeyFromField,
-                                      )
-                                      .copyWith(provider: p);
-                                  setState(() {
-                                    _draft = updated;
-                                    _apiKeyController.text =
-                                        updated.apiKeyFor(p) ?? '';
-                                    _selectedModel =
-                                        LlmSettings.defaultModels[p];
-                                    _modelController.text = _selectedModel!;
-                                    _fetchedModels = [];
-                                  });
+                                  _switchProvider(p);
                                 },
                         ),
                         const SizedBox(height: AppSpacing.item),
@@ -294,8 +312,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
                               labelText: 'Model ID',
                               hintText: 'e.g. gemini-2.0-flash',
                             ),
-                            onChanged: (v) =>
-                                setState(() => _selectedModel = v.trim()),
+                            onChanged: (v) => _setSelectedModel(v),
                           )
                         else
                           DropdownButtonFormField<String>(
@@ -310,9 +327,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
                               for (final m in _fetchedModels)
                                 DropdownMenuItem(value: m, child: Text(m)),
                             ],
-                            onChanged: _busy
-                                ? null
-                                : (m) => setState(() => _selectedModel = m),
+                            onChanged: _busy ? null : _setSelectedModel,
                           ),
                         const SizedBox(height: AppSpacing.tight),
                         Text(
