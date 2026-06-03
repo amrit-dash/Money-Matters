@@ -139,7 +139,7 @@ class LocalReviewRepository implements ReviewRepository {
     final id = transaction.id;
     if (id == null) return;
 
-    if (_authService.isSignedIn) {
+    if (_isSignedInSafely()) {
       try {
         final uid = _authService.requireUid();
         await _firestore
@@ -243,6 +243,14 @@ class LocalReviewRepository implements ReviewRepository {
         );
       }),
     );
+  }
+
+  bool _isSignedInSafely() {
+    try {
+      return _authService.isSignedIn;
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
