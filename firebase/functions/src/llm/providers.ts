@@ -25,9 +25,12 @@ export interface ProviderCredentials {
 }
 
 export async function testProviderKey(creds: ProviderCredentials): Promise<void> {
-  const models = await fetchProviderModels(creds);
-  if (models.length === 0) {
-    throw new Error("No models returned for this API key");
+  switch (creds.provider) {
+  case "gemini":
+    await pingGemini(creds.apiKey, creds.model);
+    return;
+  default:
+    await pingOpenAiCompatible(creds);
   }
 }
 
@@ -112,6 +115,48 @@ function normalizeBaseUrl(raw: string | null | undefined): string {
   return trimmed;
 }
 
+async function pingGemini(apiKey: string, model: string): Promise<void> {
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      contents: [{role: "user", parts: [{text: "Reply with OK"}]}],
+      generationConfig: {maxOutputTokens: 8, temperature: 0},
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Gemini key test failed (${res.status}): ${body.slice(0, 200)}`);
+  }
+}
+
+async function pingOpenAiCompatible(creds: ProviderCredentials): Promise<void> {
+  const res = await fetch(chatCompletionsUrl(creds), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${creds.apiKey}`,
+      ...(creds.provider === "openrouter" ?
+        {"HTTP-Referer": "https://money-matters.app", "X-Title": "Money Matters"} :
+        {}),
+    },
+    body: JSON.stringify({
+      model: creds.model,
+      max_tokens: 8,
+      temperature: 0,
+      messages: [{role: "user", content: "Reply with OK"}],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `${creds.provider} key test failed (${res.status}): ${body.slice(0, 200)}`,
+    );
+  }
+}
+
 async function fetchGeminiModels(apiKey: string): Promise<string[]> {
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
@@ -163,6 +208,7 @@ async function callGemini(
       contents: [{role: "user", parts: [{text: buildPrompt(data)}]}],
       generationConfig: {
         temperature: 0.1,
+        maxOutputTokens: 512,
         responseMimeType: "application/json",
         responseSchema: RESPONSE_SCHEMA,
       },
@@ -205,6 +251,7 @@ async function callOpenAiCompatible(
     body: JSON.stringify({
       model: creds.model,
       temperature: 0.1,
+      max_tokens: 512,
       response_format: {type: "json_object"},
       messages: [
         {

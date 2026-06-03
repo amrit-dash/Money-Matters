@@ -17,7 +17,19 @@ export interface StoredUserLlmConfig extends UserLlmConfig {
   updatedAt: Timestamp | null;
 }
 
+export interface LoadedUserLlmConfig {
+  stored: StoredUserLlmConfig;
+  docExists: boolean;
+}
+
 export async function loadUserLlmConfig(uid: string): Promise<StoredUserLlmConfig> {
+  const {stored} = await loadUserLlmConfigWithMeta(uid);
+  return stored;
+}
+
+export async function loadUserLlmConfigWithMeta(
+  uid: string,
+): Promise<LoadedUserLlmConfig> {
   const snap = await getFirestore()
     .collection("users")
     .doc(uid)
@@ -26,7 +38,7 @@ export async function loadUserLlmConfig(uid: string): Promise<StoredUserLlmConfi
     .get();
 
   if (!snap.exists) {
-    return emptyConfig();
+    return {stored: emptyConfig(), docExists: false};
   }
 
   const data = snap.data() ?? {};
@@ -39,13 +51,16 @@ export async function loadUserLlmConfig(uid: string): Promise<StoredUserLlmConfi
   const model = trimOrNull(data.model) ?? DEFAULT_MODELS[provider];
 
   return {
-    enabled: data.enabled === true,
-    provider,
-    apiKeys,
-    apiKey: apiKeys[provider] ?? null,
-    model,
-    baseUrl: trimOrNull(data.baseUrl),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt : null,
+    stored: {
+      enabled: data.enabled === true,
+      provider,
+      apiKeys,
+      apiKey: apiKeys[provider] ?? null,
+      model,
+      baseUrl: trimOrNull(data.baseUrl),
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt : null,
+    },
+    docExists: true,
   };
 }
 

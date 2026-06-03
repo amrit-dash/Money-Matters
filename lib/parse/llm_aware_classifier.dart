@@ -23,6 +23,8 @@ class LlmAwareClassifier implements TransactionClassifier {
     String? selectedCategoryId,
     Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
+    bool includePaymentSources = true,
+    bool includeSubcategoryTaxonomy = true,
   }) async {
     final settings = await _settingsService.load();
     if (settings.updatedAt != null) {
@@ -49,6 +51,8 @@ class LlmAwareClassifier implements TransactionClassifier {
       selectedCategoryId: selectedCategoryId,
       subcategoryTaxonomy: subcategoryTaxonomy,
       paymentSources: paymentSources,
+      includePaymentSources: includePaymentSources,
+      includeSubcategoryTaxonomy: includeSubcategoryTaxonomy,
     );
   }
 }

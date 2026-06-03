@@ -102,6 +102,9 @@ class IngestParsePipeline {
   final TransactionClassifier _classifier;
   final FirebaseFirestore _firestore;
 
+  /// After one classify returns needsConfig, skip further LLM calls this run.
+  bool _skipLlmForNeedsConfig = false;
+
   static const _rulesVersion = 'rules-v1';
   static const _rulesParser = RulesParser();
   static const _parseJobsCollection = 'parse_jobs';
@@ -125,6 +128,7 @@ class IngestParsePipeline {
         const <PaymentSource>[];
     final cats = categories ?? await _categoryService.loadCategories();
 
+    _skipLlmForNeedsConfig = false;
     final rows = await _localDatabase.getUnprocessedRawIngests();
     var processed = 0;
     var transactionsCreated = 0;
@@ -215,6 +219,7 @@ class IngestParsePipeline {
         const <PaymentSource>[];
     final cats = categories ?? await _categoryService.loadCategories();
 
+    _skipLlmForNeedsConfig = false;
     final rematched = await _rematchUnmatchedTransactions(sources);
     final categoryMatched = await _reapplyLearnedCategoryRules(cats);
     final backlog = await _reclassifyPendingTransactions(sources, cats);
@@ -452,6 +457,10 @@ class IngestParsePipeline {
       return _ClassifyOutcome(transaction: tx);
     }
 
+    if (_skipLlmForNeedsConfig) {
+      return _ClassifyOutcome(transaction: tx, needsConfig: true);
+    }
+
     final result = await _classifier.classify(
       transaction: tx,
       smsBody: body,
@@ -459,6 +468,8 @@ class IngestParsePipeline {
       categoryIds: categories.map((c) => c.id).toList(),
       subcategoryTaxonomy: subcategoryTaxonomyForLlm(),
       paymentSources: sources,
+      includePaymentSources: needsSource,
+      includeSubcategoryTaxonomy: needsCategory,
     );
     if (result == null) {
       return _ClassifyOutcome(transaction: tx);
@@ -474,6 +485,7 @@ class IngestParsePipeline {
       );
     }
     if (result.needsConfig) {
+      _skipLlmForNeedsConfig = true;
       ClassifierDiagnostics.recordAttempt(
         needsConfig: true,
         error: 'GEMINI_API_KEY not set on Cloud Functions',

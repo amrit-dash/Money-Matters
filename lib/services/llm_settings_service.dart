@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../core/auth/auth_service.dart';
+import '../parse/llm_parser.dart';
 import '../models/llm_settings.dart';
 
 /// Loads and saves BYOK LLM settings under `users/{uid}/settings/llm`.
@@ -56,6 +57,7 @@ class LlmSettingsService {
     final uid = _auth.requireUid();
     await _doc(uid).set(settings.toFirestore(), SetOptions(merge: true));
     _cache = settings.copyWith(updatedAt: DateTime.now().toUtc());
+    ClassifierDiagnostics.clearNeedsConfigBackoff();
   }
 
   Future<void> testApiKey(LlmSettings settings) async {

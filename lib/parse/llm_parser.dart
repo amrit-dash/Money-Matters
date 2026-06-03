@@ -44,6 +44,12 @@ class ClassifierDiagnostics {
     lastNeedsConfig = needsConfig;
     lastSuccessCount = successCount;
   }
+
+  /// Clears needs-config backoff so the next sync retries Cloud Functions.
+  static void clearNeedsConfigBackoff() {
+    lastNeedsConfig = false;
+    lastError = null;
+  }
 }
 
 /// Structured output of the LLM classification step.
@@ -167,6 +173,8 @@ abstract class TransactionClassifier {
     String? selectedCategoryId,
     Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
+    bool includePaymentSources = true,
+    bool includeSubcategoryTaxonomy = true,
   });
 }
 
@@ -183,6 +191,8 @@ class NoOpTransactionClassifier implements TransactionClassifier {
     String? selectedCategoryId,
     Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
+    bool includePaymentSources = true,
+    bool includeSubcategoryTaxonomy = true,
   }) async =>
       null;
 }
@@ -210,11 +220,16 @@ class CloudFunctionsClassifier implements TransactionClassifier {
     String? selectedCategoryId,
     Map<String, List<String>> subcategoryTaxonomy = const {},
     List<PaymentSource> paymentSources = const [],
+    bool includePaymentSources = true,
+    bool includeSubcategoryTaxonomy = true,
   }) async {
     try {
-      final taxonomy = subcategoryTaxonomy.isEmpty
-          ? subcategoryTaxonomyForLlm()
-          : subcategoryTaxonomy;
+      final taxonomy = includeSubcategoryTaxonomy
+          ? (subcategoryTaxonomy.isEmpty
+              ? subcategoryTaxonomyForLlm()
+              : subcategoryTaxonomy)
+          : const <String, List<String>>{};
+      final sources = includePaymentSources ? paymentSources : const <PaymentSource>[];
       final callable = _functions.httpsCallable('classifyTransaction');
       final response = await callable.call<Map<String, dynamic>>({
         'merchant': transaction.merchant,
@@ -228,8 +243,8 @@ class CloudFunctionsClassifier implements TransactionClassifier {
           'hintCategoryId': selectedCategoryId,
         },
         if (taxonomy.isNotEmpty) 'subcategoryTaxonomy': taxonomy,
-        if (paymentSources.isNotEmpty)
-          'paymentSources': paymentSources
+        if (sources.isNotEmpty)
+          'paymentSources': sources
               .map(
                 (s) => {
                   'id': s.id,

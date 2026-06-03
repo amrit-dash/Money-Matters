@@ -1,11 +1,14 @@
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {defineSecret} from "firebase-functions/params";
-import {getFirestore} from "firebase-admin/firestore";
 import {logger} from "firebase-functions";
 
 import {classifyWithProvider, type ProviderCredentials} from "./llm/providers";
 import {writeLlmLog} from "./llm/llmLogs";
-import {loadUserLlmConfig, resolveApiKeyForProvider} from "./llm/userLlmConfig";
+import {
+  loadUserLlmConfigWithMeta,
+  resolveApiKeyForProvider,
+  type LoadedUserLlmConfig,
+} from "./llm/userLlmConfig";
 import {DEFAULT_MODELS} from "./llm/types";
 import {
   type ClassifyRequest,
@@ -27,12 +30,11 @@ interface RuntimeLlm {
   creds: ProviderCredentials;
 }
 
-async function resolveRuntimeLlm(
-  uid: string,
+function resolveRuntimeLlm(
+  loaded: LoadedUserLlmConfig,
   legacyGeminiKey: string | undefined,
-): Promise<RuntimeLlm | null> {
-  const stored = await loadUserLlmConfig(uid);
-  const docExists = await userLlmDocExists(uid);
+): RuntimeLlm | null {
+  const {stored, docExists} = loaded;
 
   if (docExists) {
     if (!stored.enabled) return null;
@@ -60,16 +62,6 @@ async function resolveRuntimeLlm(
   }
 
   return null;
-}
-
-async function userLlmDocExists(uid: string): Promise<boolean> {
-  const snap = await getFirestore()
-    .collection("users")
-    .doc(uid)
-    .collection("settings")
-    .doc("llm")
-    .get();
-  return snap.exists;
 }
 
 function fallback(needsConfig: boolean): ClassifyResult {
@@ -105,11 +97,11 @@ export const classifyTransaction = onCall(
     const uid = request.auth.uid;
     const data = (request.data ?? {}) as ClassifyRequest;
     const legacyKey = geminiApiKey.value();
-    const runtime = await resolveRuntimeLlm(uid, legacyKey);
+    const loaded = await loadUserLlmConfigWithMeta(uid);
+    const runtime = resolveRuntimeLlm(loaded, legacyKey);
 
     if (!runtime) {
-      const stored = await loadUserLlmConfig(uid);
-      const docExists = await userLlmDocExists(uid);
+      const {stored, docExists} = loaded;
       const activeKey = resolveApiKeyForProvider(stored.provider, null, stored);
       const reason = stored.enabled && !activeKey ?
         "LLM enabled but API key missing" :
