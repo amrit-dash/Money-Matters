@@ -11,7 +11,7 @@ Flutter iOS app — see [README.md](README.md) for product context, setup, and t
 | Path | Use |
 |------|-----|
 | `docs/HANDOFF.md` | Build status, icon/branding status, next steps |
-| `docs/assets/app-icon/` | SVG masters (pending); see README there + `docs/app-icon-brief.md` |
+| `docs/assets/app-icon/` | SVG masters + export script; see README there + `docs/app-icon-brief.md` |
 | `ios/Runner/Assets.xcassets/AppIcon.appiconset/` | iOS home-screen icon PNGs (regenerate: `./scripts/export_app_icons.sh`) |
 | `docs/plans/money-matters-build-plan.md` | Architecture and file ownership |
 | `firebase/README.md` | Backend deploy and function tests |
