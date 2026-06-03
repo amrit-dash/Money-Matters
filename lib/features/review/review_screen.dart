@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/transaction_list_filter.dart';
 import '../../core/widgets/transaction_list_item.dart';
 import '../../services/app_services.dart';
 import 'classify_screen.dart';
@@ -30,6 +31,7 @@ class ReviewScreen extends StatefulWidget {
 class _ReviewScreenState extends State<ReviewScreen> {
   final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
   final _dateFormat = DateFormat('d MMM, h:mm a');
+  TransactionListFilter _filter = const TransactionListFilter();
 
   Future<void> _openClassify(Transaction tx) async {
     final changed = await Navigator.push<bool>(
@@ -51,6 +53,30 @@ class _ReviewScreenState extends State<ReviewScreen> {
       appBar: AppBar(
         automaticallyImplyLeading: !widget.embeddedInShell,
         title: Text(widget.embeddedInShell ? 'Inbox' : 'Needs your input'),
+        actions: [
+          Builder(
+            builder: (context) {
+              final services = AppScope.of(context);
+              return StreamBuilder(
+                stream: services.paymentSourceService.watchAll(),
+                builder: (context, sourcesSnapshot) {
+                  return StreamBuilder(
+                    stream: services.categoryService.watchCategories(),
+                    builder: (context, categoriesSnapshot) {
+                      return TransactionListFilterBar(
+                        filter: _filter,
+                        onChanged: (f) => setState(() => _filter = f),
+                        paymentSources:
+                            sourcesSnapshot.data ?? const [],
+                        categories: categoriesSnapshot.data ?? const [],
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
       body: StreamBuilder<List<Transaction>>(
         stream: widget.repository.watchFlaggedTransactions(),
@@ -59,15 +85,25 @@ class _ReviewScreenState extends State<ReviewScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final items = snapshot.data!;
+          final rawItems = snapshot.data!;
 
-          if (items.isEmpty) {
+          if (rawItems.isEmpty) {
             return AppEmptyState(
               icon: Icons.check_circle_outline,
               title: 'All clear',
               message:
                   'Nothing needs you right now. When we are unsure about a '
                   'category or account, it will show up here for a quick tap.',
+            );
+          }
+
+          final items = _filter.apply(rawItems);
+
+          if (items.isEmpty) {
+            return AppEmptyState(
+              icon: Icons.filter_list_off,
+              title: 'No matching items',
+              message: 'Try clearing or adjusting your filters.',
             );
           }
 

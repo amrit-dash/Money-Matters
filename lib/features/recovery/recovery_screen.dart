@@ -24,6 +24,7 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
   IngestStatus? _status;
   bool _loading = true;
   bool _submitting = false;
+  bool _pasteExpanded = false;
   String? _lastSubmitMessage;
   String? _error;
 
@@ -320,44 +321,81 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                     label: const Text('Sync and parse now'),
                   ),
                   const SizedBox(height: AppSpacing.section),
-                  AppSectionHeader(
-                    title: 'Paste missed SMS',
-                    subtitle: 'Separate messages with a blank line',
-                  ),
-                  TextField(
-                    controller: _pasteController,
-                    maxLines: 8,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Rs.500 debited from A/c **1234...\n\nRs.899 spent on card **4567...',
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.item),
-                  FilledButton.tonal(
-                    onPressed: _submitting ? null : _submitPaste,
-                    child: _submitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Submit pasted SMS'),
-                  ),
-                  if (_lastSubmitMessage != null) ...[
-                    const SizedBox(height: AppSpacing.tight),
-                    Text(
-                      _lastSubmitMessage!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.primary,
+                  Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.content_paste_outlined),
+                          title: const Text('Paste missed SMS'),
+                          subtitle: Text(
+                            _pasteExpanded
+                                ? 'Separate messages with a blank line'
+                                : 'Tap to paste bank SMS that were not captured',
                           ),
+                          trailing: Icon(
+                            _pasteExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                          ),
+                          onTap: () =>
+                              setState(() => _pasteExpanded = !_pasteExpanded),
+                        ),
+                        if (_pasteExpanded) ...[
+                          const Divider(height: 1),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.page,
+                              AppSpacing.item,
+                              AppSpacing.page,
+                              0,
+                            ),
+                            child: TextField(
+                              controller: _pasteController,
+                              maxLines: 8,
+                              decoration: const InputDecoration(
+                                hintText:
+                                    'Rs.500 debited from A/c **1234...\n\nRs.899 spent on card **4567...',
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(AppSpacing.page),
+                            child: FilledButton.tonal(
+                              onPressed: _submitting ? null : _submitPaste,
+                              child: _submitting
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('Submit pasted SMS'),
+                            ),
+                          ),
+                          if (_lastSubmitMessage != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                AppSpacing.page,
+                                0,
+                                AppSpacing.page,
+                                AppSpacing.page,
+                              ),
+                              child: Text(
+                                _lastSubmitMessage!,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                              ),
+                            ),
+                        ],
+                      ],
                     ),
-                  ],
-                  const SizedBox(height: AppSpacing.section),
-                  OutlinedButton.icon(
-                    onPressed: () =>
-                        Navigator.pushNamed(context, AppRoutes.connectSms),
-                    icon: const Icon(Icons.sms_outlined),
-                    label: const Text('SMS setup guide'),
                   ),
                 ],
               ),

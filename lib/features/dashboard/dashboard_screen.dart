@@ -9,6 +9,7 @@ import 'package:money_matters/models/transaction.dart';
 import '../../app_router.dart';
 import '../../core/dashboard/dashboard_preferences_store.dart';
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/transaction_list_filter.dart';
 import '../../core/widgets/transaction_list_item.dart';
 import '../../core/widgets/dashboard_charts.dart';
 import '../../ingest/ingest_queue_drain.dart';
@@ -56,6 +57,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _layoutPrefs = DashboardPreferencesStore();
   _OverviewLayout _layout = _OverviewLayout.calendar;
   _ListRangeFilter _listRange = _ListRangeFilter.today;
+  TransactionListFilter _listFilter = const TransactionListFilter();
   DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);
   late DateTime _selectedCalendarDate;
 
@@ -268,11 +270,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime _dayEnd(DateTime day) =>
       DateTime(day.year, day.month, day.day, 23, 59, 59, 999);
 
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _isSelectedDateToday(DateTime day) {
+    final now = DateTime.now();
+    return _isSameDay(day, DateTime(now.year, now.month, now.day));
+  }
+
+  String _calendarSpentHeading(DateTime selected) =>
+      _isSelectedDateToday(selected)
+          ? 'Spent today'
+          : 'Spent on ${_selectedDateFormat.format(selected)}';
+
+  Widget _buildEmptyDayBanner(BuildContext context) {
+    return Card(
+      color: Theme.of(context)
+          .colorScheme
+          .surfaceContainerHighest
+          .withValues(alpha: 0.5),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(
+              Icons.event_busy_outlined,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'No transactions recorded on this day.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTransactionList({
     required DateTime start,
     required DateTime end,
     required String emptyMessage,
+    TransactionListFilter? filter,
   }) {
+    final listFilter = filter ?? const TransactionListFilter();
     return StreamBuilder<List<PaymentSource>>(
       stream: widget.paymentSourceService.watchAll(),
       builder: (context, sourcesSnapshot) {
@@ -295,19 +342,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 end: end,
               ),
               builder: (context, snapshot) {
-                final items = snapshot.data;
-                if (items == null) {
+                final rawItems = snapshot.data;
+                if (rawItems == null) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(child: CircularProgressIndicator()),
                   );
                 }
 
-                if (items.isEmpty) {
+                if (rawItems.isEmpty) {
                   return Padding(
                     padding: const EdgeInsets.only(top: AppSpacing.item),
                     child: Text(
                       emptyMessage,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  );
+                }
+
+                final items = listFilter.apply(rawItems);
+                if (items.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.item),
+                    child: Text(
+                      'No transactions match the current filters.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
@@ -485,6 +546,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             start: _listRangeStart,
             end: _todayEnd,
             emptyMessage: _modeEmptyMessage(),
+            filter: _listFilter,
           ),
         ],
       ),
@@ -576,37 +638,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           );
                         }
 
+                        final isEmpty = _isEmpty(summary);
+
+                        if (isEmpty) {
+                          return _buildEmptyDayBanner(context);
+                        }
+
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             AppSectionHeader(
-                              title:
-                                  'Spent on ${_selectedDateFormat.format(selected)}',
+                              title: _calendarSpentHeading(selected),
                               icon: Icons.calendar_today_outlined,
                             ),
-                            if (_isEmpty(summary))
-                              Text(
-                                'No spend recorded on this day.',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                              )
-                            else
-                              HeroSpendCard(
-                                label: 'Total spend',
-                                amount: _currency.format(summary.totalSpend),
-                                secondaryLabel: summary.totalIncome > 0
-                                    ? 'Credits'
-                                    : null,
-                                secondaryAmount: summary.totalIncome > 0
-                                    ? _currency.format(summary.totalIncome)
-                                    : null,
-                              ),
+                            HeroSpendCard(
+                              label: 'Total spend',
+                              amount: _currency.format(summary.totalSpend),
+                              secondaryLabel: summary.totalIncome > 0
+                                  ? 'Credits'
+                                  : null,
+                              secondaryAmount: summary.totalIncome > 0
+                                  ? _currency.format(summary.totalIncome)
+                                  : null,
+                            ),
                             const SizedBox(height: AppSpacing.section),
                             _buildTransactionList(
                               start: _dayStart(selected),
@@ -665,6 +719,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Text(shell ? 'Overview' : 'Dashboard'),
         actions: shell
             ? [
+                if (isList)
+                  _OverviewListFilterAction(
+                    filter: _listFilter,
+                    onChanged: (f) => setState(() => _listFilter = f),
+                    paymentSourceService: widget.paymentSourceService,
+                    categoryService: widget.categoryService,
+                  ),
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: IconButton(
@@ -714,6 +775,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
       ),
       body: body,
+    );
+  }
+}
+
+class _OverviewListFilterAction extends StatelessWidget {
+  const _OverviewListFilterAction({
+    required this.filter,
+    required this.onChanged,
+    required this.paymentSourceService,
+    required this.categoryService,
+  });
+
+  final TransactionListFilter filter;
+  final ValueChanged<TransactionListFilter> onChanged;
+  final PaymentSourceService paymentSourceService;
+  final CategoryService categoryService;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<PaymentSource>>(
+      stream: paymentSourceService.watchAll(),
+      builder: (context, sourcesSnapshot) {
+        return StreamBuilder<List<Category>>(
+          stream: categoryService.watchCategories(),
+          builder: (context, categoriesSnapshot) {
+            return TransactionListFilterBar(
+              filter: filter,
+              onChanged: onChanged,
+              paymentSources: sourcesSnapshot.data ?? const [],
+              categories: categoriesSnapshot.data ?? const [],
+            );
+          },
+        );
+      },
     );
   }
 }

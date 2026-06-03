@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:money_matters/models/category.dart';
 import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/transaction_list_filter.dart';
 import '../../core/widgets/transaction_list_item.dart';
 import '../../services/category_service.dart';
 import '../../services/payment_source_service.dart';
@@ -14,7 +16,7 @@ import '../transactions/transaction_detail_screen.dart';
 import 'dashboard_repository.dart';
 
 /// Lists matched debit transactions for one category in a dashboard period.
-class CategoryDetailScreen extends StatelessWidget {
+class CategoryDetailScreen extends StatefulWidget {
   const CategoryDetailScreen({
     super.key,
     required this.dashboardRepository,
@@ -39,6 +41,13 @@ class CategoryDetailScreen extends StatelessWidget {
   final DateTime periodEnd;
   final String periodLabel;
 
+  @override
+  State<CategoryDetailScreen> createState() => _CategoryDetailScreenState();
+}
+
+class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
+  TransactionListFilter _filter = const TransactionListFilter();
+
   static final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
   static final _dateFormat = DateFormat('d MMM, h:mm a');
 
@@ -50,7 +59,7 @@ class CategoryDetailScreen extends StatelessWidget {
     PaymentSource? source;
     final sourceId = tx.paymentSourceId;
     if (sourceId != null) {
-      source = await dashboardRepository.paymentSourceById(sourceId);
+      source = await widget.dashboardRepository.paymentSourceById(sourceId);
     }
     if (!context.mounted) return;
     await Navigator.push<bool>(
@@ -58,9 +67,9 @@ class CategoryDetailScreen extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => TransactionDetailScreen(
           transaction: tx,
-          reviewRepository: reviewRepository,
-          categoryService: categoryService,
-          paymentSourceService: paymentSourceService,
+          reviewRepository: widget.reviewRepository,
+          categoryService: widget.categoryService,
+          paymentSourceService: widget.paymentSourceService,
           paymentSourceName: source?.name ?? sourceNames[sourceId],
         ),
       ),
@@ -76,46 +85,78 @@ class CategoryDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          StreamBuilder<List<PaymentSource>>(
+            stream: widget.paymentSourceService.watchAll(),
+            builder: (context, sourcesSnapshot) {
+              return StreamBuilder<List<Category>>(
+                stream: widget.categoryService.watchCategories(),
+                builder: (context, categoriesSnapshot) {
+                  return TransactionListFilterBar(
+                    filter: _filter,
+                    onChanged: (f) => setState(() => _filter = f),
+                    paymentSources: sourcesSnapshot.data ?? const [],
+                    categories: categoriesSnapshot.data ?? const [],
+                  );
+                },
+              );
+            },
+          ),
+        ],
+      ),
       body: StreamBuilder<List<PaymentSource>>(
-        stream: paymentSourceService.watchAll(),
+        stream: widget.paymentSourceService.watchAll(),
         builder: (context, sourcesSnapshot) {
           final sourceNames = {
-            for (final s in visiblePaymentSources(sourcesSnapshot.data ?? const []))
+            for (final s
+                in visiblePaymentSources(sourcesSnapshot.data ?? const []))
               s.id: s.name,
           };
 
           return StreamBuilder<List<Transaction>>(
-            stream: dashboardRepository.watchCategoryTransactions(
-              categoryId: categoryId,
-              start: periodStart,
-              end: periodEnd,
+            stream: widget.dashboardRepository.watchCategoryTransactions(
+              categoryId: widget.categoryId,
+              start: widget.periodStart,
+              end: widget.periodEnd,
             ),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final items = snapshot.data!;
-              final total = items.fold(0.0, (sum, t) => sum + t.amount);
-
-              if (items.isEmpty) {
+              final rawItems = snapshot.data!;
+              if (rawItems.isEmpty) {
                 return Center(
                   child: AppEmptyState(
                     icon: Icons.receipt_long_outlined,
                     title: 'No transactions',
                     message:
-                        'No spend in $title for $periodLabel.',
+                        'No spend in ${widget.title} for ${widget.periodLabel}.',
+                  ),
+                );
+              }
+
+              final items = _filter.apply(rawItems);
+              final total = items.fold(0.0, (sum, t) => sum + t.amount);
+
+              if (items.isEmpty) {
+                return Center(
+                  child: AppEmptyState(
+                    icon: Icons.filter_list_off,
+                    title: 'No matching transactions',
+                    message: 'Try clearing or adjusting your filters.',
                   ),
                 );
               }
 
               return RefreshIndicator(
                 onRefresh: () async {
-                  await dashboardRepository.categoryTransactions(
-                    categoryId: categoryId,
-                    start: periodStart,
-                    end: periodEnd,
+                  await widget.dashboardRepository.categoryTransactions(
+                    categoryId: widget.categoryId,
+                    start: widget.periodStart,
+                    end: widget.periodEnd,
                   );
                 },
                 child: ListView.separated(
@@ -126,7 +167,7 @@ class CategoryDetailScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     if (index == 0) {
                       return HeroSpendCard(
-                        label: periodLabel,
+                        label: widget.periodLabel,
                         amount: _currency.format(total),
                         secondaryLabel: 'Transactions',
                         secondaryAmount: '${items.length}',
@@ -136,7 +177,7 @@ class CategoryDetailScreen extends StatelessWidget {
                     final tx = items[index - 1];
                     return TransactionListItem(
                       dateLabel: _dateFormat.format(tx.timestamp),
-                      categoryName: title,
+                      categoryName: widget.title,
                       merchantName: tx.displayMerchant ?? 'Unknown merchant',
                       amountLabel: '-${_currency.format(tx.amount)}',
                       paymentSourceLabel: _sourceLabel(tx, sourceNames),
