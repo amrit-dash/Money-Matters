@@ -10,7 +10,10 @@ import {
 const SETTINGS_COLLECTION = "settings";
 const LLM_DOC_ID = "llm";
 
+export type ApiKeysByProvider = Partial<Record<LlmProviderId, string>>;
+
 export interface StoredUserLlmConfig extends UserLlmConfig {
+  apiKeys: ApiKeysByProvider;
   updatedAt: Timestamp | null;
 }
 
@@ -28,13 +31,18 @@ export async function loadUserLlmConfig(uid: string): Promise<StoredUserLlmConfi
 
   const data = snap.data() ?? {};
   const provider = parseProvider(data.provider) ?? "gemini";
-  const apiKey = trimOrNull(data.apiKey);
+  let apiKeys = parseApiKeys(data.apiKeys);
+  const legacyKey = trimOrNull(data.apiKey);
+  if (legacyKey && !apiKeys[provider]) {
+    apiKeys = {...apiKeys, [provider]: legacyKey};
+  }
   const model = trimOrNull(data.model) ?? DEFAULT_MODELS[provider];
 
   return {
     enabled: data.enabled === true,
     provider,
-    apiKey,
+    apiKeys,
+    apiKey: apiKeys[provider] ?? null,
     model,
     baseUrl: trimOrNull(data.baseUrl),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt : null,
@@ -45,6 +53,7 @@ export function emptyConfig(): StoredUserLlmConfig {
   return {
     enabled: false,
     provider: "gemini",
+    apiKeys: {},
     apiKey: null,
     model: DEFAULT_MODELS.gemini,
     baseUrl: null,
@@ -52,12 +61,29 @@ export function emptyConfig(): StoredUserLlmConfig {
   };
 }
 
+/** Inline request key wins; stored keys are scoped per provider. */
+export function resolveApiKeyForProvider(
+  provider: LlmProviderId,
+  inline: unknown,
+  stored: Pick<StoredUserLlmConfig, "apiKeys" | "apiKey" | "provider">,
+): string | null {
+  const fromRequest = trimOrNull(inline);
+  if (fromRequest) return fromRequest;
+  const fromMap = stored.apiKeys[provider];
+  if (fromMap) return fromMap;
+  if (stored.apiKey && stored.provider === provider) {
+    return stored.apiKey;
+  }
+  return null;
+}
+
 export function resolveRuntimeConfig(
   stored: StoredUserLlmConfig,
   fallbackGeminiKey: string | undefined,
 ): UserLlmConfig & {resolvedKey: string | null} {
-  if (stored.enabled && stored.apiKey) {
-    return {...stored, resolvedKey: stored.apiKey};
+  const activeKey = resolveApiKeyForProvider(stored.provider, null, stored);
+  if (stored.enabled && activeKey) {
+    return {...stored, apiKey: activeKey, resolvedKey: activeKey};
   }
   if (stored.enabled && fallbackGeminiKey && stored.provider === "gemini") {
     return {
@@ -76,7 +102,18 @@ export function resolveRuntimeConfig(
       resolvedKey: fallbackGeminiKey,
     };
   }
-  return {...stored, resolvedKey: null};
+  return {...stored, apiKey: activeKey, resolvedKey: null};
+}
+
+function parseApiKeys(raw: unknown): ApiKeysByProvider {
+  if (!raw || typeof raw !== "object") return {};
+  const out: ApiKeysByProvider = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const provider = parseProvider(key);
+    const apiKey = trimOrNull(value);
+    if (provider && apiKey) out[provider] = apiKey;
+  }
+  return out;
 }
 
 function trimOrNull(value: unknown): string | null {

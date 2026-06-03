@@ -49,17 +49,21 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
     setState(() {
       _draft = settings;
       _selectedModel = settings.effectiveModel;
-      _apiKeyController.text = settings.apiKey ?? '';
+      _apiKeyController.text = settings.apiKeyFor(settings.provider) ?? '';
       _baseUrlController.text = settings.baseUrl ?? '';
       _modelController.text = settings.effectiveModel;
       _loading = false;
     });
   }
 
-  LlmSettings get _workingDraft => _draft.copyWith(
-        apiKey: _apiKeyController.text.trim().isEmpty
-            ? null
-            : _apiKeyController.text.trim(),
+  String? get _apiKeyFromField {
+    final trimmed = _apiKeyController.text.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  LlmSettings get _workingDraft => _draft
+      .withProviderApiKey(_draft.provider, _apiKeyFromField)
+      .copyWith(
         baseUrl: _baseUrlController.text.trim().isEmpty
             ? null
             : _baseUrlController.text.trim(),
@@ -214,9 +218,18 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
                               ? null
                               : (p) {
                                   if (p == null) return;
+                                  final updated = _draft
+                                      .withProviderApiKey(
+                                        _draft.provider,
+                                        _apiKeyFromField,
+                                      )
+                                      .copyWith(provider: p);
                                   setState(() {
-                                    _draft = _draft.copyWith(provider: p);
-                                    _selectedModel = LlmSettings.defaultModels[p];
+                                    _draft = updated;
+                                    _apiKeyController.text =
+                                        updated.apiKeyFor(p) ?? '';
+                                    _selectedModel =
+                                        LlmSettings.defaultModels[p];
                                     _modelController.text = _selectedModel!;
                                     _fetchedModels = [];
                                   });

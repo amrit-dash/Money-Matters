@@ -5,7 +5,7 @@ import {logger} from "firebase-functions";
 
 import {classifyWithProvider, type ProviderCredentials} from "./llm/providers";
 import {writeLlmLog} from "./llm/llmLogs";
-import {loadUserLlmConfig} from "./llm/userLlmConfig";
+import {loadUserLlmConfig, resolveApiKeyForProvider} from "./llm/userLlmConfig";
 import {DEFAULT_MODELS} from "./llm/types";
 import {
   type ClassifyRequest,
@@ -36,11 +36,12 @@ async function resolveRuntimeLlm(
 
   if (docExists) {
     if (!stored.enabled) return null;
-    if (!stored.apiKey) return null;
+    const apiKey = resolveApiKeyForProvider(stored.provider, null, stored);
+    if (!apiKey) return null;
     return {
       creds: {
         provider: stored.provider,
-        apiKey: stored.apiKey,
+        apiKey,
         model: stored.model ?? DEFAULT_MODELS[stored.provider],
         baseUrl: stored.baseUrl,
       },
@@ -109,7 +110,8 @@ export const classifyTransaction = onCall(
     if (!runtime) {
       const stored = await loadUserLlmConfig(uid);
       const docExists = await userLlmDocExists(uid);
-      const reason = stored.enabled && !stored.apiKey ?
+      const activeKey = resolveApiKeyForProvider(stored.provider, null, stored);
+      const reason = stored.enabled && !activeKey ?
         "LLM enabled but API key missing" :
         docExists && !stored.enabled ?
           "LLM disabled in Agent settings" :

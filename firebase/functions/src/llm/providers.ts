@@ -8,6 +8,10 @@ import {
   type ClassifyResult,
 } from "../classifyTransaction.schema";
 import {
+  resolveApiKeyForProvider,
+  type StoredUserLlmConfig,
+} from "./userLlmConfig";
+import {
   DEFAULT_MODELS,
   type LlmProviderId,
   parseProvider,
@@ -75,12 +79,14 @@ export async function classifyWithProvider(
 
 export function credentialsFromRequest(
   data: Record<string, unknown>,
-  stored?: {provider: LlmProviderId; apiKey: string | null; model: string | null; baseUrl: string | null},
+  stored?: StoredUserLlmConfig,
 ): ProviderCredentials {
   const provider = parseProvider(data.provider) ??
     stored?.provider ??
     "gemini";
-  const apiKey = trimOrNull(data.apiKey) ?? stored?.apiKey;
+  const apiKey = stored ?
+    resolveApiKeyForProvider(provider, data.apiKey, stored) :
+    trimOrNull(data.apiKey);
   if (!apiKey) {
     throw new Error("API key is required");
   }
