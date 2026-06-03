@@ -549,8 +549,9 @@ class _CategoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final barColor = categoryAccentColor(scheme, accentIndex);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final barColor = categoryAccentColor(theme, accentIndex);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.tight),

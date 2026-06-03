@@ -27,8 +27,9 @@ class CategorySpendBarChart extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final scheme = Theme.of(context).colorScheme;
-    final accents = chartAccentColors(scheme);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final accents = chartAccentColors(theme);
     final top = breakdown.take(maxBars).toList();
     final maxAmount = top.map((b) => b.amount).reduce((a, b) => a > b ? a : b);
 
@@ -218,8 +219,9 @@ class CategorySpendPieChart extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final scheme = Theme.of(context).colorScheme;
-    final accents = chartAccentColors(scheme);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final accents = chartAccentColors(theme);
     final slices = breakdown.take(maxSlices).toList();
     final otherAmount = breakdown
         .skip(maxSlices)
