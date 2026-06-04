@@ -94,12 +94,11 @@ class AppSectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.item),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 4,
             height: 24,
-            margin: const EdgeInsets.only(top: 2),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2),
               gradient: LinearGradient(
