@@ -357,6 +357,11 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           ),
         );
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not apply: $e')),
+      );
     } finally {
       if (mounted) setState(() => _nlSending = false);
     }
@@ -475,6 +480,11 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
           ),
         );
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('AI classify failed: $e')),
+      );
     } finally {
       if (mounted) setState(() => _aiLoading = false);
     }
@@ -501,9 +511,18 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
     required String id,
     required String name,
   }) async {
-    final created = await AppScope.of(context)
-        .categoryService
-        .createUserCategory(id: id, name: name);
+    Category? created;
+    try {
+      created = await AppScope.of(context)
+          .categoryService
+          .createUserCategory(id: id, name: name);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not create category: $e')),
+      );
+      return;
+    }
     if (!mounted) return;
     if (created == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -511,15 +530,16 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       );
       return;
     }
+    final newCategory = created;
     final categories = await widget.repository.availableCategories();
     if (!mounted) return;
     setState(() {
       _categories = categories;
-      _selectedCategoryId = created.id;
+      _selectedCategoryId = newCategory.id;
       _selectedSubcategoryId = null;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Added category "${created.name}"')),
+      SnackBar(content: Text('Added category "${newCategory.name}"')),
     );
   }
 
@@ -574,8 +594,11 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
+      final message = e is StateError && e.message.contains('without an id')
+          ? 'This transaction is not ready to save yet. Try Recovery sync, then open it again.'
+          : 'Could not save: $e';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save: $e')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted && !popped) {

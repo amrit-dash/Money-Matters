@@ -138,6 +138,23 @@ void main() {
     expect(payload['model'], 'grok-4.3');
   });
 
+  test('toFirestore always includes active provider model in models map', () {
+    const settings = LlmSettings(
+      enabled: true,
+      provider: LlmProvider.grok,
+      apiKeys: {LlmProvider.grok: 'xai'},
+    );
+
+    final persisted = settings.withProviderModel(
+      LlmProvider.grok,
+      settings.effectiveModel,
+    );
+    final payload = persisted.toFirestore();
+
+    expect(payload['models'], {'grok': 'grok-4.3'});
+    expect(payload['model'], 'grok-4.3');
+  });
+
   test('toCallablePayload omits empty api key when includeSecrets false', () {
     const settings = LlmSettings(
       enabled: true,

@@ -50,11 +50,13 @@ export async function fetchProviderModels(
         "X-Title": "Money Matters",
       },
     );
-  case "grok":
-    return fetchOpenAiCompatibleModels(
+  case "grok": {
+    const models = await fetchOpenAiCompatibleModels(
       "https://api.x.ai/v1/models",
       creds.apiKey,
     );
+    return filterGrokChatModelIds(models);
+  }
   case "mistral":
     return fetchOpenAiCompatibleModels(
       "https://api.mistral.ai/v1/models",
@@ -136,6 +138,10 @@ async function pingGemini(apiKey: string, model: string): Promise<void> {
 }
 
 async function pingOpenAiCompatible(creds: ProviderCredentials): Promise<void> {
+  if (creds.provider === "grok") {
+    await pingGrokChat(creds);
+    return;
+  }
   const res = await fetch(modelsListUrl(creds), {
     headers: {
       Authorization: `Bearer ${creds.apiKey}`,
@@ -149,6 +155,28 @@ async function pingOpenAiCompatible(creds: ProviderCredentials): Promise<void> {
     throw new Error(
       `${creds.provider} key test failed (${res.status}): ${body.slice(0, 200)}`,
     );
+  }
+}
+
+/** Grok keys can list models but fail classify when the budget is too small for reasoning. */
+async function pingGrokChat(creds: ProviderCredentials): Promise<void> {
+  const res = await fetch(chatCompletionsUrl(creds), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${creds.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: creds.model,
+      temperature: 0,
+      max_completion_tokens: 16,
+      reasoning_effort: "low",
+      messages: [{role: "user", content: "Reply with OK"}],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`grok key test failed (${res.status}): ${body.slice(0, 200)}`);
   }
 }
 
@@ -228,12 +256,58 @@ async function callGemini(
   return parseClassifyResponse(parsed, data);
 }
 
+/** Exported for unit tests. */
+export function buildOpenAiCompatibleClassifyBody(
+  creds: ProviderCredentials,
+  data: ClassifyRequest,
+): Record<string, unknown> {
+  const schemaHint = JSON.stringify(RESPONSE_SCHEMA);
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You classify Indian bank SMS transactions. Respond with JSON only matching this schema: " +
+        schemaHint,
+    },
+    {role: "user", content: buildPrompt(data)},
+  ];
+  const base = {
+    model: creds.model,
+    temperature: 0.1,
+    response_format: {type: "json_object"},
+    messages,
+  };
+  if (creds.provider === "grok") {
+    return {
+      ...base,
+      max_completion_tokens: 2048,
+      reasoning_effort: "low",
+    };
+  }
+  return {...base, max_tokens: 512};
+}
+
+/** Keep chat-capable Grok models; image/embedding ids fail on /chat/completions. */
+export function filterGrokChatModelIds(ids: string[]): string[] {
+  return ids.filter((id) => {
+    const lower = id.toLowerCase();
+    if (!lower.startsWith("grok")) return false;
+    if (
+      lower.includes("vision") ||
+      lower.includes("image") ||
+      lower.includes("embed")
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
 async function callOpenAiCompatible(
   creds: ProviderCredentials,
   data: ClassifyRequest,
 ): Promise<ClassifyResult> {
   const chatUrl = chatCompletionsUrl(creds);
-  const schemaHint = JSON.stringify(RESPONSE_SCHEMA);
   const res = await fetch(chatUrl, {
     method: "POST",
     headers: {
@@ -243,21 +317,7 @@ async function callOpenAiCompatible(
         {"HTTP-Referer": "https://money-matters.app", "X-Title": "Money Matters"} :
         {}),
     },
-    body: JSON.stringify({
-      model: creds.model,
-      temperature: 0.1,
-      max_tokens: 512,
-      response_format: {type: "json_object"},
-      messages: [
-        {
-          role: "system",
-          content:
-            "You classify Indian bank SMS transactions. Respond with JSON only matching this schema: " +
-            schemaHint,
-        },
-        {role: "user", content: buildPrompt(data)},
-      ],
-    }),
+    body: JSON.stringify(buildOpenAiCompatibleClassifyBody(creds, data)),
   });
 
   if (!res.ok) {
@@ -267,15 +327,24 @@ async function callOpenAiCompatible(
       status: res.status,
       body,
     });
-    throw new Error(`${creds.provider} classify failed (${res.status})`);
+    throw new Error(
+      `${creds.provider} classify failed (${res.status}): ${body.slice(0, 200)}`,
+    );
   }
 
   const json = (await res.json()) as {
-    choices?: Array<{message?: {content?: string}}>;
+    choices?: Array<{
+      message?: {content?: string | null};
+      finish_reason?: string | null;
+    }>;
   };
-  const text = json.choices?.[0]?.message?.content;
+  const choice = json.choices?.[0];
+  const text = choice?.message?.content;
   if (!text) {
-    throw new Error(`${creds.provider} returned empty response`);
+    const reason = choice?.finish_reason ?? "unknown";
+    throw new Error(
+      `${creds.provider} returned empty response (finish_reason=${reason})`,
+    );
   }
 
   const parsed = JSON.parse(text) as Record<string, unknown>;

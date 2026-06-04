@@ -69,14 +69,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
 
   LlmSettings _persistFieldEdits(LlmSettings base) {
     final modelFromField = _modelController.text.trim();
+    final modelToPersist = modelFromField.isNotEmpty
+        ? modelFromField
+        : (base.modelFor(base.provider) ?? base.effectiveModel);
     return base
         .withProviderApiKey(base.provider, _apiKeyFromField)
-        .withProviderModel(
-          base.provider,
-          _fetchedModels.isEmpty && modelFromField.isNotEmpty
-              ? modelFromField
-              : base.modelFor(base.provider),
-        )
+        .withProviderModel(base.provider, modelToPersist)
         .copyWith(
           baseUrl: _baseUrlController.text.trim().isEmpty
               ? null
@@ -159,7 +157,9 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
   }
 
   Future<void> _save() async {
-    final draft = _workingDraft.copyWith(enabled: _draft.enabled);
+    var draft = _workingDraft.copyWith(enabled: _draft.enabled);
+    // Always persist the active provider's model into the per-provider map.
+    draft = draft.withProviderModel(draft.provider, draft.effectiveModel);
 
     if (draft.enabled && !draft.isConfigured) {
       _snack('Enable requires a provider, API key, and model');
@@ -171,11 +171,16 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> {
     }
 
     await _runBusy(() async {
-      await widget.llmSettingsService.save(draft);
-      if (!mounted) return;
-      setState(() => _draft = draft);
-      _snack('Agent settings saved');
-      Navigator.pop(context, true);
+      try {
+        await widget.llmSettingsService.save(draft);
+        if (!mounted) return;
+        setState(() => _draft = draft);
+        _snack('Agent settings saved');
+        Navigator.pop(context, true);
+      } catch (e) {
+        if (!mounted) return;
+        _snack('Could not save: $e');
+      }
     });
   }
 

@@ -260,35 +260,48 @@ class LocalReviewRepository implements ReviewRepository {
   }) async {
     await _db.updateTransactionPaymentSource(transactionId, paymentSourceId);
 
-    final uid = _authService.requireUid();
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('transactions')
-        .doc(transactionId)
-        .set({
-      'paymentSourceId': paymentSourceId,
-      'unmatched': false,
-    }, SetOptions(merge: true));
+    if (_isSignedInSafely()) {
+      try {
+        final uid = _authService.requireUid();
+        await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('transactions')
+            .doc(transactionId)
+            .set({
+          'paymentSourceId': paymentSourceId,
+          'unmatched': false,
+        }, SetOptions(merge: true))
+            .timeout(_remoteSyncTimeout);
+      } catch (_) {
+        // Local link already saved.
+      }
+    }
 
     final tx = await transactionById(transactionId);
     if (tx == null) return;
 
-    final ingestRow = await _db.getRawIngest(tx.rawIngestId);
-    if (ingestRow == null) return;
+    try {
+      final ingestRow = await _db.getRawIngest(tx.rawIngestId);
+      if (ingestRow == null) return;
 
-    final body = ingestRow['body'] as String? ?? '';
-    final sender = ingestRow['sender'] as String? ?? '';
-    final last4 = _rulesParser.extractInstrumentLast4(body);
-    await _paymentSources?.learnFromTransaction(
-      paymentSourceId: paymentSourceId,
-      sender: sender,
-      body: body,
-      merchant: tx.merchant,
-      instrumentLast4: last4,
-    );
-    _categories.invalidateCache();
-    await _parsePipeline?.processBacklog();
+      final body = ingestRow['body'] as String? ?? '';
+      final sender = ingestRow['sender'] as String? ?? '';
+      final last4 = _rulesParser.extractInstrumentLast4(body);
+      await _paymentSources
+          ?.learnFromTransaction(
+            paymentSourceId: paymentSourceId,
+            sender: sender,
+            body: body,
+            merchant: tx.merchant,
+            instrumentLast4: last4,
+          )
+          .timeout(_remoteSyncTimeout);
+      _categories.invalidateCache();
+      _scheduleBacklogProcessing();
+    } catch (_) {
+      // Hint learning and backlog are best-effort.
+    }
   }
 
   @override
@@ -363,31 +376,43 @@ class LocalReviewRepository implements ReviewRepository {
       );
     }
 
-    final uid = _authService.requireUid();
-    await _firestore.collection('users').doc(uid).collection('transactions').doc(id).set({
-      if (transaction.categoryId != null) 'categoryId': transaction.categoryId,
-      if (transaction.subcategoryId != null &&
-          transaction.subcategoryId!.isNotEmpty)
-        'subcategoryId': transaction.subcategoryId,
-      'ambiguous': transaction.ambiguous,
-      'needsClassification': transaction.needsClassification,
-      'classifiedBy': ClassifiedBy.llm.name,
-      if (transaction.merchantNormalized != null)
-        'merchantNormalized': transaction.merchantNormalized,
-      if (transaction.userNotes != null) 'userNotes': transaction.userNotes,
-      if (transaction.shoppingItems.isNotEmpty)
-        'shoppingItems': transaction.shoppingItems,
-      if (transaction.travelProvider != null &&
-          transaction.travelProvider!.isNotEmpty)
-        'travelProvider': transaction.travelProvider,
-      if (transaction.transferTo != null && transaction.transferTo!.isNotEmpty)
-        'transferTo': transaction.transferTo,
-      if (transaction.merchant != null) 'merchant': transaction.merchant,
-      if (transaction.paymentSourceId != null) ...{
-        'paymentSourceId': transaction.paymentSourceId,
-        'unmatched': transaction.unmatched,
-      },
-    }, SetOptions(merge: true));
+    if (!_isSignedInSafely()) return;
+
+    try {
+      final uid = _authService.requireUid();
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('transactions')
+          .doc(id)
+          .set({
+        if (transaction.categoryId != null) 'categoryId': transaction.categoryId,
+        if (transaction.subcategoryId != null &&
+            transaction.subcategoryId!.isNotEmpty)
+          'subcategoryId': transaction.subcategoryId,
+        'ambiguous': transaction.ambiguous,
+        'needsClassification': transaction.needsClassification,
+        'classifiedBy': ClassifiedBy.llm.name,
+        if (transaction.merchantNormalized != null)
+          'merchantNormalized': transaction.merchantNormalized,
+        if (transaction.userNotes != null) 'userNotes': transaction.userNotes,
+        if (transaction.shoppingItems.isNotEmpty)
+          'shoppingItems': transaction.shoppingItems,
+        if (transaction.travelProvider != null &&
+            transaction.travelProvider!.isNotEmpty)
+          'travelProvider': transaction.travelProvider,
+        if (transaction.transferTo != null && transaction.transferTo!.isNotEmpty)
+          'transferTo': transaction.transferTo,
+        if (transaction.merchant != null) 'merchant': transaction.merchant,
+        if (transaction.paymentSourceId != null) ...{
+          'paymentSourceId': transaction.paymentSourceId,
+          'unmatched': transaction.unmatched,
+        },
+      }, SetOptions(merge: true))
+          .timeout(_remoteSyncTimeout);
+    } catch (_) {
+      // Local AI classification already applied.
+    }
   }
 
   @override

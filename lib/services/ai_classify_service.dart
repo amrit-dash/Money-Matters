@@ -26,6 +26,14 @@ class AiClassifyService {
   final CategoryService _categories;
   final PaymentSourceService _paymentSources;
 
+  Future<List<PaymentSource>> _loadPaymentSources() async {
+    try {
+      return await _paymentSources.loadAll();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// User-typed description from Inbox classify (explicit confirmation).
   Future<AiClassifyFormUpdate> classifyFromUserText(
     Transaction tx,
@@ -37,7 +45,7 @@ class AiClassifyService {
       return const AiClassifyFormUpdate(errorMessage: 'Enter a description first');
     }
     final categories = await _categories.loadCategories();
-    final sources = await _paymentSources.loadAll();
+    final sources = await _loadPaymentSources();
     final result = await _classify(
       tx,
       categories,
@@ -57,7 +65,7 @@ class AiClassifyService {
     String? selectedSubcategoryId,
   }) async {
     final categories = await _categories.loadCategories();
-    final sources = await _paymentSources.loadAll();
+    final sources = await _loadPaymentSources();
     final result = await _classify(
       tx,
       categories,
@@ -130,7 +138,7 @@ class AiClassifyService {
   Future<({Transaction? transaction, bool needsConfig, String? error})>
       applyToTransaction(Transaction tx) async {
     final categories = await _categories.loadCategories();
-    final sources = await _paymentSources.loadAll();
+    final sources = await _loadPaymentSources();
     final result = await _classify(tx, categories, sources);
     if (result == null) {
       return (transaction: tx, needsConfig: false, error: null);
