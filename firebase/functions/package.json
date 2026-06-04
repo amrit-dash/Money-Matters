@@ -9,7 +9,7 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "lint": "tsc --noEmit",
-    "test": "npm run build && node --test lib/classifyTransaction.test.js lib/llm/userLlmConfig.test.js lib/llm/providers.test.js lib/parseJobMaintenance.test.js",
+    "test": "npm run build && node --test lib/classifyTransaction.test.js lib/llm/userLlmConfig.test.js lib/llm/providers.test.js lib/parseJobMaintenance.test.js lib/parse/rulesParser.test.js",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions"
   },

@@ -10,6 +10,7 @@ import '../models/category_taxonomy.dart';
 import '../models/payment_source.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart';
+import '../ingest/ingest_repository.dart';
 import '../features/dashboard/local_dashboard_repository.dart';
 import '../parse/llm_parser.dart';
 import '../parse/parse_service.dart';
@@ -109,6 +110,7 @@ class IngestParsePipeline {
   static const _rulesParser = RulesParser();
   static const _parseJobsCollection = 'parse_jobs';
   static const _transactionsCollection = 'transactions';
+  static const _rawIngestsCollection = 'raw_ingests';
 
   Future<ParsePipelineResult> processPending({
     List<PaymentSource>? paymentSources,
@@ -140,6 +142,12 @@ class IngestParsePipeline {
     for (final row in rows) {
       final ingest = _rawIngestFromRow(row);
       try {
+        if (await _isCloudProcessed(ingest.id)) {
+          await _mirrorCloudParseComplete(ingest.id);
+          skipped++;
+          continue;
+        }
+
         final outcome = await _parseService.parse(
           ingest,
           paymentSources: sources,
@@ -505,6 +513,49 @@ class IngestParsePipeline {
       transaction: updated,
       applied: updated != tx,
     );
+  }
+
+  Future<bool> _isCloudProcessed(String rawIngestId) async {
+    if (!_authService.isSignedIn) return false;
+    final uid = _authService.requireUid();
+    final doc = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection(_rawIngestsCollection)
+        .doc(rawIngestId)
+        .get();
+    if (!doc.exists) return false;
+    return !IngestRepository.isUnprocessedRawIngest(doc.data() ?? {});
+  }
+
+  /// Syncs local SQLite when Phase 1 cloud parse already finished the job.
+  Future<void> _mirrorCloudParseComplete(String rawIngestId) async {
+    await _localDatabase.markRawIngestProcessed(rawIngestId);
+
+    final uid = _authService.requireUid();
+    final jobs = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection(_parseJobsCollection)
+        .where('rawIngestId', isEqualTo: rawIngestId)
+        .limit(5)
+        .get();
+
+    final syncedAt = DateTime.now().toUtc().toIso8601String();
+    for (final doc in jobs.docs) {
+      final data = doc.data();
+      final status = data['status'] as String? ?? 'pending';
+      if (status != 'done' && status != 'failed') continue;
+      await _localDatabase.upsertParseJob({
+        'id': doc.id,
+        'raw_ingest_id': rawIngestId,
+        'status': status,
+        'rules_version': data['rulesVersion'] as String? ?? _rulesVersion,
+        'error': data['error'],
+        'updated_at': syncedAt,
+        'synced_at': syncedAt,
+      });
+    }
   }
 
   RawIngest _rawIngestFromRow(Map<String, dynamic> row) {

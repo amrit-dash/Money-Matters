@@ -1,8 +1,9 @@
-import {FieldValue, getFirestore, Timestamp} from "firebase-admin/firestore";
+import {FieldValue, getFirestore, Timestamp, DocumentReference} from "firebase-admin/firestore";
 import {onRequest} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions";
 import {AuthError, resolveUidFromBearer} from "./auth";
 import {computeIdempotencyKey} from "./normalize";
+import {runCloudParse} from "./parse/cloudParseService";
 
 const ALLOWED_SOURCES = new Set([
   "shortcuts-automation-v1",
@@ -166,6 +167,7 @@ export const ingestSms = onRequest(
       const now = FieldValue.serverTimestamp();
 
       let created = false;
+      let parseJobRef: DocumentReference | null = null;
       await db.runTransaction(async (tx) => {
         const snap = await tx.get(rawIngestRef);
         if (snap.exists) {
@@ -187,7 +189,7 @@ export const ingestSms = onRequest(
           processedAt: null,
         });
 
-        const parseJobRef = db
+        parseJobRef = db
           .collection("users")
           .doc(uid)
           .collection("parse_jobs")
@@ -209,6 +211,18 @@ export const ingestSms = onRequest(
           id: idempotencyKey,
         });
         return;
+      }
+
+      if (parseJobRef) {
+        try {
+          await runCloudParse(db, uid, idempotencyKey, parseJobRef);
+        } catch (parseErr) {
+          logger.error("Inline cloud parse failed; parseRawIngest may retry", {
+            uid,
+            idempotencyKey,
+            parseErr,
+          });
+        }
       }
 
       logger.info("Ingest created", {

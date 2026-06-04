@@ -5,6 +5,7 @@ import {notifyClassification} from "./notifyClassification";
 import {testLlmApiKey} from "./testLlmApiKey";
 import {fetchLlmModels} from "./fetchLlmModels";
 import {retryStuckParseJobs} from "./retryStuckParseJobs";
+import {parseRawIngest} from "./parseRawIngest";
 
 initializeApp();
 
@@ -15,4 +16,5 @@ export {
   testLlmApiKey,
   fetchLlmModels,
   retryStuckParseJobs,
+  parseRawIngest,
 };

@@ -15,14 +15,13 @@ import {
   STUCK_PENDING_MS,
   uidFromParseJobPath,
 } from "./parseJobMaintenance";
+import {runCloudParse} from "./parse/cloudParseService";
 
 const STUCK_QUERY_LIMIT = 100;
 
 /**
- * Phase 3 maintenance: mark long-pending parse jobs and nudge the app to drain.
- *
- * Does not parse SMS server-side (Phase 1). Opening the app after a nudge runs
- * the existing IngestQueueDrain + IngestParsePipeline path.
+ * Phase 3 maintenance: re-parse stuck pending jobs server-side, mark stuckAt,
+ * and nudge the app to drain when FCM tokens exist.
  */
 export const retryStuckParseJobs = onSchedule(
   {
@@ -49,6 +48,7 @@ export const retryStuckParseJobs = onSchedule(
     }
 
     let marked = 0;
+    let reparsed = 0;
     const nudgeUids: string[] = [];
 
     for (const doc of snapshot.docs) {
@@ -64,6 +64,16 @@ export const retryStuckParseJobs = onSchedule(
 
       if (!isStuckPendingJob(job, nowMs)) continue;
 
+      const rawIngestId = data.rawIngestId as string | undefined;
+      const uid = uidFromParseJobPath(doc.ref.path);
+      if (uid && rawIngestId) {
+        const outcome = await runCloudParse(db, uid, rawIngestId, doc.ref);
+        if (outcome.status === "done" || outcome.status === "skipped") {
+          reparsed++;
+          continue;
+        }
+      }
+
       if (shouldMarkStuck(job)) {
         await doc.ref.update({
           stuckAt: FieldValue.serverTimestamp(),
@@ -71,7 +81,6 @@ export const retryStuckParseJobs = onSchedule(
         marked++;
       }
 
-      const uid = uidFromParseJobPath(doc.ref.path);
       if (uid) nudgeUids.push(uid);
     }
 
@@ -85,6 +94,7 @@ export const retryStuckParseJobs = onSchedule(
 
     logger.info("retryStuckParseJobs complete", {
       scanned: snapshot.size,
+      reparsed,
       marked,
       nudgesSent,
     });
