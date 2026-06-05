@@ -8,8 +8,10 @@ OUT="${2:-ios/ExportOptions.ci.plist}"
 PLIST_XML="$(security cms -D -i "$PROFILE")"
 TEAM_ID="$(printf '%s' "$PLIST_XML" | plutil -extract TeamIdentifier.0 raw -)"
 PROFILE_NAME="$(printf '%s' "$PLIST_XML" | plutil -extract Name raw -)"
+APP_ID="$(printf '%s' "$PLIST_XML" | plutil -extract Entitlements.application-identifier raw -)"
+BUNDLE_ID="${APP_ID#*.}"
 
-# Personal Team profiles are "Xcode managed" — export must use automatic signingStyle.
+# CI has no Apple ID in Xcode — manual signing with the imported profile.
 cat > "$OUT" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -20,7 +22,12 @@ cat > "$OUT" <<EOF
 	<key>teamID</key>
 	<string>${TEAM_ID}</string>
 	<key>signingStyle</key>
-	<string>automatic</string>
+	<string>manual</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>${BUNDLE_ID}</key>
+		<string>${PROFILE_NAME}</string>
+	</dict>
 	<key>compileBitcode</key>
 	<false/>
 	<key>uploadBitcode</key>
@@ -35,4 +42,4 @@ cat > "$OUT" <<EOF
 </plist>
 EOF
 
-echo "Wrote ${OUT} (team=${TEAM_ID}, profile=${PROFILE_NAME}, signing=automatic)"
+echo "Wrote ${OUT} (team=${TEAM_ID}, profile=${PROFILE_NAME}, bundle=${BUNDLE_ID}, signing=manual)"

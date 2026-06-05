@@ -117,8 +117,14 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
           PP_UUID=$(security cms -D -i "$PP_PATH" | plutil -extract UUID raw -)
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"${PP_UUID}.mobileprovision"
+          for PROFILE_DIR in \
+            "$HOME/Library/MobileDevice/Provisioning Profiles" \
+            "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$PROFILE_DIR"
+            cp "$PP_PATH" "$PROFILE_DIR/${PP_UUID}.mobileprovision"
+          done
+          echo "Installed provisioning profile ${PP_UUID}"
+          security find-identity -v -p codesigning | head -5 || true
 
           chmod +x scripts/prepare_export_options_ci.sh scripts/configure_ci_signing.sh
           ./scripts/prepare_export_options_ci.sh "$PP_PATH"

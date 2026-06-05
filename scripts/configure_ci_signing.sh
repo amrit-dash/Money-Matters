@@ -9,6 +9,7 @@ EXPECTED_BUNDLE_ID="${3:-com.amritdash.moneymatters}"
 PLIST_XML="$(security cms -D -i "$PROFILE")"
 TEAM_ID="$(printf '%s' "$PLIST_XML" | plutil -extract TeamIdentifier.0 raw -)"
 PROFILE_NAME="$(printf '%s' "$PLIST_XML" | plutil -extract Name raw -)"
+PROFILE_UUID="$(printf '%s' "$PLIST_XML" | plutil -extract UUID raw -)"
 APP_ID="$(printf '%s' "$PLIST_XML" | plutil -extract Entitlements.application-identifier raw -)"
 BUNDLE_ID="${APP_ID#*.}"
 
@@ -17,12 +18,12 @@ if [[ "$BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]]; then
   exit 1
 fi
 
-export TEAM_ID PROFILE_NAME
+export TEAM_ID PROFILE_NAME PROFILE_UUID
 perl -0777 -i -pe '
   s{(buildSettings = \{)(.*?PRODUCT_BUNDLE_IDENTIFIER = com\.amritdash\.moneymatters;.*?)(\t\t\t\};)}{
     my ($open, $body, $close) = ($1, $2, $3);
     $body =~ s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g;
-    $body =~ s/PROVISIONING_PROFILE_SPECIFIER = "";/PROVISIONING_PROFILE_SPECIFIER = "$ENV{PROFILE_NAME}";/g;
+    $body =~ s/PROVISIONING_PROFILE_SPECIFIER = "";/PROVISIONING_PROFILE_SPECIFIER = "$ENV{PROFILE_UUID}";/g;
     $body =~ s/DEVELOPMENT_TEAM = [A-Z0-9]+;/DEVELOPMENT_TEAM = $ENV{TEAM_ID};/g;
     "$open$body$close";
   }gse
@@ -31,4 +32,5 @@ perl -0777 -i -pe '
 echo "Configured manual signing in ${PBXPROJ}"
 echo "  team=${TEAM_ID}"
 echo "  profile=${PROFILE_NAME}"
+echo "  profile_uuid=${PROFILE_UUID}"
 echo "  bundle=${BUNDLE_ID}"
