@@ -43,12 +43,16 @@ class UrlIngestHandler {
   static const scheme = 'moneymatters';
   static const ingestHost = 'ingest';
   static const recoveryHost = 'recovery';
+  static const classifyHost = 'classify';
 
   final StreamController<UrlIngestPayload> _ingestEvents =
       StreamController<UrlIngestPayload>.broadcast();
 
   final StreamController<Uri> _recoveryEvents =
       StreamController<Uri>.broadcast();
+
+  final StreamController<String> _classifyEvents =
+      StreamController<String>.broadcast();
 
   StreamSubscription<Uri>? _linkSubscription;
 
@@ -57,6 +61,9 @@ class UrlIngestHandler {
 
   /// Emits when `moneymatters://recovery` is opened (Shortcut B).
   Stream<Uri> get onRecoveryUrl => _recoveryEvents.stream;
+
+  /// Emits transaction id from `moneymatters://classify?txId=...`.
+  Stream<String> get onClassifyUrl => _classifyEvents.stream;
 
   /// Starts listening for initial and subsequent deep links.
   Future<void> start() async {
@@ -80,6 +87,11 @@ class UrlIngestHandler {
         }
       case recoveryHost:
         _recoveryEvents.add(uri);
+      case classifyHost:
+        final txId = uri.queryParameters['txId'];
+        if (txId != null && txId.isNotEmpty) {
+          _classifyEvents.add(txId);
+        }
       default:
         break;
     }
@@ -119,5 +131,6 @@ class UrlIngestHandler {
     _linkSubscription?.cancel();
     _ingestEvents.close();
     _recoveryEvents.close();
+    _classifyEvents.close();
   }
 }

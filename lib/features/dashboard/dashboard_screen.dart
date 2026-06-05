@@ -38,6 +38,7 @@ class DashboardScreen extends StatefulWidget {
     this.queueDrain,
     this.embeddedInShell = false,
     this.onInboxCountChanged,
+    this.onShellTabSelected,
   });
 
   final DashboardRepository repository;
@@ -48,6 +49,7 @@ class DashboardScreen extends StatefulWidget {
   final IngestQueueDrain? queueDrain;
   final bool embeddedInShell;
   final VoidCallback? onInboxCountChanged;
+  final void Function(int tabIndex)? onShellTabSelected;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -377,32 +379,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 }
 
-                return Column(
-                  children: [
-                    for (final tx in items)
-                      Padding(
-                        padding:
-                            const EdgeInsets.only(bottom: AppSpacing.tight),
-                        child: TransactionListItem(
-                          dateLabel: _dateFormat.format(tx.timestamp),
-                          categoryName: _categoryLabel(tx, categoryNames),
-                          merchantName:
-                              tx.displayMerchant ?? 'Unknown merchant',
-                          amountLabel:
-                              '${tx.type == TransactionType.credit ? '+' : '-'}'
-                              '${_currency.format(tx.amount)}',
-                          paymentSourceLabel:
-                              _sourceLabel(tx, sourceNames),
-                          isCredit: tx.type == TransactionType.credit,
-                          onTap: () => _openTransaction(
-                            context,
-                            tx: tx,
-                            sourceNames: sourceNames,
-                            categoryNames: categoryNames,
-                          ),
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final tx = items[index];
+                    return Padding(
+                      padding:
+                          const EdgeInsets.only(bottom: AppSpacing.tight),
+                      child: TransactionListItem(
+                        dateLabel: _dateFormat.format(tx.timestamp),
+                        categoryName: _categoryLabel(tx, categoryNames),
+                        merchantName:
+                            tx.displayMerchant ?? 'Unknown merchant',
+                        amountLabel:
+                            '${tx.type == TransactionType.credit ? '+' : '-'}'
+                            '${_currency.format(tx.amount)}',
+                        paymentSourceLabel: _sourceLabel(tx, sourceNames),
+                        isCredit: tx.type == TransactionType.credit,
+                        onTap: () => _openTransaction(
+                          context,
+                          tx: tx,
+                          sourceNames: sourceNames,
+                          categoryNames: categoryNames,
                         ),
                       ),
-                  ],
+                    );
+                  },
                 );
               },
             );
@@ -459,8 +463,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _PipelineSummary(
             synced: _rawIngestCount,
             parsed: _transactionCount,
-            onOpenRecovery: () =>
-                Navigator.pushNamed(context, AppRoutes.recovery),
+            onOpenRecovery: () {
+              if (widget.embeddedInShell &&
+                  widget.onShellTabSelected != null) {
+                widget.onShellTabSelected!(3);
+              } else {
+                Navigator.pushNamed(context, AppRoutes.recovery);
+              }
+            },
           ),
           const SizedBox(height: AppSpacing.item),
         ],
@@ -524,8 +534,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 transactionCount: _transactionCount,
                 onConnectSms: () =>
                     Navigator.pushNamed(context, AppRoutes.connectSms),
-                onRecovery: () =>
-                    Navigator.pushNamed(context, AppRoutes.recovery),
+                onRecovery: () {
+                  if (widget.embeddedInShell &&
+                      widget.onShellTabSelected != null) {
+                    widget.onShellTabSelected!(3);
+                  } else {
+                    Navigator.pushNamed(context, AppRoutes.recovery);
+                  }
+                },
               ),
             )
           else ...[
@@ -757,7 +773,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       tooltip: 'Needs your input',
                       onPressed: () {
-                        Navigator.pushNamed(context, AppRoutes.review);
+                        if (widget.embeddedInShell &&
+                            widget.onShellTabSelected != null) {
+                          widget.onShellTabSelected!(2);
+                        } else {
+                          Navigator.pushNamed(context, AppRoutes.review);
+                        }
                       },
                     );
                   },
@@ -765,16 +786,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 IconButton(
                   icon: const Icon(Icons.cloud_sync_outlined),
                   tooltip: 'Recovery queue',
-                  onPressed: () =>
-                      Navigator.pushNamed(context, AppRoutes.recovery),
+                  onPressed: () {
+                    if (widget.embeddedInShell &&
+                        widget.onShellTabSelected != null) {
+                      widget.onShellTabSelected!(3);
+                    } else {
+                      Navigator.pushNamed(context, AppRoutes.recovery);
+                    }
+                  },
                 ),
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: IconButton(
                     icon: const Icon(Icons.person_outline),
                     tooltip: 'Profile',
-                    onPressed: () =>
-                        Navigator.pushNamed(context, AppRoutes.profile),
+                    onPressed: () {
+                      if (widget.embeddedInShell &&
+                          widget.onShellTabSelected != null) {
+                        widget.onShellTabSelected!(4);
+                      } else {
+                        Navigator.pushNamed(context, AppRoutes.profile);
+                      }
+                    },
                   ),
                 ),
               ],

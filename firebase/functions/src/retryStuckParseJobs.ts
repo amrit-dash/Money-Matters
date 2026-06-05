@@ -52,36 +52,45 @@ export const retryStuckParseJobs = onSchedule(
     const nudgeUids: string[] = [];
 
     for (const doc of snapshot.docs) {
-      const data = doc.data();
-      const updatedAt = (data.updatedAt as Timestamp | undefined)?.toDate() ?? null;
-      const stuckAt = (data.stuckAt as Timestamp | undefined)?.toDate() ?? null;
+      try {
+        const data = doc.data();
+        const updatedAt =
+          (data.updatedAt as Timestamp | undefined)?.toDate() ?? null;
+        const stuckAt =
+          (data.stuckAt as Timestamp | undefined)?.toDate() ?? null;
 
-      const job = {
-        status: (data.status as string) ?? "pending",
-        updatedAt,
-        stuckAt,
-      };
+        const job = {
+          status: (data.status as string) ?? "pending",
+          updatedAt,
+          stuckAt,
+        };
 
-      if (!isStuckPendingJob(job, nowMs)) continue;
+        if (!isStuckPendingJob(job, nowMs)) continue;
 
-      const rawIngestId = data.rawIngestId as string | undefined;
-      const uid = uidFromParseJobPath(doc.ref.path);
-      if (uid && rawIngestId) {
-        const outcome = await runCloudParse(db, uid, rawIngestId, doc.ref);
-        if (outcome.status === "done" || outcome.status === "skipped") {
-          reparsed++;
-          continue;
+        const rawIngestId = data.rawIngestId as string | undefined;
+        const uid = uidFromParseJobPath(doc.ref.path);
+        if (uid && rawIngestId) {
+          const outcome = await runCloudParse(db, uid, rawIngestId, doc.ref);
+          if (outcome.status === "done" || outcome.status === "skipped") {
+            reparsed++;
+            continue;
+          }
         }
-      }
 
-      if (shouldMarkStuck(job)) {
-        await doc.ref.update({
-          stuckAt: FieldValue.serverTimestamp(),
+        if (shouldMarkStuck(job)) {
+          await doc.ref.update({
+            stuckAt: FieldValue.serverTimestamp(),
+          });
+          marked++;
+        }
+
+        if (uid) nudgeUids.push(uid);
+      } catch (err) {
+        logger.error("retryStuckParseJobs: job failed", {
+          jobId: doc.id,
+          err,
         });
-        marked++;
       }
-
-      if (uid) nudgeUids.push(uid);
     }
 
     const uidsToNudge = selectUidsForSyncNudge(nudgeUids);

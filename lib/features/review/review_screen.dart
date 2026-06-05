@@ -4,9 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/widgets/app_ui.dart';
+import '../../core/widgets/stream_state_view.dart';
 import '../../core/widgets/transaction_list_filter.dart';
 import '../../core/widgets/transaction_list_item.dart';
+import '../../ingest/ingest_queue_drain.dart';
 import '../../services/app_services.dart';
+import '../accounts/payment_source_widgets.dart';
 import 'classify_screen.dart';
 import 'review_repository.dart';
 
@@ -16,11 +19,13 @@ class ReviewScreen extends StatefulWidget {
   const ReviewScreen({
     super.key,
     required this.repository,
+    this.queueDrain,
     this.embeddedInShell = false,
     this.onListChanged,
   });
 
   final ReviewRepository repository;
+  final IngestQueueDrain? queueDrain;
   final bool embeddedInShell;
   final VoidCallback? onListChanged;
 
@@ -49,15 +54,28 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const inboxPadding = EdgeInsets.symmetric(horizontal: 28);
-
     return StreamBuilder<List<Transaction>>(
       stream: widget.repository.watchFlaggedTransactions(),
       builder: (context, snapshot) {
-        final rawItems = snapshot.data;
-        final hasItems = rawItems != null && rawItems.isNotEmpty;
+        return StreamStateView<List<Transaction>>(
+          snapshot: snapshot,
+          onRetry: () => setState(() {}),
+          builder: (rawItems) => _buildScaffold(context, rawItems),
+        );
+      },
+    );
+  }
 
-        return Scaffold(
+  Future<void> _refreshInbox() async {
+    final drain = widget.queueDrain ?? AppScope.of(context).queueDrain;
+    await drain.drainIfAuthenticated();
+  }
+
+  Widget _buildScaffold(BuildContext context, List<Transaction> rawItems) {
+    const inboxPadding = EdgeInsets.symmetric(horizontal: 28);
+    final hasItems = rawItems.isNotEmpty;
+
+    return Scaffold(
           appBar: AppBar(
             automaticallyImplyLeading: !widget.embeddedInShell,
             title: Text(widget.embeddedInShell ? 'Inbox' : 'Needs your input'),
@@ -88,9 +106,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
             ],
           ),
-          body: !snapshot.hasData
-              ? const Center(child: CircularProgressIndicator())
-              : rawItems!.isEmpty
+          body: rawItems.isEmpty
                   ? Center(
                       child: Padding(
                         padding: inboxPadding,
@@ -121,9 +137,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         }
 
                         return RefreshIndicator(
-                          onRefresh: () async {
-                            await widget.repository.flaggedTransactions();
-                          },
+                          onRefresh: _refreshInbox,
                           child: ListView.separated(
                             padding: inboxPadding.copyWith(
                               top: AppSpacing.page,
@@ -142,52 +156,68 @@ class _ReviewScreenState extends State<ReviewScreen> {
                                 );
                               }
                               final tx = items[index - 1];
-                              final categoryService =
-                                  AppScope.of(context).categoryService;
-                              final categoryName =
-                                  categoryService.findById(tx.categoryId)?.name ??
-                                      'Uncategorized';
-                              final isCredit = tx.type == TransactionType.credit;
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  TransactionListItem(
-                                    dateLabel: _dateFormat.format(tx.timestamp),
-                                    categoryName: categoryName,
-                                    merchantName:
-                                        tx.displayMerchant ?? 'Unknown merchant',
-                                    amountLabel:
-                                        '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
-                                    paymentSourceLabel: tx.unmatched
-                                        ? 'No linked account'
-                                        : (tx.paymentSourceId ?? 'Account'),
-                                    isCredit: isCredit,
-                                    onTap: () => _openClassify(tx),
-                                  ),
-                                  if (_flagLabels(tx).isNotEmpty) ...[
-                                    const SizedBox(height: AppSpacing.tight),
-                                    Wrap(
-                                      spacing: 6,
-                                      runSpacing: 6,
-                                      children: _flagLabels(tx)
-                                          .map(
-                                            (f) => AppStatusChip(
-                                              label: f,
-                                              tone: AppStatTone.warning,
-                                            ),
-                                          )
-                                          .toList(),
-                                    ),
-                                  ],
-                                ],
+                              final services = AppScope.of(context);
+                              final categoryName = services.categoryService
+                                      .findById(tx.categoryId)
+                                      ?.name ??
+                                  'Uncategorized';
+                              final isCredit =
+                                  tx.type == TransactionType.credit;
+                              return StreamBuilder(
+                                stream:
+                                    services.paymentSourceService.watchAll(),
+                                builder: (context, sourcesSnapshot) {
+                                  final names = {
+                                    for (final s in visiblePaymentSources(
+                                      sourcesSnapshot.data ?? const [],
+                                    ))
+                                      s.id: s.name,
+                                  };
+                                  final sourceLabel = tx.unmatched
+                                      ? 'No linked account'
+                                      : (names[tx.paymentSourceId] ??
+                                          'Unknown account');
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      TransactionListItem(
+                                        dateLabel:
+                                            _dateFormat.format(tx.timestamp),
+                                        categoryName: categoryName,
+                                        merchantName: tx.displayMerchant ??
+                                            'Unknown merchant',
+                                        amountLabel:
+                                            '${isCredit ? '+' : '-'}${_currency.format(tx.amount)}',
+                                        paymentSourceLabel: sourceLabel,
+                                        isCredit: isCredit,
+                                        onTap: () => _openClassify(tx),
+                                      ),
+                                      if (_flagLabels(tx).isNotEmpty) ...[
+                                        const SizedBox(
+                                            height: AppSpacing.tight),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 6,
+                                          children: _flagLabels(tx)
+                                              .map(
+                                                (f) => AppStatusChip(
+                                                  label: f,
+                                                  tone: AppStatTone.warning,
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
                               );
                             },
                           ),
                         );
                       },
                     ),
-        );
-      },
     );
   }
 }

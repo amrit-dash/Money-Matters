@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_ui.dart';
+import '../../ingest/ingest_queue_drain.dart';
 import '../../core/widgets/dashboard_charts.dart';
 import '../../services/category_service.dart';
 import '../review/review_repository.dart';
@@ -23,6 +24,7 @@ class AnalyticsScreen extends StatefulWidget {
     required this.categoryService,
     required this.paymentSourceService,
     this.embeddedInShell = false,
+    this.queueDrain,
   });
 
   final DashboardRepository repository;
@@ -30,6 +32,7 @@ class AnalyticsScreen extends StatefulWidget {
   final CategoryService categoryService;
   final PaymentSourceService paymentSourceService;
   final bool embeddedInShell;
+  final IngestQueueDrain? queueDrain;
 
   @override
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
@@ -375,10 +378,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               )
             : null;
 
-        final body = summary == null
-            ? const Center(child: CircularProgressIndicator())
-            : _buildBody(context, summary);
-
         return Scaffold(
           appBar: AppBar(
             automaticallyImplyLeading: false,
@@ -392,7 +391,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     ),
                   ],
           ),
-          body: body,
+          body: RefreshIndicator(
+            onRefresh: () async {
+              await widget.queueDrain?.drainIfAuthenticated();
+              await _loadAuxiliarySummaries();
+            },
+            child: summary == null
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 200),
+                      Center(child: CircularProgressIndicator()),
+                    ],
+                  )
+                : _buildBody(context, summary),
+          ),
         );
       },
     );

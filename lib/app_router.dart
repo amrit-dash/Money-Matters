@@ -81,6 +81,7 @@ class AppRouter {
           settings: settings,
           builder: (ctx) => ReviewScreen(
             repository: AppScope.of(ctx).reviewRepository,
+            queueDrain: AppScope.of(ctx).queueDrain,
           ),
         );
       case AppRoutes.classify:
@@ -123,7 +124,7 @@ class AppRouter {
           settings: settings,
           builder: (ctx) => AccountsScreen(
             paymentSourceService: AppScope.of(ctx).paymentSourceService,
-            parsePipeline: AppScope.of(ctx).parsePipeline,
+            queueDrain: AppScope.of(ctx).queueDrain,
           ),
         );
       case AppRoutes.agentSettings:

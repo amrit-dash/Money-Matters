@@ -68,7 +68,7 @@ class AppServices {
               authService: authService,
               categoryService: categoryService,
               paymentSourceService: paymentSourceService,
-              parsePipeline: parsePipeline,
+              queueDrain: queueDrain,
             ),
         recoveryRepository = recoveryRepository ??
             LocalRecoveryRepository(

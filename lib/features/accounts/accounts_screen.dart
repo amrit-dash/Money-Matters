@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:money_matters/models/payment_source.dart';
 
 import '../../services/payment_source_service.dart';
-import '../../services/ingest_parse_pipeline.dart';
+import '../../ingest/ingest_queue_drain.dart';
 import '../../core/theme/app_theme.dart';
 import 'payment_source_widgets.dart';
 
@@ -12,11 +12,11 @@ class AccountsScreen extends StatefulWidget {
   const AccountsScreen({
     super.key,
     required this.paymentSourceService,
-    this.parsePipeline,
+    this.queueDrain,
   });
 
   final PaymentSourceService paymentSourceService;
-  final IngestParsePipeline? parsePipeline;
+  final IngestQueueDrain? queueDrain;
 
   @override
   State<AccountsScreen> createState() => _AccountsScreenState();
@@ -68,7 +68,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
     setState(() => _saving = true);
     try {
       await widget.paymentSourceService.saveAll(updated);
-      final backlog = await widget.parsePipeline?.processBacklog();
+      final backlog = await widget.queueDrain?.processBacklogIfAuthenticated();
       if (!mounted) return;
       setState(() {
         _sources = updated;

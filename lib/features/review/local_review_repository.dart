@@ -9,7 +9,7 @@ import '../../core/db/local_database.dart';
 import '../../core/db/local_data_streams.dart';
 import '../../parse/rules_parser.dart';
 import '../../services/category_service.dart';
-import '../../services/ingest_parse_pipeline.dart';
+import '../../ingest/ingest_queue_drain.dart';
 import '../../services/payment_source_service.dart';
 import 'review_repository.dart';
 
@@ -20,13 +20,13 @@ class LocalReviewRepository implements ReviewRepository {
     required AuthService authService,
     required CategoryService categoryService,
     PaymentSourceService? paymentSourceService,
-    IngestParsePipeline? parsePipeline,
+    IngestQueueDrain? queueDrain,
     FirebaseFirestore? firestore,
   })  : _db = localDatabase,
         _authService = authService,
         _categories = categoryService,
         _paymentSources = paymentSourceService,
-        _parsePipeline = parsePipeline,
+        _queueDrain = queueDrain,
         _firestore = firestore ?? FirebaseFirestore.instance;
 
   static const _rulesParser = RulesParser();
@@ -36,7 +36,7 @@ class LocalReviewRepository implements ReviewRepository {
   final AuthService _authService;
   final CategoryService _categories;
   final PaymentSourceService? _paymentSources;
-  final IngestParsePipeline? _parsePipeline;
+  final IngestQueueDrain? _queueDrain;
   final FirebaseFirestore _firestore;
 
   @override
@@ -231,16 +231,11 @@ class LocalReviewRepository implements ReviewRepository {
 
   /// Re-run rematch / LLM backlog without blocking save or background sync.
   void _scheduleBacklogProcessing() {
-    final pipeline = _parsePipeline;
-    if (pipeline == null) return;
+    final drain = _queueDrain;
+    if (drain == null) return;
     unawaited(
-      pipeline.processBacklog().catchError((Object e, StackTrace st) {
-        return const ParsePipelineResult(
-          processed: 0,
-          transactionsCreated: 0,
-          skipped: 0,
-          failed: 0,
-        );
+      drain.processBacklogIfAuthenticated().catchError((Object e, StackTrace st) {
+        return null;
       }),
     );
   }

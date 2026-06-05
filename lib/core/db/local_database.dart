@@ -9,7 +9,7 @@ class LocalDatabase {
   LocalDatabase();
 
   static const _dbName = 'money_matters.db';
-  static const _dbVersion = 7;
+  static const _dbVersion = 8;
 
   Database? _db;
   final StreamController<void> _transactionChanges =
@@ -33,13 +33,15 @@ class LocalDatabase {
   Future<Database> _open() async {
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, _dbName);
-    return openDatabase(
+    final db = await openDatabase(
       path,
       version: _dbVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       singleInstance: true,
     );
+    await db.execute('PRAGMA journal_mode=WAL');
+    return db;
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -74,6 +76,12 @@ class LocalDatabase {
 
     await db.execute('''
       CREATE INDEX idx_parse_jobs_status ON parse_jobs(status)
+    ''');
+    await db.execute('''
+      CREATE INDEX idx_parse_jobs_raw_ingest ON parse_jobs(raw_ingest_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX idx_raw_ingests_processed_at ON raw_ingests(processed_at)
     ''');
 
     await db.execute('''
@@ -195,6 +203,16 @@ class LocalDatabase {
         // Column already present (idempotent upgrade) — ignore.
       }
     }
+    if (oldVersion < 8) {
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_parse_jobs_raw_ingest '
+        'ON parse_jobs(raw_ingest_id)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_raw_ingests_processed_at '
+        'ON raw_ingests(processed_at)',
+      );
+    }
   }
 
   // --- raw_ingests ---
@@ -220,13 +238,52 @@ class LocalDatabase {
     return rows.first;
   }
 
-  Future<List<Map<String, dynamic>>> getUnprocessedRawIngests() async {
+  Future<List<Map<String, dynamic>>> getUnprocessedRawIngests({
+    int? limit,
+  }) async {
     final db = await database;
     return db.query(
       'raw_ingests',
       where: 'processed_at IS NULL',
       orderBy: 'received_at ASC',
+      limit: limit,
     );
+  }
+
+  /// Batch-fetch raw ingests by idempotency key.
+  Future<Map<String, Map<String, dynamic>>> getRawIngestsByKeys(
+    Iterable<String> keys,
+  ) async {
+    final unique = keys.where((k) => k.isNotEmpty).toSet();
+    if (unique.isEmpty) return {};
+
+    final db = await database;
+    final placeholders = List.filled(unique.length, '?').join(', ');
+    final rows = await db.query(
+      'raw_ingests',
+      where: 'idempotency_key IN ($placeholders)',
+      whereArgs: unique.toList(),
+    );
+    return {
+      for (final row in rows)
+        row['idempotency_key'] as String: row,
+    };
+  }
+
+  /// Latest parse-job status for a raw ingest id, if mirrored locally.
+  Future<String?> getParseJobStatusForIngest(String rawIngestId) async {
+    if (rawIngestId.isEmpty) return null;
+    final db = await database;
+    final rows = await db.query(
+      'parse_jobs',
+      columns: ['status'],
+      where: 'raw_ingest_id = ?',
+      whereArgs: [rawIngestId],
+      orderBy: 'updated_at DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['status'] as String?;
   }
 
   Future<int> countPendingRawIngests() async {
@@ -303,6 +360,22 @@ class LocalDatabase {
       row,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    _notifyTransactionChanged();
+  }
+
+  /// Batch upsert with a single change notification.
+  Future<void> upsertTransactionsBatch(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return;
+    final db = await database;
+    final batch = db.batch();
+    for (final row in rows) {
+      batch.insert(
+        'transactions',
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
     _notifyTransactionChanged();
   }
 

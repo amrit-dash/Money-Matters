@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/async_lock.dart';
 import '../core/auth/auth_service.dart';
 import '../ingest/ingest_repository.dart';
 import 'category_service.dart';
@@ -36,6 +37,7 @@ class FirestoreRealtimeSyncService {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _transactionsSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _categoriesSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sourcesSub;
+  final AsyncLock _mirrorLock = AsyncLock();
 
   /// Starts listening to auth state and attaches Firestore listeners when signed in.
   void start() {
@@ -69,12 +71,16 @@ class FirestoreRealtimeSyncService {
         .orderBy('timestamp', descending: true)
         .snapshots()
         .listen(
-      (snapshot) async {
-        try {
-          await _ingestRepository.mirrorTransactionDocChanges(snapshot);
-        } catch (e, st) {
-          debugPrint('FirestoreRealtimeSync.transactions: $e\n$st');
-        }
+      (snapshot) {
+        unawaited(
+          _mirrorLock.run(() async {
+            try {
+              await _ingestRepository.mirrorTransactionDocChanges(snapshot);
+            } catch (e, st) {
+              debugPrint('FirestoreRealtimeSync.transactions: $e\n$st');
+            }
+          }),
+        );
       },
       onError: (Object e, StackTrace st) {
         debugPrint('FirestoreRealtimeSync.transactions stream: $e\n$st');

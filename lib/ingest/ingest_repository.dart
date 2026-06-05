@@ -477,6 +477,9 @@ class IngestRepository {
     if (snapshot.docChanges.isEmpty) return;
 
     final syncedAt = DateTime.now().toUtc().toIso8601String();
+    final upsertRows = <Map<String, dynamic>>[];
+    final ingestIds = <String>{};
+
     for (final change in snapshot.docChanges) {
       final doc = change.doc;
       if (change.type == DocumentChangeType.removed) {
@@ -497,12 +500,18 @@ class IngestRepository {
       if (await _localDatabase.isTransactionDeleted(doc.id)) continue;
 
       final tx = _transactionFromFirestore(doc.id, data);
-      await _localDatabase.upsertTransaction(
-        _transactionToSqlite(tx, syncedAt),
-      );
+      upsertRows.add(_transactionToSqlite(tx, syncedAt));
       if (tx.rawIngestId.isNotEmpty) {
-        await ensureRawIngestMirrored(tx.rawIngestId);
+        ingestIds.add(tx.rawIngestId);
       }
+    }
+
+    if (upsertRows.isNotEmpty) {
+      await _localDatabase.upsertTransactionsBatch(upsertRows);
+    }
+
+    for (final ingestId in ingestIds) {
+      await ensureRawIngestMirrored(ingestId);
     }
   }
 }

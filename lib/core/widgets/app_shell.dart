@@ -45,12 +45,21 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
+  int _inboxCount = 0;
   Timer? _periodicDrain;
+  StreamSubscription<int>? _inboxCountSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _inboxCountSub = widget.reviewRepository.watchNeedsInputCount().listen(
+      (count) {
+        if (mounted && count != _inboxCount) {
+          setState(() => _inboxCount = count);
+        }
+      },
+    );
     _kickSync();
     _periodicDrain = Timer.periodic(
       const Duration(hours: 1),
@@ -61,6 +70,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _inboxCountSub?.cancel();
     _periodicDrain?.cancel();
     super.dispose();
   }
@@ -83,90 +93,94 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
+  void _selectShellTab(int index) {
+    setState(() => _index = index);
+    if (index == 0 || index == 2 || index == 3) {
+      _kickSync();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      child: StreamBuilder<int>(
-        stream: widget.reviewRepository.watchNeedsInputCount(),
-        builder: (context, snapshot) {
-          final inboxCount = snapshot.data ?? 0;
-          return Scaffold(
-            body: IndexedStack(
-              index: _index,
-              children: [
-                DashboardScreen(
-                  repository: widget.dashboardRepository,
-                  reviewRepository: widget.reviewRepository,
-                  categoryService: widget.categoryService,
-                  paymentSourceService: widget.paymentSourceService,
-                  recoveryRepository: widget.recoveryRepository,
-                  queueDrain: widget.queueDrain,
-                  embeddedInShell: true,
-                ),
-                AnalyticsScreen(
-                  repository: widget.dashboardRepository,
-                  reviewRepository: widget.reviewRepository,
-                  categoryService: widget.categoryService,
-                  paymentSourceService: widget.paymentSourceService,
-                  embeddedInShell: true,
-                ),
-                ReviewScreen(
-                  repository: widget.reviewRepository,
-                  embeddedInShell: true,
-                ),
-                RecoveryScreen(
-                  repository: widget.recoveryRepository,
-                  embeddedInShell: true,
-                ),
-                ProfileScreen(
-                  authService: widget.authService,
-                  userDataDeletionService: widget.userDataDeletionService,
-                  embeddedInShell: true,
-                ),
-              ],
+      child: Scaffold(
+        body: IndexedStack(
+          index: _index,
+          children: [
+            DashboardScreen(
+              repository: widget.dashboardRepository,
+              reviewRepository: widget.reviewRepository,
+              categoryService: widget.categoryService,
+              paymentSourceService: widget.paymentSourceService,
+              recoveryRepository: widget.recoveryRepository,
+              queueDrain: widget.queueDrain,
+              embeddedInShell: true,
+              onShellTabSelected: _selectShellTab,
             ),
-            bottomNavigationBar: NavigationBar(
-              selectedIndex: _index,
-              onDestinationSelected: _onTabSelected,
-              destinations: [
-                const NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home),
-                  label: 'Home',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.insights_outlined),
-                  selectedIcon: Icon(Icons.insights),
-                  label: 'Analytics',
-                ),
-                NavigationDestination(
-                  icon: Badge(
-                    isLabelVisible: inboxCount > 0,
-                    label: Text('$inboxCount'),
-                    child: const Icon(Icons.inbox_outlined),
-                  ),
-                  selectedIcon: Badge(
-                    isLabelVisible: inboxCount > 0,
-                    label: Text('$inboxCount'),
-                    child: const Icon(Icons.inbox),
-                  ),
-                  label: 'Inbox',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.cloud_sync_outlined),
-                  selectedIcon: Icon(Icons.cloud_sync),
-                  label: 'Recovery',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.person_outline),
-                  selectedIcon: Icon(Icons.person),
-                  label: 'Profile',
-                ),
-              ],
+            AnalyticsScreen(
+              repository: widget.dashboardRepository,
+              reviewRepository: widget.reviewRepository,
+              categoryService: widget.categoryService,
+              paymentSourceService: widget.paymentSourceService,
+              queueDrain: widget.queueDrain,
+              embeddedInShell: true,
             ),
-          );
-        },
+            ReviewScreen(
+              repository: widget.reviewRepository,
+              queueDrain: widget.queueDrain,
+              embeddedInShell: true,
+            ),
+            RecoveryScreen(
+              repository: widget.recoveryRepository,
+              embeddedInShell: true,
+            ),
+            ProfileScreen(
+              authService: widget.authService,
+              userDataDeletionService: widget.userDataDeletionService,
+              embeddedInShell: true,
+            ),
+          ],
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: _onTabSelected,
+          destinations: [
+            const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.insights_outlined),
+              selectedIcon: Icon(Icons.insights),
+              label: 'Analytics',
+            ),
+            NavigationDestination(
+              icon: Badge(
+                isLabelVisible: _inboxCount > 0,
+                label: Text('$_inboxCount'),
+                child: const Icon(Icons.inbox_outlined),
+              ),
+              selectedIcon: Badge(
+                isLabelVisible: _inboxCount > 0,
+                label: Text('$_inboxCount'),
+                child: const Icon(Icons.inbox),
+              ),
+              label: 'Inbox',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.cloud_sync_outlined),
+              selectedIcon: Icon(Icons.cloud_sync),
+              label: 'Recovery',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Profile',
+            ),
+          ],
+        ),
       ),
     );
   }

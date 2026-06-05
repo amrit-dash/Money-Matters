@@ -117,6 +117,17 @@ class IngestQueueDrain {
     return previous.merge(current);
   }
 
+  /// Runs rematch + LLM backlog through the same serialized pipeline as drain.
+  Future<ParsePipelineResult?> processBacklogIfAuthenticated() async {
+    if (!_authService.isSignedIn || _parsePipeline == null) {
+      return null;
+    }
+    if (_inFlight != null) {
+      await _inFlight;
+    }
+    return _parsePipeline.processBacklog();
+  }
+
   /// Returns combined local pending counts for status UI.
   Future<Map<String, int>> localPendingCounts() => _repository.pendingCounts();
 

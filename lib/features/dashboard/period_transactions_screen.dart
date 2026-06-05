@@ -5,6 +5,7 @@ import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 
 import '../../core/widgets/app_ui.dart';
+import '../../services/app_services.dart';
 import '../../core/widgets/transaction_list_filter.dart';
 import '../../core/widgets/transaction_list_item.dart';
 import '../../services/category_service.dart';
@@ -160,10 +161,9 @@ class _PeriodTransactionsScreenState extends State<PeriodTransactionsScreen> {
 
                   return RefreshIndicator(
                     onRefresh: () async {
-                      await widget.dashboardRepository.periodTransactions(
-                        start: widget.periodStart,
-                        end: widget.periodEnd,
-                      );
+                      await AppScope.of(context)
+                          .queueDrain
+                          .drainIfAuthenticated();
                     },
                     child: ListView.separated(
                       padding: const EdgeInsets.all(AppSpacing.page),

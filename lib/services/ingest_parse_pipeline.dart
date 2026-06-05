@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:flutter/foundation.dart' show debugPrint;
 
+import '../core/async_lock.dart';
 import '../core/auth/auth_service.dart';
 import '../core/db/local_database.dart';
 import '../models/category.dart';
@@ -10,7 +11,6 @@ import '../models/category_taxonomy.dart';
 import '../models/payment_source.dart';
 import '../models/raw_ingest.dart';
 import '../models/transaction.dart';
-import '../ingest/ingest_repository.dart';
 import '../features/dashboard/local_dashboard_repository.dart';
 import '../parse/llm_parser.dart';
 import '../parse/parse_service.dart';
@@ -106,13 +106,26 @@ class IngestParsePipeline {
   /// After one classify returns needsConfig, skip further LLM calls this run.
   bool _skipLlmForNeedsConfig = false;
 
+  final AsyncLock _lock = AsyncLock();
+
   static const _rulesVersion = 'rules-v1';
+  static const _ingestBatchSize = 100;
+  static const _maxLlmCallsPerRun = 10;
   static const _rulesParser = RulesParser();
   static const _parseJobsCollection = 'parse_jobs';
   static const _transactionsCollection = 'transactions';
-  static const _rawIngestsCollection = 'raw_ingests';
 
   Future<ParsePipelineResult> processPending({
+    List<PaymentSource>? paymentSources,
+    List<Category>? categories,
+  }) {
+    return _lock.run(() => _processPendingUnlocked(
+          paymentSources: paymentSources,
+          categories: categories,
+        ));
+  }
+
+  Future<ParsePipelineResult> _processPendingUnlocked({
     List<PaymentSource>? paymentSources,
     List<Category>? categories,
   }) async {
@@ -131,20 +144,32 @@ class IngestParsePipeline {
     final cats = categories ?? await _categoryService.loadCategories();
 
     _skipLlmForNeedsConfig = false;
-    final rows = await _localDatabase.getUnprocessedRawIngests();
+    final rows = await _localDatabase.getUnprocessedRawIngests(
+      limit: _ingestBatchSize,
+    );
     var processed = 0;
     var transactionsCreated = 0;
     var skipped = 0;
     var failed = 0;
     var classifyNeedsConfig = false;
     String? classifyError;
+    var llmCalls = 0;
 
     for (final row in rows) {
       final ingest = _rawIngestFromRow(row);
       try {
-        if (await _isCloudProcessed(ingest.id)) {
-          await _mirrorCloudParseComplete(ingest.id);
-          skipped++;
+        final cloudStatus =
+            await _localDatabase.getParseJobStatusForIngest(ingest.id);
+        if (cloudStatus == 'done' || cloudStatus == 'failed') {
+          try {
+            await _mirrorCloudParseComplete(ingest.id);
+            skipped++;
+          } catch (e, st) {
+            debugPrint(
+              'IngestParsePipeline: mirror cloud parse ${ingest.id}: $e\n$st',
+            );
+            failed++;
+          }
           continue;
         }
 
@@ -157,30 +182,40 @@ class IngestParsePipeline {
         if (outcome.transaction != null) {
           // Stable id = raw ingest id (one SMS → one transaction, idempotent retries).
           var tx = outcome.transaction!.copyWith(id: ingest.id);
-          tx = await _maybeMatchPaymentSource(
-            tx,
-            ingest,
-            sources,
-            instrumentLast4: outcome.result.candidate?.instrumentLast4,
-          );
-          final classifyOutcome = await _maybeClassify(
-            tx,
-            body: ingest.body,
-            sender: ingest.sender,
-            categories: cats,
-            sources: sources,
-          );
-          tx = classifyOutcome.transaction;
-          if (classifyOutcome.needsConfig) classifyNeedsConfig = true;
-          classifyError ??= classifyOutcome.error;
+          final knownIds = sources.map((s) => s.id).toSet();
+          if (LocalDashboardRepository.isUnmatched(tx, knownIds)) {
+            tx = await _maybeMatchPaymentSource(
+              tx,
+              ingest,
+              sources,
+              instrumentLast4: outcome.result.candidate?.instrumentLast4,
+            );
+          }
+          if (llmCalls < _maxLlmCallsPerRun) {
+            final classifyOutcome = await _maybeClassify(
+              tx,
+              body: ingest.body,
+              sender: ingest.sender,
+              categories: cats,
+              sources: sources,
+            );
+            tx = classifyOutcome.transaction;
+            if (classifyOutcome.applied ||
+                classifyOutcome.needsConfig ||
+                classifyOutcome.error != null) {
+              llmCalls++;
+            }
+            if (classifyOutcome.needsConfig) classifyNeedsConfig = true;
+            classifyError ??= classifyOutcome.error;
+          }
           await _persistTransaction(tx);
           transactionsCreated++;
         } else {
           skipped++;
         }
 
-        await _localDatabase.markRawIngestProcessed(ingest.id);
         await _markParseJobDone(ingest.id);
+        await _localDatabase.markRawIngestProcessed(ingest.id);
         processed++;
       } catch (e, st) {
         debugPrint(
@@ -210,6 +245,16 @@ class IngestParsePipeline {
   /// Runs rematch + LLM backlog without processing new ingests (e.g. after
   /// saving Accounts). Safe to call from UI after payment source edits.
   Future<ParsePipelineResult> processBacklog({
+    List<PaymentSource>? paymentSources,
+    List<Category>? categories,
+  }) {
+    return _lock.run(() => _processBacklogUnlocked(
+          paymentSources: paymentSources,
+          categories: categories,
+        ));
+  }
+
+  Future<ParsePipelineResult> _processBacklogUnlocked({
     List<PaymentSource>? paymentSources,
     List<Category>? categories,
   }) async {
@@ -279,11 +324,16 @@ class IngestParsePipeline {
     final uid = _authService.requireUid();
     var rematched = 0;
 
+    final ingestKeys = rows
+        .map((r) => r['raw_ingest_id'] as String? ?? '')
+        .where((id) => id.isNotEmpty);
+    final ingestByKey = await _localDatabase.getRawIngestsByKeys(ingestKeys);
+
     for (final row in rows) {
       final tx = Transaction.fromSqlite(row);
       if (!LocalDashboardRepository.isUnmatched(tx, knownIds)) continue;
 
-      final ingestRow = await _localDatabase.getRawIngest(tx.rawIngestId);
+      final ingestRow = ingestByKey[tx.rawIngestId];
       if (ingestRow == null) continue;
 
       final body = ingestRow['body'] as String? ?? '';
@@ -321,7 +371,6 @@ class IngestParsePipeline {
     if (!_authService.isSignedIn) return 0;
 
     final rows = await _localDatabase.getFlaggedTransactions();
-    final uid = _authService.requireUid();
     var matched = 0;
 
     for (final row in rows) {
@@ -346,17 +395,6 @@ class IngestParsePipeline {
         classifiedBy: ClassifiedBy.rules,
       );
       await _persistTransaction(updated);
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection(_transactionsCollection)
-          .doc(tx.id)
-          .set({
-        'categoryId': categoryId,
-        'needsClassification': false,
-        'ambiguous': false,
-        'classifiedBy': ClassifiedBy.rules.name,
-      }, SetOptions(merge: true));
       matched++;
     }
 
@@ -388,6 +426,12 @@ class IngestParsePipeline {
     var reclassified = 0;
     var classifyNeedsConfig = false;
     String? classifyError;
+    var llmCalls = 0;
+
+    final ingestKeys = rows
+        .map((r) => r['raw_ingest_id'] as String? ?? '')
+        .where((id) => id.isNotEmpty);
+    final ingestByKey = await _localDatabase.getRawIngestsByKeys(ingestKeys);
 
     for (final row in rows) {
       final tx = Transaction.fromSqlite(row);
@@ -399,7 +443,9 @@ class IngestParsePipeline {
               sources.isNotEmpty;
       if (!needsCategory && !needsSource) continue;
 
-      final ingestRow = await _localDatabase.getRawIngest(tx.rawIngestId);
+      if (llmCalls >= _maxLlmCallsPerRun) break;
+
+      final ingestRow = ingestByKey[tx.rawIngestId];
       if (ingestRow == null) continue;
 
       final body = ingestRow['body'] as String? ?? '';
@@ -411,6 +457,12 @@ class IngestParsePipeline {
         categories: categories,
         sources: sources,
       );
+
+      if (classifyOutcome.applied ||
+          classifyOutcome.needsConfig ||
+          classifyOutcome.error != null) {
+        llmCalls++;
+      }
 
       if (!classifyOutcome.applied) {
         if (classifyOutcome.needsConfig) classifyNeedsConfig = true;
@@ -513,19 +565,6 @@ class IngestParsePipeline {
       transaction: updated,
       applied: updated != tx,
     );
-  }
-
-  Future<bool> _isCloudProcessed(String rawIngestId) async {
-    if (!_authService.isSignedIn) return false;
-    final uid = _authService.requireUid();
-    final doc = await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection(_rawIngestsCollection)
-        .doc(rawIngestId)
-        .get();
-    if (!doc.exists) return false;
-    return !IngestRepository.isUnprocessedRawIngest(doc.data() ?? {});
   }
 
   /// Syncs local SQLite when Phase 1 cloud parse already finished the job.

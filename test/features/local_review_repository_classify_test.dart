@@ -12,22 +12,22 @@ import 'package:money_matters/models/category.dart';
 import 'package:money_matters/models/payment_source.dart';
 import 'package:money_matters/models/transaction.dart';
 import 'package:money_matters/services/category_service.dart';
+import 'package:money_matters/ingest/ingest_queue_drain.dart';
+import 'package:money_matters/ingest/ingest_repository.dart';
 import 'package:money_matters/services/ingest_parse_pipeline.dart';
 
-class _HangingParsePipeline extends IngestParsePipeline {
-  _HangingParsePipeline({
-    required super.localDatabase,
+class _HangingQueueDrain extends IngestQueueDrain {
+  _HangingQueueDrain({
+    required super.repository,
     required super.authService,
-  });
+    required IngestParsePipeline parsePipeline,
+  }) : super(parsePipeline: parsePipeline);
 
   final hang = Completer<ParsePipelineResult>();
   var invokeCount = 0;
 
   @override
-  Future<ParsePipelineResult> processBacklog({
-    List<PaymentSource>? paymentSources,
-    List<Category>? categories,
-  }) {
+  Future<ParsePipelineResult?> processBacklogIfAuthenticated() {
     invokeCount++;
     return hang.future;
   }
@@ -86,15 +86,23 @@ void main() {
       () async {
     await runZonedGuarded(() async {
       final tx = await seedFlaggedTransaction();
-      final pipeline = _HangingParsePipeline(
+      final pipeline = IngestParsePipeline(
         localDatabase: db,
         authService: auth,
+      );
+      final drain = _HangingQueueDrain(
+        repository: IngestRepository(
+          authService: auth,
+          localDatabase: db,
+        ),
+        authService: auth,
+        parsePipeline: pipeline,
       );
       final repo = LocalReviewRepository(
         localDatabase: db,
         authService: auth,
         categoryService: categories,
-        parsePipeline: pipeline,
+        queueDrain: drain,
       );
 
       final stopwatch = Stopwatch()..start();
@@ -116,8 +124,8 @@ void main() {
       expect(saved?.classifiedBy, ClassifiedBy.user);
 
       await Future<void>.delayed(Duration.zero);
-      expect(pipeline.invokeCount, 1);
-      expect(pipeline.hang.isCompleted, isFalse);
+      expect(drain.invokeCount, 1);
+      expect(drain.hang.isCompleted, isFalse);
     }, (error, stack) {
       // Background sync may touch Firebase Auth in unit tests; save already applied.
     });

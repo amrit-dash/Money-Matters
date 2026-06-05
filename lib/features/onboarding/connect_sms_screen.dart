@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_router.dart';
 import '../../core/auth/auth_service.dart';
+import '../../core/onboarding/onboarding_progress_store.dart';
 import 'onboarding_state.dart';
 import 'shortcuts_setup_screen.dart';
 
@@ -96,8 +97,13 @@ class _ConnectSmsScreenState extends State<ConnectSmsScreen> {
 
     return ShortcutsSetupScreen(
       state: _state,
-      onComplete: () {
+      onComplete: () async {
         if (widget.showFinishOnboarding) {
+          final uid = _auth.currentUser?.uid;
+          if (uid != null) {
+            await OnboardingProgressStore().markComplete(uid);
+          }
+          if (!context.mounted) return;
           AppRouter.goToDashboard(context);
         } else {
           Navigator.of(context).pop();

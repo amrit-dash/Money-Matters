@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 
 import 'app_router.dart';
 import 'core/auth/auth_service.dart';
+import 'core/db/local_database.dart';
+import 'core/onboarding/onboarding_progress_store.dart';
 import 'core/widgets/keyboard_done_bar.dart';
 import 'core/config/firebase_options.dart';
-import 'core/db/local_database.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/theme/theme_scope.dart';
 import 'features/setup/firebase_setup_screen.dart';
@@ -59,6 +60,7 @@ Future<void> main() async {
   );
   final urlIngestHandler = UrlIngestHandler(queueDrain: queueDrain);
   final fcmService = FcmService(authService: authService);
+  final onboardingStore = OnboardingProgressStore();
   final appServices = AppServices(
     authService: authService,
     localDatabase: localDatabase,
@@ -85,6 +87,9 @@ Future<void> main() async {
           urlIngestHandler: urlIngestHandler,
           fcmService: fcmService,
           themeController: themeController,
+          onboardingStore: onboardingStore,
+          paymentSourceService: paymentSourceService,
+          localDatabase: localDatabase,
         ),
       ),
     ),
@@ -99,6 +104,9 @@ class MoneyMattersApp extends StatefulWidget {
     required this.urlIngestHandler,
     required this.fcmService,
     required this.themeController,
+    required this.onboardingStore,
+    required this.paymentSourceService,
+    required this.localDatabase,
   });
 
   final AuthService authService;
@@ -106,6 +114,9 @@ class MoneyMattersApp extends StatefulWidget {
   final UrlIngestHandler urlIngestHandler;
   final FcmService fcmService;
   final ThemeController themeController;
+  final OnboardingProgressStore onboardingStore;
+  final PaymentSourceService paymentSourceService;
+  final LocalDatabase localDatabase;
 
   @override
   State<MoneyMattersApp> createState() => _MoneyMattersAppState();
@@ -114,12 +125,40 @@ class MoneyMattersApp extends StatefulWidget {
 class _MoneyMattersAppState extends State<MoneyMattersApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late bool _isSignedIn;
+  String? _initialRoute;
+  bool _routingReady = false;
 
   @override
   void initState() {
     super.initState();
     _isSignedIn = widget.authService.isSignedIn;
+    _resolveInitialRoute();
     _bootstrap();
+  }
+
+  Future<void> _resolveInitialRoute() async {
+    if (!widget.authService.isSignedIn) {
+      if (!mounted) return;
+      setState(() {
+        _initialRoute = AppRoutes.onboarding;
+        _routingReady = true;
+      });
+      return;
+    }
+
+    final uid = widget.authService.currentUser!.uid;
+    final showOnboarding = await widget.onboardingStore.shouldShowOnboarding(
+      uid: uid,
+      paymentSourceService: widget.paymentSourceService,
+      transactionCount: widget.localDatabase.countTransactions,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _initialRoute =
+          showOnboarding ? AppRoutes.onboarding : AppRoutes.dashboard;
+      _routingReady = true;
+    });
   }
 
   Future<void> _bootstrap() async {
@@ -128,6 +167,8 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
     widget.urlIngestHandler.onRecoveryUrl.listen((_) {
       _navigatorKey.currentState?.pushNamed(AppRoutes.recovery);
     });
+
+    widget.urlIngestHandler.onClassifyUrl.listen(_openClassify);
 
     widget.fcmService.attachHandlers(onClassify: _openClassify);
 
@@ -161,8 +202,21 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
 
   @override
   Widget build(BuildContext context) {
-    final initialRoute =
-        _isSignedIn ? AppRoutes.dashboard : AppRoutes.onboarding;
+    if (!_routingReady || _initialRoute == null) {
+      return ListenableBuilder(
+        listenable: widget.themeController,
+        builder: (context, _) {
+          return MaterialApp(
+            theme: widget.themeController.lightTheme,
+            darkTheme: widget.themeController.darkTheme,
+            themeMode: widget.themeController.themeMode,
+            home: const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        },
+      );
+    }
 
     return ListenableBuilder(
       listenable: widget.themeController,
@@ -173,7 +227,7 @@ class _MoneyMattersAppState extends State<MoneyMattersApp> {
           theme: widget.themeController.lightTheme,
           darkTheme: widget.themeController.darkTheme,
           themeMode: widget.themeController.themeMode,
-          initialRoute: initialRoute,
+          initialRoute: _initialRoute,
           onGenerateRoute: AppRouter.onGenerateRoute,
           builder: (context, child) => KeyboardDoneBar(
             child: child ?? const SizedBox.shrink(),
