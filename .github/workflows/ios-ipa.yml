@@ -14,6 +14,7 @@ on:
       - 'pubspec.lock'
       - 'analysis_options.yaml'
       - 'scripts/prepare_export_options_ci.sh'
+      - 'scripts/configure_ci_signing.sh'
       - 'scripts/generate_firebase_options_from_plist.sh'
       - '.github/workflows/ios-ipa.yml'
 
@@ -119,8 +120,9 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"${PP_UUID}.mobileprovision"
 
-          chmod +x scripts/prepare_export_options_ci.sh
+          chmod +x scripts/prepare_export_options_ci.sh scripts/configure_ci_signing.sh
           ./scripts/prepare_export_options_ci.sh "$PP_PATH"
+          ./scripts/configure_ci_signing.sh "$PP_PATH"
 
           if [ -n "${{ secrets.APPLE_TEAM_ID }}" ]; then
             /usr/libexec/PlistBuddy -c "Set :teamID ${{ secrets.APPLE_TEAM_ID }}" ios/ExportOptions.ci.plist
