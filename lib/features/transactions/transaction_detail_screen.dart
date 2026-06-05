@@ -81,9 +81,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   Future<void> _viewOriginalMessage(Transaction tx) async {
+    final scope = AppScope.of(context);
     await showOriginalIngestSheet(
       context,
-      localDatabase: AppScope.of(context).localDatabase,
+      localDatabase: scope.localDatabase,
+      ingestRepository: scope.ingestRepository,
       rawIngestId: tx.rawIngestId,
     );
   }

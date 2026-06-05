@@ -187,6 +187,57 @@ class IngestRepository {
     return true;
   }
 
+  /// Mirrors a Firestore raw ingest into SQLite (processed or not).
+  ///
+  /// Cloud parse marks ingests processed before the device drains them, so
+  /// transaction sync must pull SMS bodies on demand for "View original message".
+  Future<void> _mirrorRawIngestDoc(
+    String id,
+    Map<String, dynamic> data,
+    String syncedAt,
+  ) async {
+    final ingest = _rawIngestFromFirestore(id, data);
+    final row = _rawIngestToSqlite(ingest, syncedAt);
+    final processedAt = processedAtIsoFromFirestore(data);
+    if (processedAt != null) {
+      row['processed_at'] = processedAt;
+    }
+    await _localDatabase.upsertRawIngest(row);
+  }
+
+  /// Ensures the SMS body for [rawIngestId] exists locally, fetching from cloud
+  /// when missing (e.g. transaction arrived via realtime after cloud parse).
+  Future<void> ensureRawIngestMirrored(String rawIngestId) async {
+    if (rawIngestId.isEmpty || !_authService.isSignedIn) return;
+
+    final local = await _localDatabase.getRawIngest(rawIngestId);
+    final localBody = local?['body'] as String?;
+    if (localBody != null && localBody.isNotEmpty) return;
+
+    final doc =
+        await _userCollection(_rawIngestsCollection).doc(rawIngestId).get();
+    if (!doc.exists) return;
+
+    final syncedAt = DateTime.now().toUtc().toIso8601String();
+    await _mirrorRawIngestDoc(doc.id, doc.data()!, syncedAt);
+  }
+
+  /// Maps Firestore [processedAt] to SQLite ISO-8601, or null when unprocessed.
+  static String? processedAtIsoFromFirestore(Map<String, dynamic> data) {
+    if (isUnprocessedRawIngest(data)) return null;
+    final value = data['processedAt'];
+    if (value is Timestamp) {
+      return value.toDate().toUtc().toIso8601String();
+    }
+    if (value is DateTime) {
+      return value.toUtc().toIso8601String();
+    }
+    if (value is String) {
+      return DateTime.tryParse(value)?.toUtc().toIso8601String();
+    }
+    return null;
+  }
+
   Future<int> _drainPendingParseJobs(String syncedAt) async {
     final snapshot = await _userCollection(_parseJobsCollection)
         .where('status', isEqualTo: _pendingStatus)
@@ -217,12 +268,13 @@ class IngestRepository {
     if (rawIngestId.isEmpty) return;
 
     final local = await _localDatabase.getRawIngest(rawIngestId);
-    if (local != null && local['processed_at'] == null) return;
+    final localBody = local?['body'] as String?;
+    if (localBody != null && localBody.isNotEmpty) return;
 
     final doc =
         await _userCollection(_rawIngestsCollection).doc(rawIngestId).get();
     if (!doc.exists) return;
-    await _upsertRawIngestDoc(doc.id, doc.data()!, syncedAt);
+    await _mirrorRawIngestDoc(doc.id, doc.data()!, syncedAt);
   }
 
   /// Mirrors transactions updated since last local sync watermark.
@@ -244,6 +296,9 @@ class IngestRepository {
 
       final tx = _transactionFromFirestore(doc.id, data);
       await _localDatabase.upsertTransaction(_transactionToSqlite(tx, syncedAt));
+      if (tx.rawIngestId.isNotEmpty) {
+        await ensureRawIngestMirrored(tx.rawIngestId);
+      }
       count++;
     }
     return count;
@@ -445,6 +500,9 @@ class IngestRepository {
       await _localDatabase.upsertTransaction(
         _transactionToSqlite(tx, syncedAt),
       );
+      if (tx.rawIngestId.isNotEmpty) {
+        await ensureRawIngestMirrored(tx.rawIngestId);
+      }
     }
   }
 }
