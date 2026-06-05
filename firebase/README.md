@@ -123,7 +123,7 @@ The Cloud Function uses the **Firebase Admin SDK** with default application cred
 
 Rules-first parsing runs on-device; the callable CF only handles uncategorized/ambiguous debits. **No API key is required** for normal use — merchant rules and the in-app "Needs your input" inbox cover everything.
 
-**Recommended:** In the app, open **Profile → Agent settings**, enable LLM, pick a provider (Gemini, Open Router, Grok, Mistral, or Other), enter your API key, test it, fetch models, and save. Cloud Functions read that config per user.
+**Recommended:** In the app, open **Profile → Agent settings**, enable LLM, pick a provider (Gemini, Open Router, Grok (xAI), Groq, Mistral, or Other), enter your API key, test it, fetch models, and save. Cloud Functions read that config per user.
 
 **Legacy:** Project-wide Gemini via Firebase secret:
 

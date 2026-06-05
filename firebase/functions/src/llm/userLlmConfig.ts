@@ -176,7 +176,9 @@ export function providerLabel(provider: LlmProviderId): string {
   case "openrouter":
     return "Open Router";
   case "grok":
-    return "Grok";
+    return "Grok (xAI)";
+  case "groq":
+    return "Groq";
   case "mistral":
     return "Mistral";
   default:

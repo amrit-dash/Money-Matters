@@ -3,6 +3,7 @@ enum LlmProvider {
   gemini,
   openrouter,
   grok,
+  groq,
   mistral,
   other;
 
@@ -15,7 +16,9 @@ enum LlmProvider {
       case LlmProvider.openrouter:
         return 'Open Router';
       case LlmProvider.grok:
-        return 'Grok';
+        return 'Grok (xAI)';
+      case LlmProvider.groq:
+        return 'Groq';
       case LlmProvider.mistral:
         return 'Mistral';
       case LlmProvider.other:

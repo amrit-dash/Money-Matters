@@ -155,6 +155,17 @@ void main() {
     expect(payload['model'], 'grok-4.3');
   });
 
+  test('fromFirestore parses groq provider and default model', () {
+    final settings = LlmSettings.fromFirestore({
+      'provider': 'groq',
+      'apiKeys': {'groq': 'gsk-test'},
+    });
+
+    expect(settings.provider, LlmProvider.groq);
+    expect(settings.apiKeyFor(LlmProvider.groq), 'gsk-test');
+    expect(settings.effectiveModel, 'llama-3.3-70b-versatile');
+  });
+
   test('toCallablePayload omits empty api key when includeSecrets false', () {
     const settings = LlmSettings(
       enabled: true,

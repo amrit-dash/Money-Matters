@@ -57,6 +57,11 @@ export async function fetchProviderModels(
     );
     return filterGrokChatModelIds(models);
   }
+  case "groq":
+    return fetchOpenAiCompatibleModels(
+      "https://api.groq.com/openai/v1/models",
+      creds.apiKey,
+    );
   case "mistral":
     return fetchOpenAiCompatibleModels(
       "https://api.mistral.ai/v1/models",
@@ -357,6 +362,8 @@ function chatCompletionsUrl(creds: ProviderCredentials): string {
     return "https://openrouter.ai/api/v1/chat/completions";
   case "grok":
     return "https://api.x.ai/v1/chat/completions";
+  case "groq":
+    return "https://api.groq.com/openai/v1/chat/completions";
   case "mistral":
     return "https://api.mistral.ai/v1/chat/completions";
   case "other":
@@ -372,6 +379,8 @@ function modelsListUrl(creds: ProviderCredentials): string {
     return "https://openrouter.ai/api/v1/models";
   case "grok":
     return "https://api.x.ai/v1/models";
+  case "groq":
+    return "https://api.groq.com/openai/v1/models";
   case "mistral":
     return "https://api.mistral.ai/v1/models";
   case "other":

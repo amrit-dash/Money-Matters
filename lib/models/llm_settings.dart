@@ -30,6 +30,7 @@ class LlmSettings {
     LlmProvider.gemini: 'gemini-2.0-flash',
     LlmProvider.openrouter: 'google/gemini-2.0-flash-001',
     LlmProvider.grok: 'grok-4.3',
+    LlmProvider.groq: 'llama-3.3-70b-versatile',
     LlmProvider.mistral: 'mistral-small-latest',
     LlmProvider.other: 'gpt-4o-mini',
   };

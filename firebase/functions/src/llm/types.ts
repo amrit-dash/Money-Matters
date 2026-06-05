@@ -2,6 +2,7 @@ export type LlmProviderId =
   | "gemini"
   | "openrouter"
   | "grok"
+  | "groq"
   | "mistral"
   | "other";
 
@@ -24,6 +25,7 @@ export const DEFAULT_MODELS: Record<LlmProviderId, string> = {
   gemini: "gemini-2.0-flash",
   openrouter: "google/gemini-2.0-flash-001",
   grok: "grok-4.3",
+  groq: "llama-3.3-70b-versatile",
   mistral: "mistral-small-latest",
   other: "gpt-4o-mini",
 };
@@ -34,6 +36,7 @@ export function parseProvider(raw: unknown): LlmProviderId | null {
     value === "gemini" ||
     value === "openrouter" ||
     value === "grok" ||
+    value === "groq" ||
     value === "mistral" ||
     value === "other"
   ) {

@@ -48,4 +48,14 @@ describe("buildOpenAiCompatibleClassifyBody", () => {
     assert.equal(body.max_completion_tokens, undefined);
     assert.equal(body.reasoning_effort, undefined);
   });
+
+  it("uses max_tokens for Groq (not Grok reasoning params)", () => {
+    const body = buildOpenAiCompatibleClassifyBody(
+      {provider: "groq", apiKey: "k", model: "llama-3.3-70b-versatile"},
+      {},
+    );
+    assert.equal(body.max_tokens, 512);
+    assert.equal(body.max_completion_tokens, undefined);
+    assert.equal(body.reasoning_effort, undefined);
+  });
 });
