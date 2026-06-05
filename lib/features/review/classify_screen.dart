@@ -1020,7 +1020,7 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         OutlinedButton.icon(
           onPressed: () {
             final scope = AppScope.of(context);
-            return showOriginalIngestSheet(
+            showOriginalIngestSheet(
               context,
               localDatabase: scope.localDatabase,
               ingestRepository: scope.ingestRepository,
