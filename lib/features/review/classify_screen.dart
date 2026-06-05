@@ -1018,11 +1018,15 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         ),
         const SizedBox(height: AppSpacing.section),
         OutlinedButton.icon(
-          onPressed: () => showOriginalIngestSheet(
-            context,
-            localDatabase: AppScope.of(context).localDatabase,
-            rawIngestId: tx.rawIngestId,
-          ),
+          onPressed: () {
+            final scope = AppScope.of(context);
+            return showOriginalIngestSheet(
+              context,
+              localDatabase: scope.localDatabase,
+              ingestRepository: scope.ingestRepository,
+              rawIngestId: tx.rawIngestId,
+            );
+          },
           icon: const Icon(Icons.sms_outlined),
           label: const Text('View original message'),
         ),

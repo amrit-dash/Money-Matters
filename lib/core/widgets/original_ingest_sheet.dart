@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/db/local_database.dart';
+import '../../ingest/ingest_repository.dart';
 import '../theme/app_theme.dart';
 
 /// Shows the raw SMS body (and sender) for a transaction's linked ingest.
@@ -9,7 +10,12 @@ Future<void> showOriginalIngestSheet(
   BuildContext context, {
   required LocalDatabase localDatabase,
   required String rawIngestId,
+  IngestRepository? ingestRepository,
 }) async {
+  if (rawIngestId.isNotEmpty && ingestRepository != null) {
+    await ingestRepository.ensureRawIngestMirrored(rawIngestId);
+  }
+
   final row = await localDatabase.getRawIngest(rawIngestId);
   if (!context.mounted) return;
 
