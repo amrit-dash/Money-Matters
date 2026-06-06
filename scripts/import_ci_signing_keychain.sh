@@ -42,5 +42,25 @@ if [ "$PART_RC" -ne 0 ]; then
   exit 1
 fi
 
+
+LOGIN_KEYCHAIN="${HOME}/Library/Keychains/login.keychain-db"
+if [[ -f "$LOGIN_KEYCHAIN" ]]; then
+  set +e
+  LOGIN_IMPORT_ERR=$(
+    security import "$CERT_PATH" -P "$P12_PASSWORD" -A -f pkcs12       -k "$LOGIN_KEYCHAIN"       -T /usr/bin/codesign -T /usr/bin/security 2>&1
+  )
+  LOGIN_IMPORT_RC=$?
+  set -e
+  if [[ "$LOGIN_IMPORT_RC" -ne 0 ]] && ! echo "$LOGIN_IMPORT_ERR" | grep -qiE 'already in|SecKeychainItemImport.*duplicate'; then
+    echo "$LOGIN_IMPORT_ERR"
+    echo "::warning::Could not import .p12 into login keychain (exportArchive may require it)."
+  else
+    set +e
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$LOGIN_KEYCHAIN" 2>/dev/null
+    set -e
+    echo "Also imported signing cert into login keychain for IDEDistribution export."
+  fi
+fi
+
 security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
 echo "CI keychain import succeeded."
