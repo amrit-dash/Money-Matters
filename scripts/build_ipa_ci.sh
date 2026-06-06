@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CI-only: signed archive + IPA export via Flutter (single xcodebuild pipeline).
-# Requires Import code signing step (keychain, profile, ExportOptions.ci.plist, manual pbxproj).
+# Requires Import code signing step (keychain, profile, ExportOptions.ci.plist, automatic Runner signing).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,6 +27,7 @@ fi
 
 mkdir -p "$EXPORT_PATH"
 
+export FLUTTER_XCODE_CODE_SIGN_STYLE=Automatic
 echo "==> flutter build ipa --release --export-options-plist=${EXPORT_PLIST}"
 flutter build ipa --release --export-options-plist="$EXPORT_PLIST"
 

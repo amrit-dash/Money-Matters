@@ -52,7 +52,7 @@ See **[SETUP-SIGNING.md](SETUP-SIGNING.md)** for step-by-step export. Quick uplo
 | `KEYCHAIN_PASSWORD` | Any random string (workflow-only) |
 | `APPLE_TEAM_ID` | Optional; CI reads Team ID from the profile if omitted |
 
-CI generates `ios/ExportOptions.ci.plist` from the profile during the build (manual signing + profile name).
+CI generates `ios/ExportOptions.ci.plist` from the profile during the build (automatic signing (Xcode-managed Personal Team profile)).
 
 ## Run a build
 
