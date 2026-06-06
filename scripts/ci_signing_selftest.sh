@@ -62,5 +62,13 @@ if ! grep -q 'CODE_SIGN_STYLE = Automatic' "${ROOT}/scripts/configure_ci_signing
   echo "::error::configure_ci_signing.sh must set Automatic signing"
   exit 1
 fi
+if ! grep -q 'CODE_SIGN_IDENTITY="\$CODE_SIGN_IDENTITY"' "${ROOT}/scripts/build_ipa_ci.sh"; then
+  echo "::error::build_ipa_ci.sh must pass CODE_SIGN_IDENTITY to exportArchive"
+  exit 1
+fi
+if ! grep -q 'login.keychain-db' "${ROOT}/scripts/build_ipa_ci.sh"; then
+  echo "::error::build_ipa_ci.sh must include login.keychain-db in keychain search list"
+  exit 1
+fi
 
 echo "ci_signing_selftest passed."

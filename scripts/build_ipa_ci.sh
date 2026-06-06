@@ -17,16 +17,23 @@ if [[ ! -f "$EXPORT_PLIST" ]]; then
   exit 1
 fi
 
-# Re-assert CI keychain for xcodebuild/codesign (same job as import_ci_signing_keychain.sh).
 KEYCHAIN_PATH="${KEYCHAIN_PATH:-${RUNNER_TEMP:-}/app-signing.keychain-db}"
-if [[ -f "$KEYCHAIN_PATH" ]]; then
+
+assert_ci_keychain() {
+  if [[ ! -f "$KEYCHAIN_PATH" ]]; then
+    echo "::warning::CI keychain not found at ${KEYCHAIN_PATH}; export may fail without imported cert."
+    return 0
+  fi
   if [[ -n "${KEYCHAIN_PASSWORD:-}" ]]; then
     security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
   fi
-  security list-keychain -d user -s "$KEYCHAIN_PATH"
-  echo "Using CI keychain: ${KEYCHAIN_PATH}"
-  security find-identity -v -p codesigning | head -3 || true
-fi
+  # Headless export must search the imported keychain first; include login for any system trust roots.
+  security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+  echo "Using CI keychain search list: ${KEYCHAIN_PATH}, login.keychain-db"
+  security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -5 || true
+}
+
+assert_ci_keychain
 
 mkdir -p "$(dirname "$ARCHIVE_PATH")" "$EXPORT_PATH"
 
@@ -63,11 +70,24 @@ case "$ARCHIVE_MODE" in
     ;;
 esac
 
-echo "==> xcodebuild -exportArchive (manual ExportOptions.ci.plist; no Xcode Apple account)"
+assert_ci_keychain
+
+EXPORT_TEAM_ID="$(/usr/libexec/PlistBuddy -c 'Print :teamID' "$EXPORT_PLIST" 2>/dev/null || true)"
+EXPORT_CERT="$(/usr/libexec/PlistBuddy -c 'Print :signingCertificate' "$EXPORT_PLIST" 2>/dev/null || true)"
+EXPORT_METHOD="$(/usr/libexec/PlistBuddy -c 'Print :method' "$EXPORT_PLIST" 2>/dev/null || true)"
+CODE_SIGN_IDENTITY="${CI_EXPORT_CODE_SIGN_IDENTITY:-${EXPORT_CERT:-Apple Development}}"
+
+echo "==> ExportOptions.ci.plist (method=${EXPORT_METHOD:-unknown}, team=${EXPORT_TEAM_ID:-unknown}, signingCertificate=${EXPORT_CERT:-unknown})"
+echo "==> xcodebuild -exportArchive (manual ExportOptions.ci.plist; CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY})"
+
+# Xcode 16 exportArchive still searches for legacy certificate label "iOS Development" unless
+# CODE_SIGN_IDENTITY / DEVELOPMENT_TEAM are passed on the command line (Apple Development in keychain).
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
-  -exportOptionsPlist "$EXPORT_PLIST"
+  -exportOptionsPlist "$EXPORT_PLIST" \
+  CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
+  DEVELOPMENT_TEAM="${EXPORT_TEAM_ID}"
 
 echo "==> IPA export complete"
 ls -la "$EXPORT_PATH"/*.ipa

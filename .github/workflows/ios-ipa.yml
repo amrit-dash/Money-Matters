@@ -124,6 +124,7 @@ jobs:
             cp "$PP_PATH" "$PROFILE_DIR/${PP_UUID}.mobileprovision"
           done
           echo "Installed provisioning profile ${PP_UUID}"
+          echo "KEYCHAIN_PATH=${KEYCHAIN_PATH}" >> "$GITHUB_ENV"
           security find-identity -v -p codesigning | head -5 || true
 
           chmod +x scripts/prepare_export_options_ci.sh scripts/configure_ci_signing.sh scripts/verify_ci_signing.sh scripts/import_ci_signing_keychain.sh

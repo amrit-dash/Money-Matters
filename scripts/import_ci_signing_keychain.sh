@@ -42,5 +42,5 @@ if [ "$PART_RC" -ne 0 ]; then
   exit 1
 fi
 
-security list-keychain -d user -s "$KEYCHAIN_PATH"
+security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
 echo "CI keychain import succeeded."

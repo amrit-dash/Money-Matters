@@ -13,15 +13,15 @@ BUNDLE_ID="${APP_ID#*.}"
 
 # CI has no Apple ID in Xcode — manual export with the imported profile + keychain cert.
 # Archive may use automatic or unsigned signing; export always uses this plist.
-# method=debugging (Xcode 16+; replaces deprecated "development").
-# signingCertificate must be "Apple Development" — exportArchive otherwise looks for legacy "iOS Development".
+# method=development — IDEDistribution matches "iOS App Development" team profiles on headless CI.
+# signingCertificate must be "Apple Development" (cert type in keychain); pass CODE_SIGN_IDENTITY on export too.
 cat > "$OUT" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>method</key>
-	<string>debugging</string>
+	<string>development</string>
 	<key>teamID</key>
 	<string>${TEAM_ID}</string>
 	<key>signingStyle</key>
@@ -47,4 +47,4 @@ cat > "$OUT" <<PLIST
 </plist>
 PLIST
 
-echo "Wrote ${OUT} (team=${TEAM_ID}, profile=${PROFILE_NAME}, bundle=${BUNDLE_ID}, signing=manual, method=debugging)"
+echo "Wrote ${OUT} (team=${TEAM_ID}, profile=${PROFILE_NAME}, bundle=${BUNDLE_ID}, signing=manual, method=development)"
