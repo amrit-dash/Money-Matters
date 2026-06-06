@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# CI-only: archive unsigned, export signed with ios/ExportOptions.ci.plist.
-# Requires Import code signing step to have run first.
+# CI-only: signed archive + IPA export via Flutter (single xcodebuild pipeline).
+# Requires Import code signing step (keychain, profile, ExportOptions.ci.plist, manual pbxproj).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 EXPORT_PLIST="${ROOT}/ios/ExportOptions.ci.plist"
-ARCHIVE_PATH="${ROOT}/build/ios/archive/Runner.xcarchive"
 EXPORT_PATH="${ROOT}/build/ios/ipa"
 
 if [[ ! -f "$EXPORT_PLIST" ]]; then
@@ -15,27 +14,21 @@ if [[ ! -f "$EXPORT_PLIST" ]]; then
   exit 1
 fi
 
-mkdir -p "$(dirname "$ARCHIVE_PATH")" "$EXPORT_PATH"
+# Re-assert CI keychain for xcodebuild/codesign (same job as import_ci_signing_keychain.sh).
+KEYCHAIN_PATH="${KEYCHAIN_PATH:-${RUNNER_TEMP:-}/app-signing.keychain-db}"
+if [[ -f "$KEYCHAIN_PATH" ]]; then
+  if [[ -n "${KEYCHAIN_PASSWORD:-}" ]]; then
+    security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" || true
+  fi
+  security list-keychain -d user -s "$KEYCHAIN_PATH"
+  echo "Using CI keychain: ${KEYCHAIN_PATH}"
+  security find-identity -v -p codesigning | head -3 || true
+fi
 
-echo "==> flutter build ios --release --no-codesign"
-flutter build ios --release --no-codesign
+mkdir -p "$EXPORT_PATH"
 
-echo "==> xcodebuild archive (unsigned)"
-xcodebuild archive \
-  -workspace ios/Runner.xcworkspace \
-  -scheme Runner \
-  -configuration Release \
-  -archivePath "$ARCHIVE_PATH" \
-  -destination 'generic/platform=iOS' \
-  CODE_SIGN_IDENTITY="" \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGNING_ALLOWED=NO
-
-echo "==> xcodebuild -exportArchive (manual signing)"
-xcodebuild -exportArchive \
-  -archivePath "$ARCHIVE_PATH" \
-  -exportPath "$EXPORT_PATH" \
-  -exportOptionsPlist "$EXPORT_PLIST"
+echo "==> flutter build ipa --release --export-options-plist=${EXPORT_PLIST}"
+flutter build ipa --release --export-options-plist="$EXPORT_PLIST"
 
 echo "==> IPA export complete"
 ls -la "$EXPORT_PATH"/*.ipa

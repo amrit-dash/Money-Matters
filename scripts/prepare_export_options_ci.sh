@@ -12,17 +12,21 @@ APP_ID="$(printf '%s' "$PLIST_XML" | plutil -extract Entitlements.application-id
 BUNDLE_ID="${APP_ID#*.}"
 
 # CI has no Apple ID in Xcode — manual signing with the imported profile.
+# method=debugging (Xcode 16+; replaces deprecated "development").
+# signingCertificate must be "Apple Development" — exportArchive otherwise looks for legacy "iOS Development".
 cat > "$OUT" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>method</key>
-	<string>development</string>
+	<string>debugging</string>
 	<key>teamID</key>
 	<string>${TEAM_ID}</string>
 	<key>signingStyle</key>
 	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>Apple Development</string>
 	<key>provisioningProfiles</key>
 	<dict>
 		<key>${BUNDLE_ID}</key>
@@ -42,4 +46,4 @@ cat > "$OUT" <<EOF
 </plist>
 EOF
 
-echo "Wrote ${OUT} (team=${TEAM_ID}, profile=${PROFILE_NAME}, bundle=${BUNDLE_ID}, signing=manual)"
+echo "Wrote ${OUT} (team=${TEAM_ID}, profile=${PROFILE_NAME}, bundle=${BUNDLE_ID}, signing=manual, method=debugging)"
