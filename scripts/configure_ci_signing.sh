@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Configure Xcode project for automatic signing on CI (Personal Team / Xcode-managed profile).
+# Configure Xcode project for automatic archive signing on CI (Personal Team); IPA export uses manual ExportOptions.ci.plist.
 set -euo pipefail
 
 PROFILE="${1:?Usage: $0 path/to/profile.mobileprovision}"

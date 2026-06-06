@@ -54,8 +54,8 @@ if ! echo "$runner_blocks" | grep -q 'DEVELOPMENT_TEAM = TESTTEAM123;'; then
   exit 1
 fi
 
-if ! grep -q '<string>automatic</string>' "${ROOT}/scripts/prepare_export_options_ci.sh"; then
-  echo "::error::prepare_export_options_ci.sh must emit signingStyle automatic"
+if ! grep -q '<string>manual</string>' "${ROOT}/scripts/prepare_export_options_ci.sh"; then
+  echo "::error::prepare_export_options_ci.sh must emit signingStyle manual"
   exit 1
 fi
 if ! grep -q 'CODE_SIGN_STYLE = Automatic' "${ROOT}/scripts/configure_ci_signing.sh"; then
