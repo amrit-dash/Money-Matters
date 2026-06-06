@@ -20,10 +20,23 @@ fi
 
 export TEAM_ID PROFILE_NAME PROFILE_UUID
 perl -0777 -i -pe '
-  s{(buildSettings = \{)(.*?PRODUCT_BUNDLE_IDENTIFIER = com\.amritdash\.moneymatters;.*?)(\t\t\t\};)}{
+  s{(buildSettings = \{)((?:(?!\t\t\t\};)[\s\S])*?CODE_SIGN_ENTITLEMENTS = Runner/Runner\.entitlements;(?:(?!\t\t\t\};)[\s\S])*?)(\t\t\t\};)}{
     my ($open, $body, $close) = ($1, $2, $3);
     $body =~ s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g;
-    $body =~ s/PROVISIONING_PROFILE_SPECIFIER = "";/PROVISIONING_PROFILE_SPECIFIER = "$ENV{PROFILE_UUID}";/g;
+    if ($body !~ /CODE_SIGN_STYLE =/) {
+      $body =~ s/(CODE_SIGN_ENTITLEMENTS = Runner\/Runner\.entitlements;)/$1\n\t\t\t\tCODE_SIGN_STYLE = Manual;/;
+    }
+    if ($body !~ /CODE_SIGN_IDENTITY =/) {
+      $body =~ s/(CODE_SIGN_STYLE = Manual;)/$1\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Development";/;
+    }
+    $body =~ s/PROVISIONING_PROFILE = [^;]+;/PROVISIONING_PROFILE = $ENV{PROFILE_UUID};/g;
+    if ($body !~ /PROVISIONING_PROFILE =/) {
+      $body =~ s/(PROVISIONING_PROFILE_SPECIFIER = [^;]+;)/PROVISIONING_PROFILE = $ENV{PROFILE_UUID};\n\t\t\t\t$1/;
+    }
+    $body =~ s/PROVISIONING_PROFILE_SPECIFIER = [^;]+;/PROVISIONING_PROFILE_SPECIFIER = "$ENV{PROFILE_NAME}";/g;
+    if ($body !~ /PROVISIONING_PROFILE_SPECIFIER =/) {
+      $body =~ s/(DEVELOPMENT_TEAM = [A-Z0-9]+;)/$1\n\t\t\t\tPROVISIONING_PROFILE = $ENV{PROFILE_UUID};\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "$ENV{PROFILE_NAME}";/;
+    }
     $body =~ s/DEVELOPMENT_TEAM = [A-Z0-9]+;/DEVELOPMENT_TEAM = $ENV{TEAM_ID};/g;
     "$open$body$close";
   }gse

@@ -15,6 +15,8 @@ on:
       - 'analysis_options.yaml'
       - 'scripts/prepare_export_options_ci.sh'
       - 'scripts/configure_ci_signing.sh'
+      - 'scripts/verify_ci_signing.sh'
+      - 'scripts/build_ipa_ci.sh'
       - 'scripts/generate_firebase_options_from_plist.sh'
       - '.github/workflows/ios-ipa.yml'
 
@@ -126,9 +128,10 @@ jobs:
           echo "Installed provisioning profile ${PP_UUID}"
           security find-identity -v -p codesigning | head -5 || true
 
-          chmod +x scripts/prepare_export_options_ci.sh scripts/configure_ci_signing.sh
+          chmod +x scripts/prepare_export_options_ci.sh scripts/configure_ci_signing.sh scripts/verify_ci_signing.sh
           ./scripts/prepare_export_options_ci.sh "$PP_PATH"
           ./scripts/configure_ci_signing.sh "$PP_PATH"
+          ./scripts/verify_ci_signing.sh "$PP_PATH"
 
           if [ -n "${{ secrets.APPLE_TEAM_ID }}" ]; then
             /usr/libexec/PlistBuddy -c "Set :teamID ${{ secrets.APPLE_TEAM_ID }}" ios/ExportOptions.ci.plist
@@ -141,8 +144,8 @@ jobs:
       - name: Build signed IPA
         if: steps.signing.outputs.enabled == 'true'
         run: |
-          flutter build ipa --release \
-            --export-options-plist=ios/ExportOptions.ci.plist
+          chmod +x scripts/build_ipa_ci.sh
+          ./scripts/build_ipa_ci.sh
 
       - name: Upload IPA artifact
         if: steps.signing.outputs.enabled == 'true'
