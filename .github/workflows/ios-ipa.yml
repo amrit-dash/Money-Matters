@@ -16,6 +16,7 @@ on:
       - 'scripts/prepare_export_options_ci.sh'
       - 'scripts/configure_ci_signing.sh'
       - 'scripts/verify_ci_signing.sh'
+      - 'scripts/import_ci_signing_keychain.sh'
       - 'scripts/build_ipa_ci.sh'
       - 'scripts/generate_firebase_options_from_plist.sh'
       - '.github/workflows/ios-ipa.yml'
@@ -111,20 +112,8 @@ jobs:
           echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
           echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
 
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          set +e
-          IMPORT_ERR=$(security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH" 2>&1)
-          IMPORT_RC=$?
-          set -e
-          if [ "$IMPORT_RC" -ne 0 ]; then
-            echo "$IMPORT_ERR"
-            echo "::error::Could not import BUILD_CERTIFICATE_BASE64 (.p12). This almost always means P12_PASSWORD does not match the password used when exporting the .p12, or the certificate secret is stale/wrong. Fix: re-export .p12 from Keychain Access (Apple Development + private key), then update BOTH secrets — gh secret set P12_PASSWORD --repo amrit-dash/Money-Matters and re-upload BUILD_CERTIFICATE_BASE64. If you use ./scripts/upload_signing_to_github.sh, it only sets P12_PASSWORD when missing; run gh secret set P12_PASSWORD manually after a new export. See docs/SETUP-SIGNING-FREE-ACCOUNT.md."
-            exit 1
-          fi
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          chmod +x scripts/import_ci_signing_keychain.sh
+          ./scripts/import_ci_signing_keychain.sh "$CERT_PATH" "$KEYCHAIN_PATH"
 
           PP_UUID=$(security cms -D -i "$PP_PATH" | plutil -extract UUID raw -)
           for PROFILE_DIR in \
@@ -136,7 +125,7 @@ jobs:
           echo "Installed provisioning profile ${PP_UUID}"
           security find-identity -v -p codesigning | head -5 || true
 
-          chmod +x scripts/prepare_export_options_ci.sh scripts/configure_ci_signing.sh scripts/verify_ci_signing.sh
+          chmod +x scripts/prepare_export_options_ci.sh scripts/configure_ci_signing.sh scripts/verify_ci_signing.sh scripts/import_ci_signing_keychain.sh
           ./scripts/prepare_export_options_ci.sh "$PP_PATH"
           ./scripts/configure_ci_signing.sh "$PP_PATH"
           ./scripts/verify_ci_signing.sh "$PP_PATH"

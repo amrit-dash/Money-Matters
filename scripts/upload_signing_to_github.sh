@@ -28,11 +28,26 @@ echo "==> Uploading to ${REPO}"
 base64 -i "$P12" | gh secret set BUILD_CERTIFICATE_BASE64 --repo "${REPO}"
 base64 -i "$PROFILE" | gh secret set BUILD_PROVISION_PROFILE_BASE64 --repo "${REPO}"
 
+validate_p12_private_key() {
+  local pass="$1"
+  if ! openssl pkcs12 -in "$P12" -passin "pass:${pass}" -nocerts -nodes 2>/dev/null | grep -qE 'BEGIN (RSA |EC )?PRIVATE KEY'; then
+    echo "ERROR: $P12 does not contain a private key."
+    echo "       Export from Keychain Access → My Certificates → Apple Development (must show nested private key under ▶)."
+    exit 1
+  fi
+}
+
 if ! gh secret list --repo "${REPO}" | grep -q '^P12_PASSWORD'; then
   echo ""
   read -r -s -p "P12 export password (for secret P12_PASSWORD): " P12_PW
   echo ""
+  validate_p12_private_key "$P12_PW"
   gh secret set P12_PASSWORD --body "$P12_PW" --repo "${REPO}"
+else
+  echo ""
+  read -r -s -p "P12 password (to validate export before upload; not stored): " P12_PW
+  echo ""
+  validate_p12_private_key "$P12_PW"
 fi
 
 if ! gh secret list --repo "${REPO}" | grep -q '^KEYCHAIN_PASSWORD'; then
