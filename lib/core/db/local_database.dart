@@ -33,15 +33,20 @@ class LocalDatabase {
   Future<Database> _open() async {
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, _dbName);
-    final db = await openDatabase(
+    return openDatabase(
       path,
       version: _dbVersion,
+      onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       singleInstance: true,
     );
-    await db.execute('PRAGMA journal_mode=WAL');
-    return db;
+  }
+
+  /// WAL improves read concurrency; use [Database.setJournalMode] so iOS/Android
+  /// platform quirks around PRAGMA journal_mode are handled (see sqflite #929).
+  Future<void> _onConfigure(Database db) async {
+    await db.setJournalMode('WAL');
   }
 
   Future<void> _onCreate(Database db, int version) async {
