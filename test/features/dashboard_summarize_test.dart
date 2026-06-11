@@ -267,4 +267,76 @@ void main() {
       expect(foodBucket.amount, food.fold(0.0, (s, t) => s + t.amount));
     });
   });
+
+  group('LocalDashboardRepository.aggregateDailySpend', () {
+    test('calendarDay normalizes UTC timestamps to local midnight', () {
+      final ts = DateTime.utc(2026, 5, 31, 20, 30);
+      final day = LocalDashboardRepository.calendarDay(ts);
+      final local = ts.toLocal();
+      expect(day, DateTime(local.year, local.month, local.day));
+    });
+
+    test('aggregateDailySpend buckets spend under calendarDay key', () {
+      final ts = DateTime.utc(2026, 5, 31, 20, 30);
+      final spend = LocalDashboardRepository.aggregateDailySpend(
+        transactions: [
+          Transaction(
+            id: '1',
+            rawIngestId: '1',
+            amount: 250,
+            timestamp: ts,
+            type: TransactionType.debit,
+            paymentSourceId: 'card-1',
+          ),
+        ],
+        knownSourceIds: {'card-1'},
+      );
+
+      final dayKey = LocalDashboardRepository.calendarDay(ts);
+      expect(spend[dayKey], 250);
+      expect(spend.length, 1);
+
+      final utcDateKey = DateTime(ts.year, ts.month, ts.day);
+      if (utcDateKey != dayKey) {
+        expect(spend[utcDateKey], isNull);
+      }
+    });
+
+    test('aggregateDailySpend skips unmatched and excluded debits', () {
+      final ts = DateTime.utc(2026, 6, 10, 12);
+      final dayKey = LocalDashboardRepository.calendarDay(ts);
+      final spend = LocalDashboardRepository.aggregateDailySpend(
+        transactions: [
+          Transaction(
+            id: '1',
+            rawIngestId: '1',
+            amount: 100,
+            timestamp: ts,
+            type: TransactionType.debit,
+            paymentSourceId: 'card-1',
+          ),
+          Transaction(
+            id: '2',
+            rawIngestId: '2',
+            amount: 50,
+            timestamp: ts,
+            type: TransactionType.debit,
+            unmatched: true,
+          ),
+          Transaction(
+            id: '3',
+            rawIngestId: '3',
+            amount: 999,
+            timestamp: ts,
+            type: TransactionType.debit,
+            paymentSourceId: 'card-1',
+            excluded: true,
+          ),
+        ],
+        knownSourceIds: {'card-1'},
+      );
+
+      expect(spend[dayKey], 100);
+    });
+  });
 }

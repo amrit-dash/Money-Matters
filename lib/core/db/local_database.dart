@@ -48,7 +48,17 @@ class LocalDatabase {
   /// busy_timeout avoids indefinite UI hangs when the ingest pipeline holds a write.
   Future<void> _onConfigure(Database db) async {
     await db.setJournalMode('WAL');
-    await db.execute('PRAGMA busy_timeout = 5000');
+    await _setBusyTimeout(db, 5000);
+  }
+
+  /// PRAGMA busy_timeout returns a row on iOS; [Database.execute] then throws
+  /// Code=0 "not an error" — same class of sqflite quirk as journal_mode (#929).
+  Future<void> _setBusyTimeout(Database db, int milliseconds) async {
+    try {
+      await db.execute('PRAGMA busy_timeout = $milliseconds');
+    } catch (_) {
+      await db.rawQuery('PRAGMA busy_timeout = $milliseconds');
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {

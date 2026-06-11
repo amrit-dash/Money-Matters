@@ -410,6 +410,12 @@ class LocalDashboardRepository implements DashboardRepository {
     );
   }
 
+  /// Local calendar date (midnight) for grouping — timestamps are stored UTC.
+  static DateTime calendarDay(DateTime timestamp) {
+    final local = timestamp.toLocal();
+    return DateTime(local.year, local.month, local.day);
+  }
+
   /// Aggregates matched debit spend by calendar day for heatmap coloring.
   static Map<DateTime, double> aggregateDailySpend({
     required List<Transaction> transactions,
@@ -420,11 +426,7 @@ class LocalDashboardRepository implements DashboardRepository {
       if (tx.excluded) continue;
       if (tx.type != TransactionType.debit) continue;
       if (isUnmatched(tx, knownSourceIds)) continue;
-      final day = DateTime(
-        tx.timestamp.year,
-        tx.timestamp.month,
-        tx.timestamp.day,
-      );
+      final day = calendarDay(tx.timestamp);
       byDay[day] = (byDay[day] ?? 0) + tx.amount;
     }
     return byDay;

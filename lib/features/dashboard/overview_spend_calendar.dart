@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'local_dashboard_repository.dart';
 
 /// Maps daily spend to accent shades — log-scaled so ₹100 vs ₹20,000 differ
 /// clearly while similar high amounts stay closer together.
@@ -172,7 +173,7 @@ class OverviewSpendCalendar extends StatelessWidget {
     }
 
     final day = DateTime(month.year, month.month, dayNumber);
-    final spend = dailySpend[day] ?? 0;
+    final spend = dailySpend[LocalDashboardRepository.calendarDay(day)] ?? 0;
     final scheme = Theme.of(context).colorScheme;
     final isSelected =
         selectedDate != null && _isSameDay(day, selectedDate!);
