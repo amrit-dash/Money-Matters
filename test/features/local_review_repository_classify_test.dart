@@ -129,6 +129,49 @@ void main() {
     });
   });
 
+  test('saveClassification applies category and payment source in one write',
+      () async {
+    const id = 'tx-batch-save';
+    await db.upsertTransaction({
+      'id': id,
+      'raw_ingest_id': 'ingest-1',
+      'amount': 100.0,
+      'currency': 'INR',
+      'merchant': 'AMAZON',
+      'timestamp': DateTime.utc(2026, 6, 2).toIso8601String(),
+      'category_id': null,
+      'subcategory_id': null,
+      'payment_source_id': null,
+      'unmatched': 1,
+      'ambiguous': 1,
+      'excluded': 0,
+      'type': 'debit',
+      'needs_classification': 1,
+      'merchant_normalized': null,
+      'user_notes': null,
+      'shopping_items': null,
+      'travel_provider': null,
+      'transfer_to': null,
+      'classified_by': null,
+      'synced_at': DateTime.utc(2026, 6, 2).toIso8601String(),
+    });
+
+    await db.saveClassification(
+      id,
+      categoryId: 'shopping',
+      classifiedBy: ClassifiedBy.user.name,
+      needsClassification: false,
+      ambiguous: false,
+      paymentSourceId: 'hdfc',
+    );
+
+    final row = await db.getTransaction(id);
+    expect(row?['category_id'], 'shopping');
+    expect(row?['payment_source_id'], 'hdfc');
+    expect(row?['unmatched'], 0);
+    expect(row?['needs_classification'], 0);
+  });
+
   test('classify completes quickly without a parse pipeline', () async {
     final tx = await seedFlaggedTransaction();
     final repo = LocalReviewRepository(

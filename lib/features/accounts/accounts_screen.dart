@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:money_matters/models/payment_source.dart';
@@ -68,28 +70,15 @@ class _AccountsScreenState extends State<AccountsScreen> {
     setState(() => _saving = true);
     try {
       await widget.paymentSourceService.saveAll(updated);
-      final backlog = await widget.queueDrain?.processBacklogIfAuthenticated();
       if (!mounted) return;
       setState(() {
         _sources = updated;
         _saving = false;
       });
-      final rematched = backlog?.rematched ?? 0;
-      final reclassified = backlog?.reclassified ?? 0;
-      var message = 'Saved to cloud';
-      if (rematched > 0 || reclassified > 0) {
-        final bits = <String>[];
-        if (rematched > 0) bits.add('$rematched matched');
-        if (reclassified > 0) bits.add('$reclassified auto-classified');
-        message = 'Saved — ${bits.join(', ')}';
-      } else if (backlog?.classifyNeedsConfig == true) {
-        message = 'Saved — LLM needs GEMINI_API_KEY (see USER-FIX.md)';
-      } else if (backlog?.classifyError != null) {
-        message = 'Saved — LLM classify error (see Profile)';
-      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+        const SnackBar(content: Text('Saved to cloud')),
       );
+      _scheduleBacklogProcessing();
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -97,6 +86,43 @@ class _AccountsScreenState extends State<AccountsScreen> {
         SnackBar(content: Text('Could not save to cloud: $e')),
       );
     }
+  }
+
+  /// Rematch / LLM backlog can take minutes — never block the accounts UI.
+  void _scheduleBacklogProcessing() {
+    final drain = widget.queueDrain;
+    if (drain == null) return;
+    unawaited(
+      drain.processBacklogIfAuthenticated().then((backlog) {
+        if (!mounted || backlog == null) return;
+        final rematched = backlog.rematched;
+        final reclassified = backlog.reclassified;
+        if (rematched == 0 && reclassified == 0) {
+          if (backlog.classifyNeedsConfig) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Saved — LLM needs GEMINI_API_KEY (see USER-FIX.md)',
+                ),
+              ),
+            );
+          } else if (backlog.classifyError != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Saved — LLM classify error (see Profile)'),
+              ),
+            );
+          }
+          return;
+        }
+        final bits = <String>[];
+        if (rematched > 0) bits.add('$rematched matched');
+        if (reclassified > 0) bits.add('$reclassified auto-classified');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Background sync — ${bits.join(', ')}')),
+        );
+      }).catchError((_) {}),
+    );
   }
 
   void _onSourcesChanged(List<PaymentSource> updated) {

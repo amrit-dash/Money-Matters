@@ -98,7 +98,8 @@ class LocalReviewRepository implements ReviewRepository {
 
     final classifiedBy = input.classifiedBy ?? ClassifiedBy.user;
 
-    await _db.updateTransactionClassification(
+    final paymentSourceId = input.paymentSourceId;
+    await _db.saveClassification(
       id,
       categoryId: input.categoryId,
       subcategoryId: input.subcategoryId,
@@ -111,12 +112,8 @@ class LocalReviewRepository implements ReviewRepository {
       classifiedBy: classifiedBy.name,
       needsClassification: false,
       ambiguous: false,
+      paymentSourceId: paymentSourceId,
     );
-
-    final paymentSourceId = input.paymentSourceId;
-    if (paymentSourceId != null) {
-      await _db.updateTransactionPaymentSource(id, paymentSourceId);
-    }
 
     // Cloud sync, merchant rules, and backlog re-parse can hang on slow
     // networks — never block the save UI after local SQLite is updated.
@@ -255,6 +252,18 @@ class LocalReviewRepository implements ReviewRepository {
   }) async {
     await _db.updateTransactionPaymentSource(transactionId, paymentSourceId);
 
+    unawaited(
+      _syncPaymentSourceInBackground(
+        transactionId: transactionId,
+        paymentSourceId: paymentSourceId,
+      ),
+    );
+  }
+
+  Future<void> _syncPaymentSourceInBackground({
+    required String transactionId,
+    required String paymentSourceId,
+  }) async {
     if (_isSignedInSafely()) {
       try {
         final uid = _authService.requireUid();

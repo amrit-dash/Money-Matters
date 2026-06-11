@@ -45,8 +45,10 @@ class LocalDatabase {
 
   /// WAL improves read concurrency; use [Database.setJournalMode] so iOS/Android
   /// platform quirks around PRAGMA journal_mode are handled (see sqflite #929).
+  /// busy_timeout avoids indefinite UI hangs when the ingest pipeline holds a write.
   Future<void> _onConfigure(Database db) async {
     await db.setJournalMode('WAL');
+    await db.execute('PRAGMA busy_timeout = 5000');
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -560,9 +562,7 @@ class LocalDatabase {
     _notifyTransactionChanged();
   }
 
-  /// Applies a classification result (from user relabel or LLM) locally.
-  Future<void> updateTransactionClassification(
-    String id, {
+  Map<String, Object?> _classificationUpdates({
     String? categoryId,
     String? subcategoryId,
     String? merchant,
@@ -574,8 +574,8 @@ class LocalDatabase {
     String? classifiedBy,
     bool? needsClassification,
     bool? ambiguous,
-  }) async {
-    final db = await database;
+    String? paymentSourceId,
+  }) {
     final updates = <String, Object?>{};
     if (categoryId != null) updates['category_id'] = categoryId;
     if (subcategoryId != null) {
@@ -604,7 +604,84 @@ class LocalDatabase {
       updates['needs_classification'] = needsClassification ? 1 : 0;
     }
     if (ambiguous != null) updates['ambiguous'] = ambiguous ? 1 : 0;
+    if (paymentSourceId != null) {
+      updates['payment_source_id'] = paymentSourceId;
+      updates['unmatched'] = 0;
+    }
+    return updates;
+  }
+
+  /// Applies a classification result (from user relabel or LLM) locally.
+  Future<void> updateTransactionClassification(
+    String id, {
+    String? categoryId,
+    String? subcategoryId,
+    String? merchant,
+    String? merchantNormalized,
+    String? userNotes,
+    List<String>? shoppingItems,
+    String? travelProvider,
+    String? transferTo,
+    String? classifiedBy,
+    bool? needsClassification,
+    bool? ambiguous,
+  }) async {
+    final updates = _classificationUpdates(
+      categoryId: categoryId,
+      subcategoryId: subcategoryId,
+      merchant: merchant,
+      merchantNormalized: merchantNormalized,
+      userNotes: userNotes,
+      shoppingItems: shoppingItems,
+      travelProvider: travelProvider,
+      transferTo: transferTo,
+      classifiedBy: classifiedBy,
+      needsClassification: needsClassification,
+      ambiguous: ambiguous,
+    );
     if (updates.isEmpty) return;
+    final db = await database;
+    await db.update(
+      'transactions',
+      updates,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    _notifyTransactionChanged();
+  }
+
+  /// Single SQLite write for classify save (category + optional payment source).
+  Future<void> saveClassification(
+    String id, {
+    String? categoryId,
+    String? subcategoryId,
+    String? merchant,
+    String? merchantNormalized,
+    String? userNotes,
+    List<String>? shoppingItems,
+    String? travelProvider,
+    String? transferTo,
+    String? classifiedBy,
+    bool? needsClassification,
+    bool? ambiguous,
+    String? paymentSourceId,
+  }) async {
+    final updates = _classificationUpdates(
+      categoryId: categoryId,
+      subcategoryId: subcategoryId,
+      merchant: merchant,
+      merchantNormalized: merchantNormalized,
+      userNotes: userNotes,
+      shoppingItems: shoppingItems,
+      travelProvider: travelProvider,
+      transferTo: transferTo,
+      classifiedBy: classifiedBy,
+      needsClassification: needsClassification,
+      ambiguous: ambiguous,
+      paymentSourceId: paymentSourceId,
+    );
+    if (updates.isEmpty) return;
+    final db = await database;
     await db.update(
       'transactions',
       updates,

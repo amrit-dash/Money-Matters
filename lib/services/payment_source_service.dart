@@ -15,6 +15,8 @@ class PaymentSourceService {
   })  : _authService = authService,
         _firestore = firestore ?? FirebaseFirestore.instance;
 
+  static const _remoteSyncTimeout = Duration(seconds: 8);
+
   final AuthService _authService;
   final FirebaseFirestore _firestore;
 
@@ -64,7 +66,7 @@ class PaymentSourceService {
   Future<void> saveAll(List<PaymentSource> sources) async {
     final uid = _requireSignedInUid();
     final col = _collection();
-    final existing = await col.get();
+    final existing = await col.get().timeout(_remoteSyncTimeout);
     final nextIds = sources.map((s) => s.id).toSet();
 
     final batch = _firestore.batch();
@@ -86,7 +88,7 @@ class PaymentSourceService {
       return;
     }
 
-    await batch.commit();
+    await batch.commit().timeout(_remoteSyncTimeout);
     _cache = List<PaymentSource>.from(sources);
     if (!_sourceChanges.isClosed) {
       _sourceChanges.add(null);

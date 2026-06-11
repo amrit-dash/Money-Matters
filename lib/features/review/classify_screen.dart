@@ -584,9 +584,8 @@ class _ClassifyScreenState extends State<ClassifyScreen> {
         ),
       );
       if (!mounted) return;
-      await _transactionSub?.cancel();
+      unawaited(_transactionSub?.cancel());
       _transactionSub = null;
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Saved')),
       );
