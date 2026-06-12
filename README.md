@@ -11,6 +11,12 @@
 [![Dart](https://img.shields.io/badge/Dart-3.11+-0175C2?logo=dart&logoColor=white)](https://dart.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+<p align="center">
+  <img src="https://i.ibb.co/SD8YVSnj/Money-Matter.png" alt="Money Matters app preview" width="800" />
+</p>
+
+*Local copy: [`docs/assets/Money-Matter.png`](docs/assets/Money-Matter.png)*
+
 Money Matters is a personal finance ledger built for **stock iOS**. Because sideloaded apps cannot read your Messages inbox, the app uses **iOS Shortcuts automations** to capture incoming financial SMS and hand them off to a Firebase ingest queue. When you open the app, it drains the queue, parses each message with **rules-first logic**, and surfaces weekly and monthly spending insights — with a human-in-the-loop inbox for anything ambiguous.
 
 Designed for sideload install via Xcode or GitHub Actions — not the App Store.
@@ -223,6 +229,7 @@ Additional setup guides (signing, Xcode, App Check) are in [`docs/`](docs/).
 ## Project structure
 
 ```
+docs/assets/            Product preview and branding assets (e.g. Money-Matter.png)
 docs/assets/app-icon/   SVG masters (pending new artwork)
 ios/Runner/Assets.xcassets/AppIcon.appiconset/   iOS home-screen icon PNGs (export script)
 docs/screenshots/        Optional local UI captures (see Screenshots section)
