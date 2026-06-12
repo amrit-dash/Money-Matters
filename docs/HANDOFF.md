@@ -17,7 +17,7 @@
 | Regenerate PNGs | `./scripts/export_app_icons.sh` (requires `librsvg`, Python Pillow) |
 | On-device home screen | **Verify** on device — `./scripts/build_ipa.sh` or Xcode Run on a physical iPhone |
 
-**Screenshots for README:** UI images are linked from external hosting in root `README.md`. Optional repo copies: add PNGs under `docs/screenshots/` (directory not created yet).
+**Screenshots for README:** Single UI collage in root `README.md` — hosted at imgbb; local copy at `docs/assets/Money-Matter.png`.
 
 ---
 

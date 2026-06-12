@@ -11,12 +11,6 @@
 [![Dart](https://img.shields.io/badge/Dart-3.11+-0175C2?logo=dart&logoColor=white)](https://dart.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-<p align="center">
-  <img src="https://i.ibb.co/SD8YVSnj/Money-Matter.png" alt="Money Matters app preview" width="800" />
-</p>
-
-*Local copy: [`docs/assets/Money-Matter.png`](docs/assets/Money-Matter.png)*
-
 Money Matters is a personal finance ledger built for **stock iOS**. Because sideloaded apps cannot read your Messages inbox, the app uses **iOS Shortcuts automations** to capture incoming financial SMS and hand them off to a Firebase ingest queue. When you open the app, it drains the queue, parses each message with **rules-first logic**, and surfaces weekly and monthly spending insights — with a human-in-the-loop inbox for anything ambiguous.
 
 Designed for sideload install via Xcode or GitHub Actions — not the App Store.
@@ -138,22 +132,11 @@ All data syncs to your personal Firebase project and is cached locally in SQLite
 
 ## Screenshots
 
-App UI captures below (hosted for README rendering). To add repo-local copies, place PNGs under [`docs/screenshots/`](docs/screenshots/) and link them here — same filenames as in the table are fine.
+<p align="center">
+  <img src="https://i.ibb.co/SD8YVSnj/Money-Matter.png" alt="Money Matters app screenshots — dashboard, review, classify, accounts, and recovery" width="800" />
+</p>
 
-| Dashboard | Needs your input |
-| :---: | :---: |
-| ![Dashboard](https://i.ibb.co/RkwbYx0P/image-2026-06-02-164708714.png) | ![Needs your input](https://i.ibb.co/fVkKpHhY/image.png) |
-| *Weekly spend, categories, sync* | *Ambiguous transactions queue* |
-
-| Classify | Accounts |
-| :---: | :---: |
-| ![Classify](https://i.ibb.co/k28SLVbT/image.png) | ![Accounts](https://i.ibb.co/d0g04m9x/image.png) |
-| *Category, source, merchant rules* | *Banks, cards, sender hints* |
-
-| Recovery |
-| :---: |
-| ![Recovery](https://i.ibb.co/YBJH15Xq/image.png) |
-| *Queue status, manual paste* |
+*Local copy: [`docs/assets/Money-Matter.png`](docs/assets/Money-Matter.png)*
 
 ---
 
@@ -229,10 +212,9 @@ Additional setup guides (signing, Xcode, App Check) are in [`docs/`](docs/).
 ## Project structure
 
 ```
-docs/assets/            Product preview and branding assets (e.g. Money-Matter.png)
+docs/assets/            Product preview collage (Money-Matter.png) and branding assets
 docs/assets/app-icon/   SVG masters (pending new artwork)
 ios/Runner/Assets.xcassets/AppIcon.appiconset/   iOS home-screen icon PNGs (export script)
-docs/screenshots/        Optional local UI captures (see Screenshots section)
 lib/
 ├── features/
 │   ├── onboarding/     Auth, payment sources, Shortcuts setup
